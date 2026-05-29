@@ -24,20 +24,26 @@
 //     avoid spurious matches.
 //   - Order of bundles in the result is sorted for determinism.
 
-import { readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cloneOrFetch } from "../io/git-clone";
 import { sameGitRemote } from "../io/git-url";
+import { loadInstalledAgents } from "../io/installed-agents";
+import { loadInstalledSkills } from "../io/installed-skills";
+import { detectInstalledPlatforms } from "../io/platform-detect";
 import { canonicalRegistryPath, loadRegistry, saveRegistry } from "../io/registry";
 import { deriveRemotePath } from "../io/remote-path";
 import { defaultRemoteRoot } from "../io/remote-root";
+import { discoverSkills } from "../io/skill-discovery";
 import {
   canonicalSkillRegistryPath,
   loadSkillRegistry,
   saveSkillRegistry,
 } from "../io/skill-registry";
+import { listAgentDirs } from "../io/sources";
 import { SmithError } from "./smith-error";
-import type { Remote } from "./types";
+import type { Remote, Source } from "./types";
+import { loadBundle } from "../io/bundle-loader";
 
 export interface InstallFromUrlOptions {
   kind: "agent" | "skill";
@@ -57,6 +63,30 @@ export interface InstallFromUrlResult {
   cloneDir: string;
   bundles: string[];
   remote: Remote;
+}
+
+export interface DiscoverFromUrlOptions {
+  kind: "agent" | "skill";
+  url: string;
+  ref?: string;
+  remoteRoot?: string;
+  registryPath?: string;
+  homeDir?: string;
+}
+
+export interface DiscoveredBundle {
+  name: string;
+  description: string;
+  targets?: string[];
+  alreadyInstalled: boolean;
+}
+
+export interface DiscoverFromUrlResult {
+  catalog: { suggestedLabel: string; rootPath: string };
+  bundles: DiscoveredBundle[];
+  detectedTargets: string[];
+  remote: { host: string; owner: string; repo: string; sha: string };
+  existingCatalog: null | { label: string; kind: string };
 }
 
 const DEFAULT_REF = "HEAD";
@@ -80,9 +110,19 @@ export function validateRef(ref: string): void {
   }
 }
 
+interface CloneOnlyResult { targetDir: string; sha: string; }
+
+async function cloneOnly(url: string, ref: string, remoteRoot?: string): Promise<CloneOnlyResult> {
+  validateRef(ref);
+  const root = remoteRoot ?? defaultRemoteRoot();
+  const targetDir = deriveRemotePath(url, root);
+  await checkCollision(targetDir, url);
+  const cloneResult = await cloneOrFetch({ url, ref, targetDir });
+  return { targetDir, sha: cloneResult.sha };
+}
+
 export async function installFromUrl(opts: InstallFromUrlOptions): Promise<InstallFromUrlResult> {
   const ref = opts.ref ?? DEFAULT_REF;
-  validateRef(ref);
   const remoteRoot = opts.remoteRoot ?? defaultRemoteRoot();
   const targetDir = deriveRemotePath(opts.url, remoteRoot);
 
@@ -98,23 +138,18 @@ export async function installFromUrl(opts: InstallFromUrlOptions): Promise<Insta
   // case is allowed and handled later by the update-in-place branch.
   await checkDuplicateUrl(opts.url, opts.kind, targetDir, opts.registryPath);
 
-  await checkCollision(targetDir, opts.url);
+  // targetDir already computed above for checkDuplicateUrl; cloneOnly reuses the same path.
+  const { sha } = await cloneOnly(opts.url, ref, opts.remoteRoot);
 
-  const cloneResult = await cloneOrFetch({
-    url: opts.url,
-    ref,
-    targetDir,
-  });
-
-  const bundles = await discoverBundles(targetDir, opts.kind);
+  const bundles = await scanBundleNames(targetDir, opts.kind);
 
   const now = new Date().toISOString();
   const remote: Remote = {
     url: opts.url,
     ref,
-    lastPulledSha: cloneResult.sha,
+    lastPulledSha: sha,
     lastPulledAt: now,
-    lastRemoteSha: cloneResult.sha,
+    lastRemoteSha: sha,
     lastCheckedAt: now,
   };
 
@@ -227,15 +262,16 @@ async function checkCollision(targetDir: string, url: string): Promise<void> {
   }
 }
 
-async function discoverBundles(rootDir: string, kind: "agent" | "skill"): Promise<string[]> {
+export async function scanBundleNames(rootDir: string, kind: "agent" | "skill"): Promise<string[]> {
   const out: string[] = [];
   const target = kind === "agent" ? "agent.config.json" : "SKILL.md";
   await walk(rootDir, async (filePath) => {
-    if (filePath.endsWith(`/${target}`)) {
-      const dir = filePath.slice(0, -target.length - 1);
-      const name = await readBundleName(filePath, kind, dir);
-      if (name) out.push(name);
-    }
+    if (!filePath.endsWith(`/${target}`)) return;
+    const st = await lstat(filePath).catch(() => null);
+    if (!st || st.isSymbolicLink()) return; // hardening (spec §5.8)
+    const dir = filePath.slice(0, -target.length - 1);
+    const name = await readBundleName(filePath, kind, dir);
+    if (name) out.push(name);
   });
   return out.sort();
 }
@@ -284,14 +320,101 @@ async function readBundleName(
   }
 }
 
-function deriveLabel(url: string): string {
+/** Strip scheme/.git/trailing-slash and return path segments (host first, repo last). */
+function urlSegments(url: string): string[] {
   const stripped = url
     .replace(/\.git\/?$/, "")
     .replace(/^ssh:\/\/git@|^git@|^https?:\/\/|^file:\/\//, "")
     .replace(":", "/");
-  const parts = stripped.split("/").filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+  return stripped.split("/").filter(Boolean);
+}
+
+export function deriveLabel(url: string): string {
+  const p = urlSegments(url);
+  if (p.length >= 2) return `${p[p.length - 2]}/${p[p.length - 1]}`;
+  // Fallback: return the full stripped string (preserves original behavior for degenerate URLs)
+  return url
+    .replace(/\.git\/?$/, "")
+    .replace(/^ssh:\/\/git@|^git@|^https?:\/\/|^file:\/\//, "")
+    .replace(":", "/");
+}
+
+export async function discoverFromUrl(opts: DiscoverFromUrlOptions): Promise<DiscoverFromUrlResult> {
+  const ref = opts.ref ?? DEFAULT_REF;
+  const { targetDir, sha } = await cloneOnly(opts.url, ref, opts.remoteRoot);
+  const suggestedLabel = deriveLabel(opts.url);
+  let bundles: DiscoveredBundle[];
+  if (opts.kind === "skill") {
+    const installed = new Set(
+      (await loadInstalledSkills(opts.homeDir ? { homeDir: opts.homeDir } : undefined)).installed.map((e) => e.name),
+    );
+    const discovered = await discoverSkills({ kind: "team-shared", rootPath: targetDir, label: suggestedLabel });
+    bundles = discovered.map((s) => ({
+      name: s.name,
+      description: String(s.frontmatter["description"] ?? ""),
+      alreadyInstalled: installed.has(s.name),
+    }));
+  } else {
+    bundles = await discoverAgentBundles(targetDir, opts.homeDir);
   }
-  return stripped;
+  return {
+    catalog: { suggestedLabel, rootPath: targetDir },
+    bundles,
+    detectedTargets: [...(await detectInstalledPlatforms())],
+    remote: { ...parseRemoteParts(opts.url), sha },
+    existingCatalog: await findExistingCatalog(opts.url, opts.kind, opts.registryPath),
+  };
+}
+
+async function discoverAgentBundles(rootDir: string, homeDir?: string): Promise<DiscoveredBundle[]> {
+  const source: Source = { kind: "registered", rootPath: rootDir, label: deriveLabel(rootDir) };
+  const dirs = await listAgentDirs(source);
+  const installedNames = new Set(
+    (await loadInstalledAgents(homeDir ? { homeDir } : undefined)).installed.map((e) => e.name),
+  );
+  const out: DiscoveredBundle[] = [];
+  for (const dir of dirs) {
+    try {
+      const bundle = await loadBundle(dir, source);
+      out.push({
+        name: bundle.config.name,
+        description: bundle.config.description ?? "",
+        targets: bundle.config.targets,
+        alreadyInstalled: installedNames.has(bundle.config.name),
+      });
+    } catch {
+      continue; // skip dirs that fail to load
+    }
+  }
+  return out;
+}
+
+export function parseRemoteParts(url: string): { host: string; owner: string; repo: string } {
+  const parts = urlSegments(url);
+  return {
+    host: parts[0] ?? "",
+    owner: parts.length >= 3 ? parts[parts.length - 2]! : "",
+    repo: parts[parts.length - 1] ?? "",
+  };
+}
+
+async function findExistingCatalog(
+  url: string,
+  kind: "agent" | "skill",
+  registryPath?: string,
+): Promise<null | { label: string; kind: string }> {
+  const agentPath = kind === "agent" ? (registryPath ?? canonicalRegistryPath()) : canonicalRegistryPath();
+  const skillPath = kind === "skill" ? (registryPath ?? canonicalSkillRegistryPath()) : canonicalSkillRegistryPath();
+  const [agentReg, skillReg] = await Promise.all([loadRegistry(agentPath), loadSkillRegistry(skillPath)]);
+  for (const s of agentReg.sources) {
+    if (sameGitRemote(s.remote?.url, url) || sameGitRemote(s.gitRemote, url)) {
+      return { label: s.label, kind: "agent" };
+    }
+  }
+  for (const c of skillReg.catalogs) {
+    if (sameGitRemote(c.remote?.url, url) || sameGitRemote(c.gitRemote, url)) {
+      return { label: c.label, kind: "skill" };
+    }
+  }
+  return null;
 }
