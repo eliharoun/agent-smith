@@ -39,6 +39,7 @@ export const InstalledSkill = z.object({
     opencode: z.string().optional(),
     claudeCode: z.string().optional(),
     codex: z.string().optional(),
+    kiro: z.string().optional(),
   }),
   contentHash: z.string(),
   installedAt: z.string(),

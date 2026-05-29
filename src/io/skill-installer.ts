@@ -311,6 +311,10 @@ async function copyToPlatforms(
 ): Promise<InstalledSkill["installedPaths"]> {
   const allPlatforms: PlatformId[] = ["opencode", "claude-code", "codex", "kiro"];
   const requested = targets ? new Set<PlatformId>(targets) : new Set(allPlatforms);
+  // When the caller passes an explicit target set, honor it: create the
+  // platform skill dir if missing. Only the implicit "install everywhere"
+  // case skips platforms whose dir doesn't already exist.
+  const explicit = targets !== undefined;
   const installedPaths: InstalledSkill["installedPaths"] = {};
   // Track every dest we've written to so we can roll back on later failure.
   // This makes installSkill atomic-from-the-user's-perspective: either every
@@ -321,17 +325,17 @@ async function copyToPlatforms(
       if (!requested.has(platform)) continue;
       const baseDir = dirs[PLATFORM_KEY[platform]];
       if (!baseDir) continue;
-      if (!(await pathExists(baseDir))) continue; // platform not installed
+      if (!explicit && !(await pathExists(baseDir))) continue; // implicit: skip absent
       const dest = join(baseDir, name);
       // Defense-in-depth [v1-task B6]: `name` is validated by
       // validateSkillName at the entry point, but copyToPlatforms is also
       // reachable via sourceOverride paths. Belt-and-suspenders before
       // any rm/cp.
+      await mkdir(baseDir, { recursive: true });
       await assertWithin(dest, baseDir);
       if (await pathExists(dest)) {
         await rm(dest, { recursive: true, force: true });
       }
-      await mkdir(baseDir, { recursive: true });
       // verbatimSymlinks + dereference:false: symlinks in the source are
       // copied AS symlinks (not followed). Prevents a hostile catalog from
       // shipping `secret -> /etc/passwd` and getting that file deep-copied

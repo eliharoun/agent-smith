@@ -42,7 +42,7 @@ export interface RegisterSkillInstallOpts {
   wrapDepsOverride?: WrapDeps;
 }
 
-const ALL_PLATFORMS: ReadonlyArray<PlatformId> = ["opencode", "claude-code", "codex"];
+const ALL_PLATFORMS: ReadonlyArray<PlatformId> = ["opencode", "claude-code", "codex", "kiro"];
 
 function parseTargets(s: string | undefined): ReadonlyArray<PlatformId> | undefined {
   if (!s) return undefined;

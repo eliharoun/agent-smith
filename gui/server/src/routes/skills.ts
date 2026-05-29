@@ -49,6 +49,7 @@ export function registerSkillsRoute(app: Hono, deps: SkillsRouteDeps): void {
       if (inst?.installedPaths.opencode) installedOn.push("opencode");
       if (inst?.installedPaths.claudeCode) installedOn.push("claude-code");
       if (inst?.installedPaths.codex) installedOn.push("codex");
+      if (inst?.installedPaths.kiro) installedOn.push("kiro");
       try {
         const detail = await scanSkillBundle({
           path: hit.path,
