@@ -245,6 +245,9 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
       "--ref <ref>",
       "Git branch/tag/SHA to clone with --from. Defaults to the remote's HEAD.",
     )
+    .option("--all", "install every agent discovered in --from <url>")
+    .option("--agents <list>", "comma-separated agents to install from --from <url>")
+    .option("--json", "discover agents from --from <url>, print JSON, do not install")
     .option(
       "--force",
       "Overwrite a pre-existing destination file that smith doesn't recognize as its own (would-clobber bypass)",
@@ -273,6 +276,9 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             allowMissingMcp?: boolean;
             from?: string;
             ref?: string;
+            all?: boolean;
+            agents?: string;
+            json?: boolean;
             force?: boolean;
             platformConventions?: string | false;
             verbose?: boolean;
@@ -324,6 +330,9 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(opts.allowMissingMcp ? { allowMissingMcp: true } : {}),
             ...(opts.from ? { from: opts.from } : {}),
             ...(opts.ref ? { ref: opts.ref } : {}),
+            ...(opts.all ? { all: true } : {}),
+            ...(opts.agents ? { agents: opts.agents } : {}),
+            ...(opts.json ? { json: true } : {}),
             ...(opts.force ? { force: true } : {}),
             ...(conventionsStrategy ? { platformConventions: conventionsStrategy } : {}),
             ...(opts.verbose ? { verbose: true } : {}),

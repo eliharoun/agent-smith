@@ -124,4 +124,152 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
       await remote.cleanup();
     }
   });
+
+  test("--all installs every agent from a multi-agent remote (to declared targets)", async () => {
+    const remote = await createBareRemote();
+    try {
+      await seedBundle(remote, "alpha-agent", "a");
+      await seedBundle(remote, "beta-agent", "b");
+
+      const code = await install({
+        from: remote.url,
+        ref: "main",
+        all: true,
+        platformFilter: ["claude-code"],
+        noRefreshHooks: true,
+        print: () => {},
+        printErr: () => {},
+      });
+
+      expect(code).toBe(0);
+      const reg = JSON.parse(
+        await Bun.file(join(home, "agent-smith", "registry.json")).text(),
+      );
+      expect(reg.sources.some((s: { gitRemote?: string }) => s.gitRemote === remote.url)).toBe(true);
+    } finally {
+      await remote.cleanup();
+    }
+  });
+
+  test("--json prints agent discovery with declared targets and does not install", async () => {
+    const remote = await createBareRemote();
+    try {
+      await seedBundle(remote, "alpha-agent", "a");
+      await seedBundle(remote, "beta-agent", "b");
+
+      const out: string[] = [];
+      const code = await install({
+        from: remote.url,
+        ref: "main",
+        json: true,
+        noRefreshHooks: true,
+        print: (m) => out.push(m),
+        printErr: () => {},
+      });
+
+      expect(code).toBe(0);
+      const parsed = JSON.parse(out.join("\n"));
+      expect(parsed.kind).toBe("agent");
+      expect(parsed.bundles.find((b: { name: string }) => b.name === "alpha-agent")?.targets).toEqual(["claude-code"]);
+      expect(await Bun.file(join(home, "agent-smith", "registry.json")).exists()).toBe(false);
+    } finally {
+      await remote.cleanup();
+    }
+  });
+
+  test("TTY picker selects a subset of agents", async () => {
+    const remote = await createBareRemote();
+    try {
+      await seedBundle(remote, "alpha-agent", "a");
+      await seedBundle(remote, "beta-agent", "b");
+
+      const code = await install({
+        from: remote.url,
+        ref: "main",
+        platformFilter: ["claude-code"],
+        noRefreshHooks: true,
+        isTTY: () => true,
+        prompt: async () => "1",
+        print: () => {},
+        printErr: () => {},
+      });
+
+      expect(code).toBe(0);
+      // Only alpha-agent (item #1 in sorted list) should be installed
+      const reg = JSON.parse(
+        await Bun.file(join(home, "agent-smith", "registry.json")).text(),
+      );
+      expect(reg.sources.some((s: { gitRemote?: string }) => s.gitRemote === remote.url)).toBe(true);
+    } finally {
+      await remote.cleanup();
+    }
+  });
+
+  test("all-skipped returns exit 1 with message", async () => {
+    const remote = await createBareRemote();
+    try {
+      // Both agents target opencode only
+      const cfg = (name: string) => JSON.stringify({
+        schemaVersion: 1, name, description: "Use proactively to test the all-skipped flow.", targets: ["opencode"], modelTier: "balanced",
+      });
+      await remote.commitFile("a/agent.config.json", cfg("alpha-agent"));
+      await remote.commitFile("a/IDENTITY.md", "# a\n\nYou exist.\n");
+      await remote.commitFile("a/EXPERTISE.md", "# e\n\nYou do.\n");
+      await remote.commitFile("a/SOUL.md", "# s\n\nYou speak.\n");
+      await remote.commitFile("b/agent.config.json", cfg("beta-agent"));
+      await remote.commitFile("b/IDENTITY.md", "# b\n\nYou exist.\n");
+      await remote.commitFile("b/EXPERTISE.md", "# e\n\nYou do.\n");
+      await remote.commitFile("b/SOUL.md", "# s\n\nYou speak.\n");
+
+      const errs: string[] = [];
+      const code = await install({
+        from: remote.url,
+        ref: "main",
+        all: true,
+        platformFilter: ["claude-code"],
+        noRefreshHooks: true,
+        print: () => {},
+        printErr: (m) => errs.push(m),
+      });
+
+      expect(code).toBe(1);
+      expect(errs.join("\n")).toMatch(/no agents were installed/i);
+    } finally {
+      await remote.cleanup();
+    }
+  });
+
+  test("agent skipped with a warning when no selected platform matches its declared targets", async () => {
+    const remote = await createBareRemote();
+    try {
+      await seedBundle(remote, "alpha-agent", "a");
+      // beta-agent targets opencode only
+      await remote.commitFile("b/agent.config.json", JSON.stringify({
+        schemaVersion: 1,
+        name: "beta-agent",
+        description: "Use proactively to test the --from URL install flow.",
+        targets: ["opencode"],
+        modelTier: "balanced",
+      }));
+      await remote.commitFile("b/IDENTITY.md", "# beta-agent\n\nYou exist.\n");
+      await remote.commitFile("b/EXPERTISE.md", "# Expertise\n\nYou do.\n");
+      await remote.commitFile("b/SOUL.md", "# Soul\n\nYou speak.\n");
+      await remote.commitFile("b/USER.md", "# User\n\nYou note.\n");
+
+      const errs: string[] = [];
+      const code = await install({
+        from: remote.url,
+        ref: "main",
+        all: true,
+        platformFilter: ["claude-code"],
+        noRefreshHooks: true,
+        print: () => {},
+        printErr: (m) => errs.push(m),
+      });
+
+      expect(errs.join("\n")).toMatch(/skipping beta-agent/i);
+    } finally {
+      await remote.cleanup();
+    }
+  });
 });

@@ -69,6 +69,12 @@ export interface InstallCliOptions {
   from?: string;
   /** Git ref to clone when `from` is set. Defaults to `HEAD`. */
   ref?: string;
+  /** Install every agent discovered in --from <url>. */
+  all?: boolean;
+  /** Comma-separated agents to install from --from <url>. */
+  agents?: string;
+  /** Discover agents from --from <url>, print JSON, do not install. */
+  json?: boolean;
   paths?: InstallPaths;
   loadRegistry?: (path: string) => Promise<Registry>;
   loadAllBundles?: (registry: Registry) => Promise<LoadAllBundlesResult>;
@@ -211,10 +217,10 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
       printErr(`smith: --from is not a recognized git url: ${o.from}`);
       return 2;
     }
-    const { installFromUrl } = await import("../../core/install-from-url");
-    let cloneResult: Awaited<ReturnType<typeof installFromUrl>>;
+    const { discoverFromUrl, installFromUrl } = await import("../../core/install-from-url");
+    let disco: Awaited<ReturnType<typeof discoverFromUrl>>;
     try {
-      cloneResult = await installFromUrl({
+      disco = await discoverFromUrl({
         kind: "agent",
         url: o.from,
         ...(o.ref ? { ref: o.ref } : {}),
@@ -225,18 +231,86 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
       );
       return 2;
     }
-    if (!o.name) {
-      if (cloneResult.bundles.length === 1) {
-        const inferred = cloneResult.bundles[0];
-        if (inferred) o.name = inferred;
-      } else {
-        printErr(
-          `smith: ${o.from} contains ${cloneResult.bundles.length} bundles: ${cloneResult.bundles.join(", ")}. ` +
-            `Specify which one: 'smith agent install <name> --from ${o.from}'.`,
-        );
-        return 2;
-      }
+
+    // --json: print discovery and exit without registering or installing.
+    if (o.json) {
+      print(JSON.stringify({ kind: "agent", ...disco }, null, 2));
+      return 0;
     }
+
+    // Resolve which agents to install.
+    const isTty = o.isTTY ? o.isTTY() : Boolean(process.stdin.isTTY);
+    const read = o.prompt ? () => o.prompt!("> ") : (): Promise<string> => import("../prompt").then((m) => m.readToken("> "));
+    const names = await resolveAgentSelection(disco.bundles, {
+      ...(o.name ? { name: o.name } : {}),
+      ...(o.agents ? { agents: o.agents } : {}),
+      all: Boolean(o.all),
+      isTty,
+      read,
+      from: o.from,
+      printErr,
+    });
+    // Non-TTY disambiguation: returns null to signal "return 2".
+    if (names === null) {
+      return 2;
+    }
+
+    // Register the catalog via installFromUrl.
+    try {
+      await installFromUrl({
+        kind: "agent",
+        url: o.from,
+        ...(o.ref ? { ref: o.ref } : {}),
+      });
+    } catch (err) {
+      printErr(
+        `smith: failed to install from ${o.from}: ${(err as Error).message}`,
+      );
+      return 2;
+    }
+
+    // Install each selected agent, intersecting platforms.
+    const chosen = o.platformFilter ?? undefined;
+    let failed = 0;
+    let installed = 0;
+    for (const n of names) {
+      const declared = disco.bundles.find((b) => b.name === n)?.targets ?? [];
+      const inter: PlatformId[] = chosen
+        ? (declared.filter((t) => chosen.includes(t as PlatformId)) as PlatformId[])
+        : (declared as PlatformId[]);
+      if (chosen && inter.length === 0) {
+        printErr(`⚠ skipping ${n}: no selected platform matches its declared targets (${declared.join(", ")})`);
+        continue;
+      }
+      const code = await install({
+        name: n,
+        platformFilter: inter,
+        paths,
+        ...(o.noRefreshHooks ? { noRefreshHooks: true } : {}),
+        ...(o.loadRegistry ? { loadRegistry: o.loadRegistry } : {}),
+        ...(o.loadAllBundles ? { loadAllBundles: o.loadAllBundles } : {}),
+        ...(o.buildAndInstall ? { buildAndInstall: o.buildAndInstall } : {}),
+        ...(o.force ? { force: true } : {}),
+        ...(o.verbose ? { verbose: true } : {}),
+        ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
+        ...(o.platformConventions ? { platformConventions: o.platformConventions } : {}),
+        print,
+        printErr,
+        ...(o.skillMode ? { skillMode: o.skillMode } : {}),
+        ...(o.refreshConsent ? { refreshConsent: o.refreshConsent } : {}),
+        ...(o.agentSmithHome ? { agentSmithHome: o.agentSmithHome } : {}),
+        ...(o.codexHome ? { codexHome: o.codexHome } : {}),
+        ...(o.opencodeConfigHome ? { opencodeConfigHome: o.opencodeConfigHome } : {}),
+      });
+      if (code !== 0) failed++;
+      else installed++;
+    }
+    if (failed > 0) return 1;
+    if (names.length > 0 && installed === 0) {
+      printErr("smith: no agents were installed (all skipped — no selected platform matched their declared targets)");
+      return 1;
+    }
+    return 0;
   }
 
   if (!o.name) {
@@ -490,6 +564,40 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   }
 
   return 0;
+}
+
+/**
+ * Resolve which agents to install from a multi-agent remote.
+ * Returns null when non-TTY disambiguation is needed (caller prints + returns 2).
+ * Single-bundle remotes auto-select. --all / --agents / name positional resolve directly.
+ */
+async function resolveAgentSelection(
+  bundles: Array<{ name: string; description: string; targets?: string[]; alreadyInstalled: boolean }>,
+  o: { name?: string; agents?: string; all: boolean; isTty: boolean; read: () => Promise<string>; from: string; printErr: (m: string) => void },
+): Promise<string[] | null> {
+  const { promptMultiSelect } = await import("../multi-select");
+  const valid = new Set(bundles.map((b) => b.name));
+  const fail = (n: string) =>
+    new SmithError({ code: "usage-error", message: `unknown agent '${n}' (valid: ${[...valid].join(", ")})` });
+  if (o.name) { if (!valid.has(o.name)) throw fail(o.name); return [o.name]; }
+  if (o.agents) {
+    const list = o.agents.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const a of list) if (!valid.has(a)) throw fail(a);
+    return list;
+  }
+  if (o.all) return bundles.map((b) => b.name);
+  if (bundles.length === 1) return [bundles[0]!.name];
+  if (o.isTty) {
+    const idx = await promptMultiSelect(
+      bundles.map((b) => ({ label: b.name, hint: b.description.slice(0, 80), ...(b.alreadyInstalled ? { annotation: "[installed]" } : {}) })),
+      { read: o.read },
+    );
+    return idx.map((i) => bundles[i]!.name);
+  }
+  o.printErr(
+    `smith: ${o.from} contains ${bundles.length} agents: ${bundles.map((b) => b.name).join(", ")}. Specify which: pass <name>, --agents <names>, or --all.`,
+  );
+  return null;
 }
 
 /**
