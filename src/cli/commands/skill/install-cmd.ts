@@ -25,6 +25,8 @@ import {
   saveSkillRegistry,
 } from "../../../io/skill-registry";
 import { type WrapDeps, wrap } from "../../wrap";
+import { promptMultiSelect } from "../../multi-select";
+import type { DiscoveredBundle } from "../../../core/install-from-url";
 
 export interface RegisterSkillInstallOpts {
   /**
@@ -40,6 +42,10 @@ export interface RegisterSkillInstallOpts {
    * runner mid-suite. Production callers leave this unset.
    */
   wrapDepsOverride?: WrapDeps;
+  /** Test seam: drives the interactive multi-select. Defaults to readToken. */
+  promptOverride?: () => Promise<string>;
+  /** Test seam: TTY detection. Defaults to () => Boolean(process.stdin.isTTY). */
+  isTtyOverride?: () => boolean;
 }
 
 const ALL_PLATFORMS: ReadonlyArray<PlatformId> = ["opencode", "claude-code", "codex", "kiro"];
@@ -84,6 +90,9 @@ export function registerSkillInstallCommands(
       "--git-ref <ref>",
       "Git branch/tag/SHA to clone with --from when it is a URL. Defaults to remote HEAD.",
     )
+    .option("--all", "install every skill discovered in --from <url>")
+    .option("--skills <list>", "comma-separated skills to install from --from <url>")
+    .option("--json", "discover skills from --from <url>, print JSON, do not install")
     .action(
       wrap(
         "skill install",
@@ -94,9 +103,14 @@ export function registerSkillInstallCommands(
             as?: string;
             targets?: string;
             gitRef?: string;
+            all?: boolean;
+            skills?: string;
+            json?: boolean;
           },
         ): Promise<number> => {
           const targets = parseTargets(cmdOpts.targets);
+          const read = opts.promptOverride ?? ((): Promise<string> => import("../../prompt").then((m) => m.readToken("> ")));
+          const isTty = opts.isTtyOverride ?? (() => Boolean(process.stdin.isTTY));
 
           // v1-task C3.10: --from <url> branch. Clone + register via the
           // shared installFromUrl orchestrator, then route through the
@@ -107,48 +121,44 @@ export function registerSkillInstallCommands(
           if (cmdOpts.from) {
             const { isLikelyGitUrl } = await import("../../../io/remote-path");
             if (isLikelyGitUrl(cmdOpts.from)) {
-              const { installFromUrl } = await import("../../../core/install-from-url");
-              const cloneResult = await installFromUrl({
+              const { discoverFromUrl, installFromUrl } = await import("../../../core/install-from-url");
+              const disco = await discoverFromUrl({
                 kind: "skill",
                 url: cmdOpts.from,
                 ...(cmdOpts.gitRef ? { ref: cmdOpts.gitRef } : {}),
-                registryPath: registryPathFor(home),
+                ...(home ? { homeDir: home, registryPath: registryPathFor(home) } : {}),
               });
-              let targetName = ref;
-              if (!targetName) {
-                if (cloneResult.bundles.length === 1) {
-                  targetName = cloneResult.bundles[0];
-                } else {
-                  console.error(
-                    `smith: ${cmdOpts.from} contains ${cloneResult.bundles.length} skills: ${cloneResult.bundles.join(", ")}. ` +
-                      `Specify which one: 'smith skill install <ref> --from ${cmdOpts.from}'.`,
-                  );
-                  throw new SmithError({
-                    code: "usage-error",
-                    message: `multiple skills in remote; pass <ref> to disambiguate`,
-                    suggestedCommand: `smith skill install <ref> --from ${cmdOpts.from}`,
-                  });
-                }
+              if (cmdOpts.json) { console.log(JSON.stringify({ kind: "skill", ...disco }, null, 2)); return 0; }
+              if (ref && (cmdOpts.all || cmdOpts.skills)) {
+                throw new SmithError({ code: "usage-error", message: "<ref> cannot be combined with --all/--skills" });
               }
-              if (!targetName) {
-                throw new SmithError({
-                  code: "usage-error",
-                  message: "no skill resolved from remote",
-                  suggestedCommand: `smith skill install <ref> --from ${cmdOpts.from}`,
-                });
+              if (cmdOpts.all && cmdOpts.skills) {
+                throw new SmithError({ code: "usage-error", message: "--all cannot be combined with --skills" });
               }
-              const r = await installSkill(targetName, {
-                ...(home ? { homeDir: home } : {}),
-                ...(targets ? { targets } : {}),
+              const names = await resolveSkillSelection(disco.bundles, {
+                ref, skills: cmdOpts.skills, all: Boolean(cmdOpts.all), isTty: isTty(), read, from: cmdOpts.from,
               });
-              if (!r.ok) {
-                throw new SmithError({
-                  code: "validation-failed",
-                  what: "skill install",
-                  reasons: [r.error],
-                });
+              const selectedTargets = targets ?? (isTty() ? await pickPlatforms(disco.detectedTargets, read) : undefined);
+              await installFromUrl({ kind: "skill", url: cmdOpts.from, ...(cmdOpts.gitRef ? { ref: cmdOpts.gitRef } : {}), ...(home ? { registryPath: registryPathFor(home) } : {}) });
+              const failures: string[] = [];
+              for (const n of names) {
+                const already = disco.bundles.find((b) => b.name === n)?.alreadyInstalled;
+                const r = already
+                  ? await updateSkill(n, { ...(home ? { homeDir: home } : {}), ...(selectedTargets ? { targets: selectedTargets } : {}) })
+                  : await installSkill(n, { ...(home ? { homeDir: home } : {}), ...(selectedTargets ? { targets: selectedTargets } : {}), catalog: disco.catalog.suggestedLabel });
+                if (!r.ok) failures.push(`${n}: ${r.error}`);
+                else console.log(pc.green(`Installed '${n}'`));
               }
-              console.log(pc.green(`Installed skill '${targetName}' from ${cmdOpts.from}`));
+              // Surface failures before the hint so a partial failure isn't
+              // masked by a success-looking message (the catalog is still
+              // registered, but the user needs to see what failed first).
+              if (failures.length > 0) {
+                throw new SmithError({ code: "partial-failure", operation: "skill install", succeeded: names.length - failures.length, failed: failures.length, skipped: 0, details: failures });
+              }
+              console.log("");
+              console.log(`Catalog '${disco.catalog.suggestedLabel}' is registered.`);
+              console.log(`  More skills:  smith skill install --from ${cmdOpts.from}`);
+              console.log(`  Manage:       smith skill catalogs`);
               return 0;
             }
 
@@ -403,4 +413,40 @@ export function registerSkillInstallCommands(
         wrapDeps,
       ),
     );
+}
+
+function excerpt(d: string): string {
+  const firstSentence = d.split(/(?<=\.)\s/)[0] ?? d;
+  return firstSentence.length > 80 ? `${firstSentence.slice(0, 79)}…` : firstSentence;
+}
+
+async function resolveSkillSelection(
+  bundles: DiscoveredBundle[],
+  o: { ref?: string | undefined; skills?: string | undefined; all: boolean; isTty: boolean; read: () => Promise<string>; from: string },
+): Promise<string[]> {
+  const valid = new Set(bundles.map((b) => b.name));
+  const fail = (n: string) => new SmithError({ code: "usage-error", message: `unknown skill '${n}' (valid: ${[...valid].join(", ")})` });
+  if (o.ref) { if (!valid.has(o.ref)) throw fail(o.ref); return [o.ref]; }
+  if (o.skills) {
+    const list = o.skills.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const s of list) if (!valid.has(s)) throw fail(s);
+    return list;
+  }
+  if (o.all) return bundles.map((b) => b.name);
+  if (bundles.length === 1) return [bundles[0]!.name];
+  if (o.isTty) {
+    const idx = await promptMultiSelect(
+      bundles.map((b) => ({ label: b.name, hint: excerpt(b.description), ...(b.alreadyInstalled ? { annotation: "[installed]" } : {}) })),
+      { read: o.read },
+    );
+    return idx.map((i) => bundles[i]!.name);
+  }
+  console.error(`smith: ${o.from} contains ${bundles.length} skills: ${bundles.map((b) => b.name).join(", ")}. Specify which: pass <ref>, --skills <names>, or --all.`);
+  throw new SmithError({ code: "usage-error", message: "multiple skills in remote; pass <ref>, --skills, or --all", suggestedCommand: `smith skill install --all --from ${o.from}` });
+}
+
+async function pickPlatforms(detected: string[], read: () => Promise<string>): Promise<PlatformId[] | undefined> {
+  if (detected.length === 0) return undefined;
+  const idx = await promptMultiSelect(detected.map((d) => ({ label: d })), { read, defaultAll: true });
+  return idx.map((i) => detected[i] as PlatformId);
 }

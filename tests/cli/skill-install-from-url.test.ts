@@ -51,20 +51,15 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true });
 });
 
-function makeProgram(): Command {
+function makeProgram(opts?: { reads?: string[]; tty?: boolean }): Command {
   const program = new Command();
   const skillCmd = program.command("skill");
+  let i = 0;
   registerSkillInstallCommands(skillCmd, {
     homeDirOverride: home,
-    wrapDepsOverride: {
-      exit: ((): never => {
-        // no-op: don't kill the bun-test runner. Cast satisfies the
-        // `(code: number) => never` signature on the wrap deps; the
-        // callers tolerate fallthrough via the "unreachable" throw they
-        // emit immediately after exit returns.
-        return undefined as never;
-      }) as (code: number) => never,
-    },
+    ...(opts?.tty !== undefined ? { isTtyOverride: () => opts.tty! } : {}),
+    ...(opts?.reads ? { promptOverride: async () => opts.reads![i++] ?? "" } : {}),
+    wrapDepsOverride: { exit: (() => undefined as never) as (code: number) => never },
   });
   return program;
 }
@@ -173,5 +168,57 @@ describe("smith skill install --from <url> [v1-task C3.10]", () => {
     } finally {
       await rm(skillDir, { recursive: true, force: true });
     }
+  });
+
+  test("--all installs every skill from a multi-skill remote", async () => {
+    const remote = await createBareRemote();
+    try {
+      await remote.commitFile("a/SKILL.md", SKILL_BODY("alpha-skill"));
+      await remote.commitFile("b/SKILL.md", SKILL_BODY("beta-skill"));
+      await makeProgram().parseAsync(["skill", "install", "--from", remote.url, "--all"], { from: "user" });
+      const installed = JSON.parse(await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).text());
+      expect(installed.installed.map((e: { name: string }) => e.name).sort()).toEqual(["alpha-skill", "beta-skill"]);
+    } finally { await remote.cleanup(); }
+  });
+
+  test("--skills installs only the named subset", async () => {
+    const remote = await createBareRemote();
+    try {
+      await remote.commitFile("a/SKILL.md", SKILL_BODY("alpha-skill"));
+      await remote.commitFile("b/SKILL.md", SKILL_BODY("beta-skill"));
+      await makeProgram().parseAsync(["skill", "install", "--from", remote.url, "--skills", "beta-skill"], { from: "user" });
+      const installed = JSON.parse(await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).text());
+      expect(installed.installed.map((e: { name: string }) => e.name)).toEqual(["beta-skill"]);
+    } finally { await remote.cleanup(); }
+  });
+
+  test("--json prints discovery and does NOT install or register", async () => {
+    const remote = await createBareRemote();
+    try {
+      await remote.commitFile("a/SKILL.md", SKILL_BODY("alpha-skill"));
+      await remote.commitFile("b/SKILL.md", SKILL_BODY("beta-skill"));
+      const out: string[] = [];
+      const orig = console.log;
+      console.log = (m?: unknown) => { if (typeof m === "string") out.push(m); };
+      try {
+        await makeProgram().parseAsync(["skill", "install", "--from", remote.url, "--json"], { from: "user" });
+      } finally { console.log = orig; }
+      const parsed = JSON.parse(out.join("\n"));
+      expect(parsed.bundles.map((b: { name: string }) => b.name).sort()).toEqual(["alpha-skill", "beta-skill"]);
+      expect(parsed.detectedTargets).toBeInstanceOf(Array);
+      expect(await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).exists()).toBe(false);
+      expect(await Bun.file(join(home, ".config", "agent-smith", "skill-catalogs.json")).exists()).toBe(false);
+    } finally { await remote.cleanup(); }
+  });
+
+  test("TTY interactive picker selects bundles then targets", async () => {
+    const remote = await createBareRemote();
+    try {
+      await remote.commitFile("a/SKILL.md", SKILL_BODY("alpha-skill"));
+      await remote.commitFile("b/SKILL.md", SKILL_BODY("beta-skill"));
+      await makeProgram({ tty: true, reads: ["1", ""] }).parseAsync(["skill", "install", "--from", remote.url], { from: "user" });
+      const installed = JSON.parse(await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).text());
+      expect(installed.installed.map((e: { name: string }) => e.name)).toEqual(["alpha-skill"]);
+    } finally { await remote.cleanup(); }
   });
 });
