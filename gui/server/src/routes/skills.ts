@@ -1,18 +1,52 @@
 import type { Platform } from "gui-shared";
 import type { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { HttpError } from "../middleware/error";
 import { skillWithRemote } from "../projections/skill-with-remote";
 import { loadInstalledSkills } from "../services/installed-skills";
 import { loadSkillRemotes } from "../services/load-remotes";
+import { runSmith as defaultRunSmith, type SmithRun } from "../services/run-smith";
 import { scanSkillBundle } from "../services/scan-skill-bundle";
 import { discoverSkills, loadSkillCatalogs } from "../services/scan-skill-catalogs";
 
 export interface SkillsRouteDeps {
   skillRegistryPath: string;
   installedSkillsPath: string;
+  runSmith?: (args: string[]) => Promise<SmithRun>;
+}
+
+export async function discoverFromUrlHandler(
+  kind: "skill" | "agent",
+  body: unknown,
+  run: (args: string[]) => Promise<SmithRun>,
+): Promise<{ status: number; json: unknown }> {
+  const b = body as { url?: unknown; ref?: unknown } | null;
+  if (!b || typeof b.url !== "string" || b.url.length === 0) return { status: 400, json: { code: "invalid-url", message: "url is required" } };
+  if (b.url.startsWith("file://")) return { status: 400, json: { code: "invalid-url", message: "file:// URLs are not allowed from the GUI" } };
+  const noun = kind === "skill" ? "skill" : "agent";
+  // Flag asymmetry is intentional: the skill CLI uses --git-ref, the agent CLI uses --ref.
+  const refFlag = kind === "skill" ? "--git-ref" : "--ref";
+  const args = [noun, "install", "--from", b.url, "--json"];
+  if (typeof b.ref === "string" && b.ref.length > 0) args.push(refFlag, b.ref);
+  const r = await run(args);
+  let parsed: unknown;
+  try { parsed = JSON.parse(r.stdout); } catch { parsed = null; }
+  if (parsed && typeof parsed === "object" && "error" in parsed) {
+    const err = (parsed as { error: { code: string; message: string } }).error;
+    const status = err.code === "invalid-url" || err.code === "invalid-ref" || err.code === "usage-error" ? 400 : 502;
+    return { status, json: err };
+  }
+  if (r.code !== 0 || parsed === null) return { status: 502, json: { code: "git-clone-failed", message: r.stderr.split("\n").slice(-5).join("\n") } };
+  return { status: 200, json: parsed };
 }
 
 export function registerSkillsRoute(app: Hono, deps: SkillsRouteDeps): void {
+  const run = deps.runSmith ?? defaultRunSmith;
+  app.post("/api/skills/discover-from-url", async (c) => {
+    const { status, json } = await discoverFromUrlHandler("skill", await c.req.json().catch(() => null), run);
+    return c.json(json as object, status as ContentfulStatusCode);
+  });
+
   app.get("/api/skills", async (c) => {
     const [cats, remotes] = await Promise.all([
       loadSkillCatalogs({ registryPath: deps.skillRegistryPath }),

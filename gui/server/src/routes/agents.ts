@@ -1,17 +1,21 @@
 import { join } from "node:path";
 import { type AgentSummary, PersonaContent, PersonaFile, type Platform } from "gui-shared";
 import type { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { atomicWriteText } from "../io/atomic-write";
 import { HttpError } from "../middleware/error";
 import { agentWithRemote } from "../projections/agent-with-remote";
 import { computeInstalledStatus } from "../services/installed-status";
 import { loadAgentRemotes } from "../services/load-remotes";
+import { runSmith as defaultRunSmith, type SmithRun } from "../services/run-smith";
 import { parseRegistry, type Registry } from "../services/parse-registry";
 import { scanBundle } from "../services/scan-bundle";
+import { discoverFromUrlHandler } from "./skills";
 
 export interface AgentsDeps {
   registryPath: string;
   installPathsFor: (agent: string) => Record<Platform, string>;
+  runSmith?: (args: string[]) => Promise<SmithRun>;
 }
 
 /**
@@ -42,6 +46,12 @@ function findAgentMatches(reg: Registry, name: string): Array<{ catalog: string;
 }
 
 export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
+  const run = deps.runSmith ?? defaultRunSmith;
+  app.post("/api/agents/discover-from-url", async (c) => {
+    const { status, json } = await discoverFromUrlHandler("agent", await c.req.json().catch(() => null), run);
+    return c.json(json as object, status as ContentfulStatusCode);
+  });
+
   app.get("/api/agents", async (c) => {
     const [reg, remotes] = await Promise.all([
       parseRegistry(deps.registryPath),
