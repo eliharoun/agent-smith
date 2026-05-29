@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { type SkillCatalog, SkillFrontmatter, type SkillSummary } from "gui-shared";
 import * as yaml from "js-yaml";
@@ -107,34 +107,61 @@ export async function discoverSkills(catalog: SkillCatalog): Promise<SkillSummar
     return [];
   }
   const out: SkillSummary[] = [];
-  for (const entry of entries) {
-    const dir = join(catalog.rootPath, entry);
-    let st: Awaited<ReturnType<typeof stat>>;
-    try {
-      st = await stat(dir);
-    } catch {
-      continue;
+  const visited = new Set<string>();
+
+  async function walk(parentPath: string, dirEntries: string[]): Promise<void> {
+    for (const entry of dirEntries) {
+      if (entry === ".git" || entry === "node_modules") continue;
+      const entryPath = join(parentPath, entry);
+      let st: Awaited<ReturnType<typeof stat>>;
+      try {
+        st = await stat(entryPath);
+      } catch {
+        continue;
+      }
+      if (!st.isDirectory()) continue;
+      let resolved: string;
+      try {
+        resolved = await realpath(entryPath);
+      } catch {
+        continue;
+      }
+      if (visited.has(resolved)) continue;
+      visited.add(resolved);
+
+      const skillMd = join(entryPath, "SKILL.md");
+      let raw: string | null = null;
+      try {
+        raw = await readFile(skillMd, "utf8");
+      } catch {
+        // No SKILL.md — recurse.
+      }
+
+      if (raw !== null) {
+        const fm = extractFrontmatter(raw);
+        if (!fm) continue;
+        const parsed = SkillFrontmatter.safeParse(fm);
+        if (!parsed.success) continue;
+        if (!SKILL_NAME_RE.test(parsed.data.name)) continue;
+        out.push({
+          name: parsed.data.name,
+          description: parsed.data.description.slice(0, 1000),
+          catalogLabel: catalog.label,
+          path: entryPath,
+        });
+        // Do NOT descend into skill directories.
+      } else {
+        try {
+          const subEntries = await readdir(entryPath);
+          await walk(entryPath, subEntries);
+        } catch {
+          continue;
+        }
+      }
     }
-    if (!st.isDirectory()) continue;
-    const skillMd = join(dir, "SKILL.md");
-    let raw: string;
-    try {
-      raw = await readFile(skillMd, "utf8");
-    } catch {
-      continue;
-    }
-    const fm = extractFrontmatter(raw);
-    if (!fm) continue;
-    const parsed = SkillFrontmatter.safeParse(fm);
-    if (!parsed.success) continue;
-    if (!SKILL_NAME_RE.test(parsed.data.name)) continue;
-    out.push({
-      name: parsed.data.name,
-      description: parsed.data.description.slice(0, 1000),
-      catalogLabel: catalog.label,
-      path: dir,
-    });
   }
+
+  await walk(catalog.rootPath, entries);
   return out;
 }
 

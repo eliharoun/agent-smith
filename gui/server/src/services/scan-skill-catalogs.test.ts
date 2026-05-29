@@ -116,6 +116,37 @@ describe("discoverSkills", () => {
     expect(await discoverSkills(cat)).toEqual([]);
   });
 
+  it("discovers skills nested under a subdirectory (e.g. skills/<name>/SKILL.md)", async () => {
+    const cat = { kind: "user-global" as const, rootPath: dir, label: "L" };
+    await mkdir(join(dir, "skills", "alpha"), { recursive: true });
+    await mkdir(join(dir, "skills", "beta"), { recursive: true });
+    await writeFile(
+      join(dir, "skills", "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: Alpha skill\n---\nbody",
+    );
+    await writeFile(
+      join(dir, "skills", "beta", "SKILL.md"),
+      "---\nname: beta\ndescription: Beta skill\n---\nbody",
+    );
+    const out = await discoverSkills(cat);
+    expect(out.map((s) => s.name).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("does NOT descend into a skill directory — nested SKILL.md is not a separate skill", async () => {
+    const cat = { kind: "user-global" as const, rootPath: dir, label: "L" };
+    await mkdir(join(dir, "skills", "alpha", "references"), { recursive: true });
+    await writeFile(
+      join(dir, "skills", "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: Alpha skill\n---\nbody",
+    );
+    await writeFile(
+      join(dir, "skills", "alpha", "references", "SKILL.md"),
+      "---\nname: fake\ndescription: Should not appear\n---\nbody",
+    );
+    const out = await discoverSkills(cat);
+    expect(out.map((s) => s.name)).toEqual(["alpha"]);
+  });
+
   it("skips skills with invalid names", async () => {
     const cat = { kind: "user-global" as const, rootPath: dir, label: "L" };
     await mkdir(join(dir, "BadName"));

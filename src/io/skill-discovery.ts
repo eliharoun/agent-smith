@@ -47,67 +47,79 @@ export async function discoverSkills(catalog: SkillCatalog): Promise<DiscoveredS
   }
 
   const skills: DiscoveredSkill[] = [];
-  // Track resolved real paths we've already considered so a circular symlink
-  // (A -> B -> A) cannot trick us into walking the same node twice. The set
-  // is per-call: a fresh discoverSkills invocation starts with no history.
   const visited = new Set<string>();
-  for (const entry of entries) {
-    const skillDir = join(catalog.rootPath, entry.name);
-    // Resolve symlinks via stat() (follows links, unlike Dirent.isDirectory()
-    // which uses lstat semantics). Broken links throw ENOENT and circular
-    // links throw ELOOP — both are silently skipped to keep discovery
-    // permissive for surprise filesystem layouts.
-    let isDir = false;
-    let resolved = skillDir;
-    if (entry.isDirectory()) {
-      isDir = true;
-    } else if (entry.isSymbolicLink()) {
+
+  async function walk(parentPath: string, dirEntries: Dirent[]): Promise<void> {
+    for (const entry of dirEntries) {
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
+      const entryPath = join(parentPath, entry.name);
+      let isDir = false;
+      let resolved = entryPath;
+      if (entry.isDirectory()) {
+        isDir = true;
+      } else if (entry.isSymbolicLink()) {
+        try {
+          const st = await stat(entryPath);
+          isDir = st.isDirectory();
+          if (isDir) resolved = await realpath(entryPath);
+        } catch {
+          continue;
+        }
+      }
+      if (!isDir) continue;
+      if (visited.has(resolved)) continue;
+      visited.add(resolved);
+
+      // Check if this directory contains a SKILL.md — if so, it's a skill; don't descend.
+      const skillFile = join(entryPath, "SKILL.md");
+      let raw: string | null = null;
       try {
-        const st = await stat(skillDir);
-        isDir = st.isDirectory();
-        if (isDir) resolved = await realpath(skillDir);
+        raw = await readFile(skillFile, "utf8");
       } catch {
-        continue; // broken symlink, ELOOP, permission, etc.
+        // No SKILL.md here — recurse into this directory.
+      }
+
+      if (raw !== null) {
+        const fm = parseFrontmatter(raw, skillFile);
+        if (!validateSkillName(fm["name"])) {
+          throw new SmithError({
+            code: "validation-failed",
+            what: "SKILL.md frontmatter",
+            reasons: [
+              `${skillFile}: invalid skill name '${String(fm["name"])}' (must match ${SKILL_NAME_RE})`,
+            ],
+          });
+        }
+        if (typeof fm["description"] !== "string" || fm["description"].length === 0) {
+          throw new SmithError({
+            code: "validation-failed",
+            what: "SKILL.md frontmatter",
+            reasons: [`${skillFile}: missing required 'description'`],
+          });
+        }
+        if ((fm["description"] as string).length > MAX_DESCRIPTION_LEN) {
+          fm["description"] = `${(fm["description"] as string).slice(0, MAX_DESCRIPTION_LEN - 1)}…`;
+        }
+        skills.push({
+          name: fm["name"],
+          path: entryPath,
+          frontmatter: fm,
+          catalogLabel: catalog.label,
+        });
+        // Do NOT descend into skill directories.
+      } else {
+        // Recurse into non-skill subdirectory.
+        try {
+          const subEntries = await readdir(entryPath, { withFileTypes: true });
+          await walk(entryPath, subEntries);
+        } catch {
+          continue; // permission error or similar — skip silently
+        }
       }
     }
-    if (!isDir) continue;
-    if (visited.has(resolved)) continue;
-    visited.add(resolved);
-    const skillFile = join(skillDir, "SKILL.md");
-    let raw: string;
-    try {
-      raw = await readFile(skillFile, "utf8");
-    } catch {
-      continue; // no SKILL.md in this subdir; skip silently
-    }
-    const fm = parseFrontmatter(raw, skillFile);
-    if (!validateSkillName(fm["name"])) {
-      throw new SmithError({
-        code: "validation-failed",
-        what: "SKILL.md frontmatter",
-        reasons: [
-          `${skillFile}: invalid skill name '${String(fm["name"])}' (must match ${SKILL_NAME_RE})`,
-        ],
-      });
-    }
-    if (typeof fm["description"] !== "string" || fm["description"].length === 0) {
-      throw new SmithError({
-        code: "validation-failed",
-        what: "SKILL.md frontmatter",
-        reasons: [`${skillFile}: missing required 'description'`],
-      });
-    }
-    if ((fm["description"] as string).length > MAX_DESCRIPTION_LEN) {
-      // Truncate to MAX-1 then append ellipsis so total length is exactly MAX.
-      fm["description"] = `${(fm["description"] as string).slice(0, MAX_DESCRIPTION_LEN - 1)}…`;
-    }
-    skills.push({
-      name: fm["name"],
-      path: skillDir,
-      frontmatter: fm,
-      catalogLabel: catalog.label,
-    });
   }
+
+  await walk(catalog.rootPath, entries);
   skills.sort((a, b) => a.name.localeCompare(b.name));
   return skills;
 }

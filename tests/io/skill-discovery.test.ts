@@ -248,6 +248,57 @@ describe("io/skill-discovery — discoverSkills", () => {
   });
 });
 
+describe("io/skill-discovery — discoverSkills recursive", () => {
+  test("discovers skills nested under a subdirectory (e.g. skills/<name>/SKILL.md)", async () => {
+    await mkdir(join(dir, "skills", "alpha"), { recursive: true });
+    await mkdir(join(dir, "skills", "beta"), { recursive: true });
+    await writeFile(
+      join(dir, "skills", "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: Alpha skill.\n---\n",
+    );
+    await writeFile(
+      join(dir, "skills", "beta", "SKILL.md"),
+      "---\nname: beta\ndescription: Beta skill.\n---\n",
+    );
+    const found = await discoverSkills(catalog);
+    expect(found.map((s) => s.name)).toEqual(["alpha", "beta"]);
+  });
+
+  test("does NOT descend into a skill directory — nested references/SKILL.md is not a separate skill", async () => {
+    await mkdir(join(dir, "skills", "alpha", "references"), { recursive: true });
+    await writeFile(
+      join(dir, "skills", "alpha", "SKILL.md"),
+      "---\nname: alpha\ndescription: Alpha skill.\n---\n",
+    );
+    await writeFile(
+      join(dir, "skills", "alpha", "references", "SKILL.md"),
+      "---\nname: fake-nested\ndescription: Should not be found.\n---\n",
+    );
+    const found = await discoverSkills(catalog);
+    expect(found.map((s) => s.name)).toEqual(["alpha"]);
+  });
+
+  test("skips .git and node_modules directories during recursion", async () => {
+    await mkdir(join(dir, ".git", "hooks"), { recursive: true });
+    await mkdir(join(dir, "node_modules", "pkg"), { recursive: true });
+    await writeFile(
+      join(dir, ".git", "SKILL.md"),
+      "---\nname: git-skill\ndescription: hidden.\n---\n",
+    );
+    await writeFile(
+      join(dir, "node_modules", "SKILL.md"),
+      "---\nname: nm-skill\ndescription: hidden.\n---\n",
+    );
+    await mkdir(join(dir, "real"), { recursive: true });
+    await writeFile(
+      join(dir, "real", "SKILL.md"),
+      "---\nname: real\ndescription: Real skill.\n---\n",
+    );
+    const found = await discoverSkills(catalog);
+    expect(found.map((s) => s.name)).toEqual(["real"]);
+  });
+});
+
 describe("io/skill-discovery — validateSkillName", () => {
   test("accepts lowercase-alphanumeric-hyphens", () => {
     expect(validateSkillName("jira-helper")).toBe(true);
