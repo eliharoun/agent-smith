@@ -1,0 +1,12 @@
+[test]
+coverage = false
+# gui/web tests are Vitest (jsdom + RTL), not bun-test. Exclude them so the
+# server-side `bun test` invariant stays green. Vitest discovers them via
+# its own config (gui/web/vitest.config.ts).
+pathIgnorePatterns = ["gui/web/**"]
+# Preload script. Sets SMITH_DISABLE_SELF_SOURCE=1 so the GUI server's
+# synthetic agent-smith-self source is suppressed during fixture-driven
+# tests (otherwise the running workspace's bundled agents/ dir leaks into
+# every test that mocks an empty registry). Tests that specifically need
+# the self-source unset the var explicitly.
+preload = ["./tests/_setup/disable-self-source.ts"]

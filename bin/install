@@ -1,0 +1,385 @@
+#!/usr/bin/env bash
+# agent-smith installer.
+# Documented prerequisite: bash 3.2+ (the macOS system bash baseline,
+# same as oh-my-zsh's installer).
+#
+# Sequence:
+#   1. Sanity check (running from a real agent-smith clone)
+#   2. Detect existing install mode (fresh / update / conflicting)
+#   3. Bun availability (auto-install with consent if missing)
+#   4. (Update mode only) git pull --ff-only
+#   5. bun install
+#   6. (Fresh install only) symlink ~/.local/bin/smith
+#   7. PATH wiring (with marker block; --no-modify-path opt-out)
+#   8. Summary
+#   8b. Initialize smith state (smith init)
+#   9. Materialize agent-smith bundled knowledge (smith agent install agent-smith)
+#
+# Spec: docs/superpowers/specs/2026-05-07-single-mode-install-design.md
+#
+# Hermetic-test friendly: respects $HOME and $PATH from the environment;
+# no hardcoded absolute paths to user-owned locations.
+
+set -euo pipefail
+
+# --- Argument parsing ---
+
+NO_MODIFY_PATH=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-modify-path) NO_MODIFY_PATH=1 ;;
+    *)
+      echo "Error: unknown argument: $arg" >&2
+      echo "Usage: bin/install [--no-modify-path]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# --- Step 1: Sanity check ---
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [[ ! -f "$REPO_ROOT/package.json" ]] || \
+   ! grep -Eq '"name"[[:space:]]*:[[:space:]]*"agent-smith"' "$REPO_ROOT/package.json"; then
+  echo "Error: bin/install must be run from inside an agent-smith clone." >&2
+  echo "Found: $REPO_ROOT" >&2
+  exit 1
+fi
+
+# Resolve a possibly-symlinked path to its absolute canonical form.
+# Tries `readlink -f` (GNU coreutils + macOS 12.3+), falls back to python3
+# (always present on macOS / most Linuxes), then to a best-effort manual
+# resolution. Returns empty on dangling symlink so the caller can detect
+# the broken case explicitly instead of silently producing a nonsense path.
+resolve_path() {
+  local p="$1"
+  local resolved
+  if resolved="$(readlink -f -- "$p" 2>/dev/null)" && [[ -n "$resolved" ]]; then
+    [[ -e "$resolved" ]] && { echo "$resolved"; return 0; }
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    if resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null)" \
+       && [[ -n "$resolved" && -e "$resolved" ]]; then
+      echo "$resolved"
+      return 0
+    fi
+  fi
+  # Manual fallback: only handles single-level symlinks, returns empty if
+  # the resolved path doesn't exist. Good enough for the install-detection
+  # use case (we only care whether the resolved target lives under REPO_ROOT).
+  if [[ -L "$p" ]]; then
+    local target
+    target="$(readlink "$p" 2>/dev/null)"
+    case "$target" in
+      /*) resolved="$target" ;;
+      *)  resolved="$(cd "$(dirname "$p")" 2>/dev/null && pwd)/$target" ;;
+    esac
+  else
+    resolved="$p"
+  fi
+  [[ -n "$resolved" && -e "$resolved" ]] && echo "$resolved"
+}
+
+# --- Step 2: Detect existing install mode ---
+
+# These flags are set here and consumed by later steps: IS_UPDATE_MODE in
+# step 4 (git pull); IS_FRESH_INSTALL in step 6 (symlink).
+IS_UPDATE_MODE=""
+IS_FRESH_INSTALL=""
+
+if existing_smith="$(command -v smith 2>/dev/null)"; then
+  # smith is on PATH. Resolve through any symlinks to get the real target.
+  existing_target="$(resolve_path "$existing_smith")"
+  if [[ -z "$existing_target" ]]; then
+    cat >&2 <<EOF
+Error: existing agent-smith installation detected at $existing_smith, but its
+symlink target is missing or unresolvable (broken symlink?).
+
+Remove the broken symlink first:
+  rm "$existing_smith"
+Then re-run bin/install.
+EOF
+    exit 1
+  fi
+  # Update mode if the resolved target lives under \$REPO_ROOT (resolve
+  # both sides to canonical form so symlinked tmpdirs on macOS — where
+  # /var → /private/var — compare equally).
+  repo_root_canonical="$(resolve_path "$REPO_ROOT")"
+  case "$existing_target" in
+    "$repo_root_canonical"/*)
+      IS_UPDATE_MODE=1
+      echo "agent-smith already installed; updating..."
+      ;;
+    *)
+      cat >&2 <<EOF
+Error: existing agent-smith installation detected at $existing_smith.
+
+This installer expects a clean machine or an existing ~/.agent-smith/ installation.
+To migrate, first remove the existing installation:
+  - If installed via 'bun link': cd <its directory> && bun unlink && rm $existing_smith
+  - If installed as a compiled binary: rm $existing_smith
+  - Then re-run bin/install.
+EOF
+      exit 1
+      ;;
+  esac
+else
+  IS_FRESH_INSTALL=1
+  echo "Fresh install."
+fi
+
+# --- Step 3: Bun availability ---
+
+if ! command -v bun >/dev/null 2>&1; then
+  # Test seam: if SMITH_INSTALLER_BUN_INSTALL_CMD is set, use it instead
+  # of the official curl|bash installer. Production users never set this;
+  # tests use it to avoid network and to avoid actually installing bun on
+  # the test machine. Scoped here (not at file top) so it has no effect
+  # when bun is already installed.
+  bun_install_cmd="${SMITH_INSTALLER_BUN_INSTALL_CMD:-curl -fsSL https://bun.sh/install | bash}"
+
+  cat <<EOF
+agent-smith requires Bun >= 1.1, which is not installed.
+
+Install Bun now? (Runs the official Bun installer:
+  curl -fsSL https://bun.sh/install | bash)
+[Y/n]:
+EOF
+  # `read -r` returns nonzero on EOF (e.g. stdin closed, non-interactive
+  # terminal with no input). Without explicit handling, `set -e` would
+  # silently abort the script with exit 1 — looking identical to a "no"
+  # answer but without printing the manual-install pointer. Detect EOF
+  # explicitly and emit a distinct, actionable message that names the
+  # interactive-terminal requirement and the SMITH_INSTALLER_BUN_INSTALL_CMD
+  # escape hatch for automated environments.
+  if ! read -r answer; then
+    cat >&2 <<EOF
+Error: bin/install needs an interactive terminal to prompt for Bun
+install consent, but stdin reached EOF before an answer was given.
+
+Either:
+  - Re-run interactively (with a real terminal on stdin).
+  - Pipe an answer: echo Y | bash bin/install
+  - Pre-install Bun manually from https://bun.sh, then re-run.
+  - Or set SMITH_INSTALLER_BUN_INSTALL_CMD to override the bootstrap
+    command (advanced; intended for automated environments).
+EOF
+    exit 1
+  fi
+  if [[ "$answer" =~ ^[Nn] ]]; then
+    echo "Install Bun manually from https://bun.sh, then re-run bin/install." >&2
+    exit 1
+  fi
+  # `eval` is deliberate: the production default is a curl|bash pipeline,
+  # which is a shell construct (not a single executable + argv). Tests use
+  # the same seam to inject multi-command setup. Using `eval` keeps both
+  # paths uniform; a `bash -c "$bun_install_cmd"` would also work but adds
+  # an extra subshell with no benefit.
+  eval "$bun_install_cmd"
+  # Bun's installer modifies the user's shell rc to add ~/.bun/bin to PATH,
+  # but that change only takes effect in NEW shells. For THIS shell, add
+  # it to PATH directly so subsequent steps (bun install) can find bun.
+  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "Error: Bun was installed but is not on PATH ($BUN_INSTALL/bin missing or empty)." >&2
+    echo "Open a new shell and re-run bin/install." >&2
+    exit 1
+  fi
+fi
+
+# --- Step 4: (Update mode only) Git pull ---
+
+if [[ -n "$IS_UPDATE_MODE" ]]; then
+  cd "$REPO_ROOT"
+  if ! git diff-index --quiet HEAD --; then
+    echo "Error: agent-smith clone has uncommitted changes; refusing to update." >&2
+    echo "Commit or stash your changes, then re-run bin/install." >&2
+    exit 1
+  fi
+  # Test seam: tests use SMITH_INSTALLER_GIT_PULL_CMD to skip the network
+  # call (their tmp repos have no `origin` remote). Production users never
+  # set this. `eval` lets the seam be a multi-command pipeline; bin/install
+  # uses the same eval pattern for SMITH_INSTALLER_BUN_INSTALL_CMD in step 3.
+  git_pull_cmd="${SMITH_INSTALLER_GIT_PULL_CMD:-git pull --ff-only origin main}"
+  eval "$git_pull_cmd"
+fi
+
+# --- Step 5: bun install ---
+
+cd "$REPO_ROOT"
+# Test seam: tests use SMITH_INSTALLER_BUN_INSTALL_DEPS_CMD to skip the
+# real `bun install` (which hits the registry and may fail on machines
+# with corporate cert chains, restricted networks, or for hermeticity).
+# Production users never set this.
+bun_install_deps_cmd="${SMITH_INSTALLER_BUN_INSTALL_DEPS_CMD:-bun install}"
+eval "$bun_install_deps_cmd"
+
+# --- Step 5b: Build the GUI SPA bundle ---
+#
+# `smith gui` serves the static SPA from gui/web/dist/. That directory is
+# .gitignore'd (it's a build artifact), so a fresh clone has no dist and
+# the GUI server would 404 on / until the user manually ran `bun run
+# gui:build`. Building here closes the loop: after `bin/install`, both
+# the CLI AND the GUI work without further setup.
+#
+# Warn-and-continue on failure: a transient registry hiccup or a node
+# version mismatch in the GUI workspace shouldn't block the CLI install.
+# The user gets a working `smith` binary either way and can retry the
+# build manually.
+#
+# Test seam: SMITH_INSTALLER_GUI_BUILD_CMD lets hermetic tests skip the
+# real vite/tsc build (which would download the entire GUI dep graph
+# and require Node). Production users never set this.
+echo ""
+echo "Building GUI bundle..."
+gui_build_cmd="${SMITH_INSTALLER_GUI_BUILD_CMD:-bun run gui:build}"
+if ! eval "$gui_build_cmd"; then
+  printf '\033[33mwarn:\033[0m GUI build failed; the CLI will work but `smith gui` will 404 until you run: bun run gui:build\n' >&2
+fi
+
+# --- Step 6: (Fresh install only) Symlink ~/.local/bin/smith ---
+
+# Restore +x on src/index.ts unconditionally: a future `git pull` in update
+# mode might (rarely) drop the executable bit (mode-only diff, file
+# replacement on case-insensitive FS, FS migration). Cheap to set every
+# run; defensive against silently-broken update mode.
+chmod +x "$REPO_ROOT/src/index.ts"
+
+if [[ -n "$IS_FRESH_INSTALL" ]]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$REPO_ROOT/src/index.ts" "$HOME/.local/bin/smith"
+fi
+
+# --- Step 7: PATH wiring ---
+
+# PATH_STATUS is set throughout this step and consumed by step 8's summary.
+PATH_STATUS="unconfigured"
+
+if [[ -n "$NO_MODIFY_PATH" ]]; then
+  PATH_STATUS="skipped"
+else
+  shell_basename="$(basename "${SHELL:-bash}")"
+  rc=""
+  case "$shell_basename" in
+    zsh)  rc="$HOME/.zshrc" ;;
+    bash)
+      if [[ "$(uname)" == "Darwin" ]]; then
+        rc="$HOME/.bash_profile"
+      else
+        rc="$HOME/.bashrc"
+      fi
+      ;;
+    *)
+      PATH_STATUS="skipped"
+      ;;
+  esac
+
+  if [[ -n "$rc" ]]; then
+    # Writability pre-check: if rc exists and is not writable, OR if rc
+    # doesn't exist and its parent directory is not writable, skip the
+    # edit instead of crashing mid-install (set -e on failed `cat >>`
+    # would leave the user with a working symlink but no PATH wiring and
+    # no useful diagnostic). PATH_STATUS surfaces the reason; step 8
+    # (Task 6) reports it.
+    if { [[ -e "$rc" ]] && [[ ! -w "$rc" ]]; } || \
+       { [[ ! -e "$rc" ]] && [[ ! -w "$(dirname "$rc")" ]]; }; then
+      PATH_STATUS="skipped:unwritable:$rc"
+    elif [[ -f "$rc" ]] && grep -q "# >>> agent-smith installer >>>" "$rc"; then
+      PATH_STATUS="already-configured"
+    else
+      cat >> "$rc" <<'EOF'
+
+# >>> agent-smith installer >>>
+# This block was added by ~/.agent-smith/bin/install. Remove with `smith jack-out`.
+export PATH="$HOME/.local/bin:$PATH"
+# <<< agent-smith installer <<<
+EOF
+      PATH_STATUS="added:$rc"
+    fi
+  fi
+fi
+
+# --- Step 8: Summary ---
+
+echo ""
+echo "agent-smith installed."
+echo ""
+echo "Source:    $REPO_ROOT"
+echo "Binary:    $HOME/.local/bin/smith → $REPO_ROOT/src/index.ts"
+case "$PATH_STATUS" in
+  added:*)
+    rc_path="${PATH_STATUS#added:}"
+    echo "PATH:      added \$HOME/.local/bin to \"$rc_path\""
+    ;;
+  already-configured)
+    echo "PATH:      already configured"
+    ;;
+  skipped:unwritable:*)
+    rc_path="${PATH_STATUS#skipped:unwritable:}"
+    echo "PATH:      skipped (rc file not writable: \"$rc_path\")"
+    echo "           Add this line to your shell rc manually:"
+    echo "             export PATH=\"\$HOME/.local/bin:\$PATH\""
+    ;;
+  skipped|unconfigured)
+    echo "PATH:      skipped (--no-modify-path or unsupported shell)"
+    echo "           Add this line to your shell rc:"
+    echo "             export PATH=\"\$HOME/.local/bin:\$PATH\""
+    ;;
+  *)
+    # Catch-all: future PATH_STATUS values not yet handled here.
+    # Fail loud so the gap is obvious instead of producing a malformed
+    # summary with no PATH: line.
+    echo "PATH:      (unknown status: $PATH_STATUS)" >&2
+    ;;
+esac
+echo ""
+echo "Next steps:"
+if [[ "$PATH_STATUS" == added:* ]]; then
+  echo "  - Open a new shell, OR run: source \"${PATH_STATUS#added:}\""
+fi
+echo "  - Run: smith doctor"
+echo "  - Read: smith --help"
+
+# --- Step 8b: Initialize smith state ---
+
+# Run `smith init` so a fresh installer user gets ~/.config/agent-smith/
+# {registry.json, USER.md, agents/} created automatically. Failure here
+# is installer-fatal (exit non-zero) because this step defines the
+# no-manual-init contract for rc.3+: installer users should never need
+# to run `smith init` manually. The SMITH_INSTALLER_INIT_CMD env-var
+# seam lets hermetic shell tests substitute a marker-touching command
+# in place of the real binary.
+echo ""
+echo "Initializing smith state..."
+SMITH_INIT_CMD="${SMITH_INSTALLER_INIT_CMD:-"$HOME/.local/bin/smith" init}"
+if ! eval "$SMITH_INIT_CMD"; then
+    printf '\033[31merror:\033[0m smith init failed.\n' >&2
+    printf 'Check write permissions on $HOME/.config/agent-smith.\n' >&2
+    printf 'You can retry by running: smith init\n' >&2
+    exit 1
+fi
+
+# --- Step 9: Materialize agent-smith bundled knowledge ---
+
+# The agent-smith bundle ships a knowledge source pointing at ../../guide.
+# Run `smith agent install agent-smith` now (using the just-symlinked binary) so
+# the agent has its self-knowledge available immediately, without waiting
+# for the user's first `smith update`. If the install fails — rare —
+# print a yellow warning and continue: the user has a working binary
+# even without materialized knowledge, and they can re-run the command
+# manually. The banner is printed unconditionally so the smoke harness
+# can verify the step is reached even when the inner invocation is a
+# no-op (fake bun shim in hermetic tests).
+echo ""
+echo "Installing agent-smith bundle..."
+if [[ -x "$HOME/.local/bin/smith" ]]; then
+  if ! "$HOME/.local/bin/smith" agent install agent-smith; then
+    printf '\033[33mwarn:\033[0m smith agent install agent-smith failed; you can retry with: smith agent install agent-smith\n' >&2
+  fi
+else
+  printf '\033[33mwarn:\033[0m %s not found; skipping agent-smith bundle install\n' \
+    "$HOME/.local/bin/smith" >&2
+fi

@@ -1,0 +1,7 @@
+{
+  "id": "refresh-as-object",
+  "type": "url",
+  "delivery": "file",
+  "url": "https://example.com/data.json",
+  "refresh": { "mode": "ttl", "ttl": "30m", "timeout": 10 }
+}

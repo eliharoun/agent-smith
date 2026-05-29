@@ -1,0 +1,7 @@
+{
+  "id": "refresh-as-string",
+  "type": "url",
+  "delivery": "file",
+  "url": "https://example.com/data.json",
+  "refresh": "1d"
+}

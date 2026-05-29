@@ -1,0 +1,2 @@
+CREATE TABLE users (id INT PRIMARY KEY, email TEXT UNIQUE);
+CREATE TABLE posts (id INT PRIMARY KEY, user_id INT REFERENCES users(id));

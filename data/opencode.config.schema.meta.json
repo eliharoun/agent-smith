@@ -1,0 +1,7 @@
+{
+  "lastVerifiedDate": "2026-05-29",
+  "sourceUrl": "https://opencode.ai/config.json",
+  "schemaId": null,
+  "version": null,
+  "notes": "Refreshed via `bun run refresh-schemas`. Review the diff against the prior commit and update CHANGELOG/MIGRATION if any agent-facing schema fields changed."
+}

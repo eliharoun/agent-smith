@@ -1,0 +1,8 @@
+{
+  "skill_name": "TODO",
+  "evals": [
+    { "id": 1, "prompt": "TODO — realistic user prompt 1 (formal phrasing)", "expected_behavior": "TODO — what should the agent do differently because the skill is loaded?" },
+    { "id": 2, "prompt": "TODO — realistic user prompt 2 (casual phrasing, maybe with a typo)", "expected_behavior": "TODO" },
+    { "id": 3, "prompt": "TODO — realistic user prompt 3 (an edge case or near-miss the skill should still handle)", "expected_behavior": "TODO" }
+  ]
+}

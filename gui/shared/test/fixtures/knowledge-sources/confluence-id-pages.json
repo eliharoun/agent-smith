@@ -1,0 +1,7 @@
+{
+  "id": "confluence-id-pages",
+  "type": "confluence",
+  "delivery": "file",
+  "space": "ENG",
+  "pages": [{ "id": 12345 }, { "id": 67890 }]
+}

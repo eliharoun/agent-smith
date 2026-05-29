@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["src/**", "tests/**", "gui/**/*.ts", "gui/**/*.tsx", "gui/**/*.json"]
+  },
+  "overrides": [
+    {
+      "includes": ["gui/dist/**", "gui/web/dist/**", "gui/**/node_modules/**"],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false }
+    },
+    {
+      "includes": ["gui/web/**/*.tsx", "gui/web/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noCommentText": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "a11y": {
+            "noSvgWithoutTitle": "off"
+          }
+        }
+      }
+    }
+  ],
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  }
+}
