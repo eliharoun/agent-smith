@@ -1,14 +1,17 @@
 import type { BuiltArgv } from "./types";
 import { previewOf } from "./types";
 
+const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/;
+
 interface Req {
   name?: string | undefined;
   from?: string | undefined;
   as?: string | undefined;
   targets: string[];
-  // C4.2.5: external-repo install ref. CLI flag is `--git-ref` (note the
-  // asymmetry with agent install which uses `--ref`).
   ref?: string | undefined;
+  skills?: string[] | undefined;
+  all?: boolean | undefined;
+  json?: boolean | undefined;
 }
 
 export function buildSkillInstall(req: Req): BuiltArgv {
@@ -20,9 +23,20 @@ export function buildSkillInstall(req: Req): BuiltArgv {
   if (req.from) argv.push("--from", req.from);
   if (req.ref) argv.push("--git-ref", req.ref);
   if (req.as) argv.push("--as", req.as);
+  if (req.json) argv.push("--json");
+  if (req.all) argv.push("--all");
+  if (req.skills && req.skills.length > 0) {
+    for (const s of req.skills) {
+      if (!SAFE_NAME.test(s)) throw new Error(`skill.install: invalid skill name '${s}'`);
+    }
+    argv.push("--skills", req.skills.join(","));
+  }
   if (req.targets.length > 0) argv.push("--targets", req.targets.join(","));
-  // Lock key: when installing by name we lock skill:<name>; when installing
-  // by path we don't yet know the resolved name, so lock global:skills only.
-  const lockKeys = req.name ? [`skill:${req.name}`, "global:skills"] : ["global:skills"];
+  const lockKeys =
+    req.skills && req.skills.length > 0
+      ? ["global:skills", ...req.skills.map((s) => `skill:${s}`)]
+      : req.name
+        ? [`skill:${req.name}`, "global:skills"]
+        : ["global:skills"];
   return { argv, lockKeys, preview: previewOf(argv) };
 }

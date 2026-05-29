@@ -1,5 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import { buildArgv } from "./index";
+import { buildSkillInstall } from "./skill-install";
+import { buildAgentInstall } from "./agent-install";
 
 describe("argv builders", () => {
   it("init", () => {
@@ -760,4 +762,27 @@ describe("argv builders", () => {
     // Mirror skill.install's dual-lock so sync serializes against installs.
     expect(r.lockKeys).toEqual(["skill:architect", "global:skills"]);
   });
+});
+
+// ─── Task 7: multi-select install flags + per-name validation ─────────────
+test("buildSkillInstall emits --skills and --targets", () => {
+  const { argv } = buildSkillInstall({ from: "https://x/y", skills: ["a", "b"], targets: ["kiro"] });
+  expect(argv).toEqual(["skill", "install", "--from", "https://x/y", "--skills", "a,b", "--targets", "kiro"]);
+});
+test("buildSkillInstall emits --json", () => {
+  const { argv } = buildSkillInstall({ from: "https://x/y", targets: [], json: true });
+  expect(argv).toContain("--json");
+});
+test("buildSkillInstall rejects an unsafe skill name", () => {
+  expect(() => buildSkillInstall({ from: "https://x/y", skills: ["../evil"], targets: [] })).toThrow();
+});
+test("buildSkillInstall locks per skill", () => {
+  const { lockKeys } = buildSkillInstall({ from: "https://x/y", skills: ["a", "b"], targets: [] });
+  expect(lockKeys).toEqual(["global:skills", "skill:a", "skill:b"]);
+});
+test("buildAgentInstall emits --agents and --json", () => {
+  const a = buildAgentInstall({ from: "https://x/y", agents: ["a"], platforms: [], withSkills: false });
+  expect(a.argv).toContain("--agents");
+  const b = buildAgentInstall({ from: "https://x/y", platforms: [], withSkills: false, json: true });
+  expect(b.argv).toContain("--json");
 });

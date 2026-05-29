@@ -13,6 +13,10 @@ interface Req {
   ref?: string | undefined;
   /** Task 1.5: forward to the CLI's `--force` flag. */
   force?: boolean | undefined;
+  // Task 7: multi-select install from external repo
+  agents?: string[] | undefined;
+  all?: boolean | undefined;
+  json?: boolean | undefined;
 }
 
 export function buildAgentInstall(req: Req): BuiltArgv {
@@ -47,6 +51,13 @@ export function buildAgentInstall(req: Req): BuiltArgv {
     }
   }
   if (req.force) argv.push("--force");
+  if (req.json) argv.push("--json");
+  if (req.all) argv.push("--all");
+  if (req.agents && req.agents.length > 0) {
+    const SAFE = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/;
+    for (const a of req.agents) if (!SAFE.test(a)) throw new Error(`agent.install: invalid agent name '${a}'`);
+    argv.push("--agents", req.agents.join(","));
+  }
 
   // Lock key: name-keyed for local installs, url-keyed when installing from
   // a remote (no agent name is known yet). The CLI also takes a per-clone
