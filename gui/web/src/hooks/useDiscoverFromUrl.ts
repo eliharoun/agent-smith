@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { apiFetch } from "@/api/client";
 
 export interface DiscoveredBundle {
   name: string;
@@ -24,24 +25,12 @@ export function useDiscoverFromUrl(kind: "skill" | "agent") {
     setStatus("discovering");
     setError(null);
     try {
-      const res = await fetch(
-        `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-url`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url, ref }),
-        },
-      );
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.message ?? "discovery failed");
-        setStatus("error");
-        return;
-      }
-      setData(json as DiscoverData);
+      const path = `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-url`;
+      const data = await apiFetch<DiscoverData>(path, { method: "POST", body: JSON.stringify({ url, ref }) });
+      setData(data);
       setStatus("select");
     } catch (e) {
-      setError((e as Error).message);
+      setError(e instanceof Error ? e.message : "discovery failed");
       setStatus("error");
     }
   }, [kind]);

@@ -120,7 +120,8 @@ describe("InstallFromUrlModal", () => {
   it("shows error when discovery fails", async () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => ({
       ok: false,
-      json: async () => ({ message: "repo not found" }),
+      status: 502,
+      json: async () => ({ error: "repo not found", code: "git-clone-failed" }),
     }));
     render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {

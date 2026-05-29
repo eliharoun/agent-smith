@@ -36,11 +36,14 @@ describe("POST /api/skills/discover-from-url", () => {
     const app = appWith(async () => ({ stdout: "", stderr: "", code: 0 }));
     const res = await app.request("/api/skills/discover-from-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: "file:///tmp/x" }) });
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("file:// URLs are not allowed from the GUI");
   });
   test("maps a CLI {error} payload to an HTTP error", async () => {
     const app = appWith(async () => ({ stdout: JSON.stringify({ error: { code: "git-clone-failed", message: "auth required" } }), stderr: "", code: 2 }));
     const res = await app.request("/api/skills/discover-from-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: "https://github.com/o/private" }) });
     expect(res.status).toBeGreaterThanOrEqual(400);
-    expect((await res.json()).code).toBe("git-clone-failed");
+    const body = await res.json();
+    expect(body.code).toBe("git-clone-failed");
+    expect(body.error).toBe("auth required");
   });
 });

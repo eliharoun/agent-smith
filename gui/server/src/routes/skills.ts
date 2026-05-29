@@ -21,8 +21,8 @@ export async function discoverFromUrlHandler(
   run: (args: string[]) => Promise<SmithRun>,
 ): Promise<{ status: number; json: unknown }> {
   const b = body as { url?: unknown; ref?: unknown } | null;
-  if (!b || typeof b.url !== "string" || b.url.length === 0) return { status: 400, json: { code: "invalid-url", message: "url is required" } };
-  if (b.url.startsWith("file://")) return { status: 400, json: { code: "invalid-url", message: "file:// URLs are not allowed from the GUI" } };
+  if (!b || typeof b.url !== "string" || b.url.length === 0) return { status: 400, json: { error: "url is required", code: "invalid-url" } };
+  if (b.url.startsWith("file://")) return { status: 400, json: { error: "file:// URLs are not allowed from the GUI", code: "invalid-url" } };
   const noun = kind === "skill" ? "skill" : "agent";
   // Flag asymmetry is intentional: the skill CLI uses --git-ref, the agent CLI uses --ref.
   const refFlag = kind === "skill" ? "--git-ref" : "--ref";
@@ -34,9 +34,9 @@ export async function discoverFromUrlHandler(
   if (parsed && typeof parsed === "object" && "error" in parsed) {
     const err = (parsed as { error: { code: string; message: string } }).error;
     const status = err.code === "invalid-url" || err.code === "invalid-ref" || err.code === "usage-error" ? 400 : 502;
-    return { status, json: err };
+    return { status, json: { error: err.message, code: err.code } };
   }
-  if (r.code !== 0 || parsed === null) return { status: 502, json: { code: "git-clone-failed", message: r.stderr.split("\n").slice(-5).join("\n") } };
+  if (r.code !== 0 || parsed === null) return { status: 502, json: { error: r.stderr.split("\n").slice(-5).join("\n") || "discovery failed", code: "git-clone-failed" } };
   return { status: 200, json: parsed };
 }
 
