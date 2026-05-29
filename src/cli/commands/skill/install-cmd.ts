@@ -85,7 +85,7 @@ export function registerSkillInstallCommands(
       "ad-hoc install from a local path OR a git URL (https://, ssh://, git@, file://)",
     )
     .option("--as <name>", "catalog label to use for the auto-created ad-hoc catalog")
-    .option("--targets <list>", "comma-separated platforms (opencode,claude-code,codex)")
+    .option("--targets <list>", "comma-separated platforms (opencode,claude-code,codex,kiro)")
     .option(
       "--git-ref <ref>",
       "Git branch/tag/SHA to clone with --from when it is a URL. Defaults to remote HEAD.",

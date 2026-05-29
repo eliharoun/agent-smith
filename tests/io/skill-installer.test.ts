@@ -537,19 +537,23 @@ describe("hashSkillDir: symlink + large-file hardening (#5)", () => {
 
 test("explicit target installs even when that platform's skills dir does not exist yet", async () => {
   const home = await mkdtemp(join(tmpdir(), "skill-kiro-"));
-  const src = join(home, "src-skill");
-  await mkdir(src, { recursive: true });
-  await writeFile(join(src, "SKILL.md"), "---\nname: foo\ndescription: x\n---\n# foo\n");
+  try {
+    const src = join(home, "src-skill");
+    await mkdir(src, { recursive: true });
+    await writeFile(join(src, "SKILL.md"), "---\nname: foo\ndescription: x\n---\n# foo\n");
 
-  const kiroDir = join(home, ".kiro", "skills"); // intentionally absent
-  const res = await installSkill("foo", {
-    homeDir: home,
-    targets: ["kiro"],
-    platformDirs: { kiro: kiroDir },
-    sourceOverride: { sourceDir: src, sourceCatalogLabel: "test" },
-  });
+    const kiroDir = join(home, ".kiro", "skills"); // intentionally absent
+    const res = await installSkill("foo", {
+      homeDir: home,
+      targets: ["kiro"],
+      platformDirs: { kiro: kiroDir },
+      sourceOverride: { sourceDir: src, sourceCatalogLabel: "test" },
+    });
 
-  expect(res.ok).toBe(true);
-  expect(existsSync(join(kiroDir, "foo", "SKILL.md"))).toBe(true);
-  if (res.ok) expect(res.installed.installedPaths.kiro).toBe(join(kiroDir, "foo"));
+    expect(res.ok).toBe(true);
+    expect(existsSync(join(kiroDir, "foo", "SKILL.md"))).toBe(true);
+    if (res.ok) expect(res.installed.installedPaths.kiro).toBe(join(kiroDir, "foo"));
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
