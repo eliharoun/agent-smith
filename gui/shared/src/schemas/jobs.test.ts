@@ -517,3 +517,22 @@ describe("SkillSync (C4.2.3)", () => {
     expect(() => JobRequest.parse({ command: "skill.sync", name: "" })).toThrow();
   });
 });
+
+describe("Multi-select install (Task 6)", () => {
+  it("skill.install accepts from + skills[] + json", () => {
+    const r = JobRequest.safeParse({ command: "skill.install", from: "https://x/y", skills: ["a", "b"], targets: ["kiro"] });
+    expect(r.success).toBe(true);
+  });
+  it("skill.install rejects skills[] without from", () => {
+    const r = JobRequest.safeParse({ command: "skill.install", name: "a", skills: ["b"] });
+    expect(r.success).toBe(false);
+  });
+  it("skill.install accepts targets including kiro", () => {
+    const r = JobRequest.safeParse({ command: "skill.install", name: "a", targets: ["kiro"] });
+    expect(r.success).toBe(true);
+  });
+  it("agent.install accepts from + agents[] + platforms", () => {
+    const r = JobRequest.safeParse({ command: "agent.install", from: "https://x/y", agents: ["a"], platforms: ["claude-code"] });
+    expect(r.success).toBe(true);
+  });
+});

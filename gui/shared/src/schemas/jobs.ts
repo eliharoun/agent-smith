@@ -54,9 +54,17 @@ const AgentInstall = z
     // the destination. Threaded through to `installRendered` via the CLI's
     // `--force` flag.
     force: z.boolean().optional(),
+    // Task 6: multi-select install from external repo
+    agents: z.array(z.string().min(1)).optional(),
+    all: z.boolean().optional(),
+    json: z.boolean().optional(),
   })
   .refine((v) => Boolean(v.from) || (Boolean(v.name) && v.platforms.length > 0), {
     message: "either `from` OR both `name` and at least one platform must be set",
+    path: ["from"],
+  })
+  .refine((v) => !((v.agents?.length ?? 0) > 0 || v.all || v.json) || Boolean(v.from), {
+    message: "`agents`, `all`, and `json` require `from`",
     path: ["from"],
   });
 // .strict() guards against legacy callers passing refreshConsent (removed; CLI never accepted it).
@@ -163,9 +171,21 @@ const SkillInstall = z
     // C4.2.2: external-repo install ref (only meaningful when `from` is set;
     // CLI ignores it for catalog/name installs).
     ref: RefString.optional(),
+    // Task 6: multi-select install from external repo
+    skills: z.array(z.string().min(1)).optional(),
+    all: z.boolean().optional(),
+    json: z.boolean().optional(),
   })
   .refine((v) => Boolean(v.name) !== Boolean(v.from), {
     message: "exactly one of `name` or `from` must be provided",
+    path: ["name"],
+  })
+  .refine((v) => !((v.skills?.length ?? 0) > 0 || v.all || v.json) || Boolean(v.from), {
+    message: "`skills`, `all`, and `json` require `from`",
+    path: ["from"],
+  })
+  .refine((v) => !(Boolean(v.name) && ((v.skills?.length ?? 0) > 0 || v.all)), {
+    message: "`name` cannot be combined with `skills`/`all`",
     path: ["name"],
   });
 
