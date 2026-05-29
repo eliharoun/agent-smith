@@ -11,6 +11,9 @@ describe("deriveRemotePath", () => {
     ["https://github.com/obra/superpowers", "/tmp/remote/github.com/obra/superpowers"],
     ["git@github.com:obra/superpowers.git", "/tmp/remote/github.com/obra/superpowers"],
     ["ssh://git@ssh.dev:222/owner/repo.git", "/tmp/remote/ssh.dev/owner/repo"],
+    // SSH URLs without a user (e.g. some self-hosted git hosts) and with a non-git user.
+    ["ssh://git.example.com/pkg/example-skillset", "/tmp/remote/git.example.com/pkg/example-skillset"],
+    ["ssh://user@host.example/owner/repo.git", "/tmp/remote/host.example/owner/repo"],
     ["https://github.com/Obra/SuperPowers.git", "/tmp/remote/github.com/obra/superpowers"],
   ])("derives correct path for %s", (input, expected) => {
     expect(deriveRemotePath(input, root)).toBe(expected);
@@ -73,6 +76,7 @@ describe("isLikelyGitUrl", () => {
     ["https://github.com/foo/bar.git", true],
     ["git@github.com:foo/bar.git", true],
     ["ssh://git@example.com/foo/bar.git", true],
+    ["ssh://git.example.com/pkg/example-skillset", true],
     ["http://gitlab.local/foo/bar", false],
     ["/local/path", false],
     ["./relative", false],

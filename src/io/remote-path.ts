@@ -29,7 +29,7 @@
 import { createHash } from "node:crypto";
 import { basename, resolve, sep } from "node:path";
 
-const URL_PATTERNS = [/^https:\/\//i, /^git@/i, /^ssh:\/\/git@/i, /^file:\/\//i];
+const URL_PATTERNS = [/^https:\/\//i, /^git@/i, /^ssh:\/\//i, /^file:\/\//i];
 
 export function isLikelyGitUrl(s: string): boolean {
   if (!s) return false;
@@ -47,8 +47,10 @@ export function deriveRemotePath(url: string, remoteRoot: string): string {
   }
 
   let s = url;
-  // Strip protocol forms in this order: ssh://git@host, git@host, https://
-  s = s.replace(/^ssh:\/\/git@/i, "");
+  // Strip protocol forms in this order: ssh://[user@]host, git@host, https://
+  // The ssh:// user is optional (e.g. `ssh://git.example.com/...` has none) and
+  // any user is accepted (not just `git@`); it isn't part of the on-disk path.
+  s = s.replace(/^ssh:\/\/(?:[^@/]+@)?/i, "");
   s = s.replace(/^git@/i, "");
   s = s.replace(/^https:\/\//i, "");
 
