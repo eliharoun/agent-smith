@@ -1,0 +1,25 @@
+{
+  "name": "knowledge-demo",
+  "description": "Use to demonstrate knowledge sources end-to-end.",
+  "targets": ["opencode"],
+  "modelTier": "sonnet",
+  "knowledge": {
+    "inlineBudget": { "totalTokens": 4000 },
+    "sources": [
+      {
+        "id": "schema",
+        "type": "file",
+        "path": "./db/schema.sql",
+        "delivery": "inline",
+        "description": "Database schema"
+      },
+      {
+        "id": "runbooks",
+        "type": "dir",
+        "path": "./runbooks",
+        "delivery": "file",
+        "description": "Operational runbooks"
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "incident-debugger",
+  "description": "Use proactively when production incidents occur — gathers signal, isolates root cause, prefers rollback to forward-fix.",
+  "targets": ["opencode", "claude-code", "codex"],
+  "modelTier": "opus",
+  "mode": "subagent",
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "edit": "allow",
+    "bash": "allow",
+    "task": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "skill": {
+      "systematic-debugging": "allow",
+      "verification-before-completion": "allow",
+      "*": "deny"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# Playwright E2E byproducts
+test-results/
+playwright-report/
+.e2e-config/

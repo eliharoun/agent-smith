@@ -1,0 +1,11 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`v1 surface — SSE events set of JobEvent discriminants is stable 1`] = `
+[
+  "exit",
+  "progress",
+  "prompt",
+  "stderr",
+  "stdout",
+]
+`;

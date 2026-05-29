@@ -1,0 +1,23 @@
+{
+  "name": "security-threat-modeler",
+  "description": "Use proactively for STRIDE-style threat modeling of new features and architecture changes — read-only, produces a markdown threat model.",
+  "targets": ["opencode", "claude-code", "codex"],
+  "modelTier": "opus",
+  "mode": "primary",
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "edit": "deny",
+    "bash": "deny",
+    "task": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "skill": {
+      "*": "deny"
+    }
+  }
+}

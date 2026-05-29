@@ -1,0 +1,20 @@
+{
+  "_meta": {
+    "lastVerifiedDate": "2026-05-28",
+    "verifiedAgainstVersion": "kiro-cli 2.4.2 + agent-v1.json schema",
+    "sourceUrl": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+    "notes": "Modern (snake_case singleton) tool names. Legacy aliases (fs_read, fs_write, execute_bash, use_aws, use_subagent, listDirectory, fileSearch) are accepted by the kiro runtime but not emitted by smith. Permission groups absent from the mapping (skill, external_directory, question, doom_loop) are silently skipped except 'skill' which the kiro translator handles via skill:// resource emission."
+  },
+  "mapping": {
+    "read": ["read"],
+    "glob": ["glob"],
+    "grep": ["grep"],
+    "list": ["ls"],
+    "edit": ["write"],
+    "bash": ["shell"],
+    "task": ["subagent"],
+    "webfetch": ["web_fetch"],
+    "websearch": ["web_search"],
+    "lsp": ["code"]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "lastVerifiedDate": "2026-05-01",
+    "verifiedAgainstVersion": "codex (vocabulary not yet finalized upstream)",
+    "sourceUrl": "https://github.com/openai/codex",
+    "notes": "Codex tool-name vocabulary not yet finalized upstream; this map is best-effort and reuses claude-code tool names as a starting point. See agent-smith v0.2.0 spec §9 risk register. Refresh when codex publishes a tool registry. Omitted for now (no confident equivalent): task, webfetch, websearch, todowrite, skill. Permission groups not in the mapping are silently skipped during expansion (the codex translator additionally emits an explicit warning for permission.skill — see translators/codex.ts)."
+  },
+  "mapping": {
+    "read": ["Read"],
+    "glob": ["Glob"],
+    "grep": ["Grep"],
+    "list": ["LS"],
+    "edit": ["Edit", "Write", "MultiEdit", "NotebookEdit"],
+    "bash": ["Bash"]
+  }
+}

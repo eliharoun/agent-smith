@@ -1,0 +1,14 @@
+{
+  "lastVerifiedDate": "2026-05-28",
+  "verifiedAgainstVersion": "kiro-cli 2.4.2",
+  "sourceUrl": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
+  "knownDivergences": [
+    {
+      "field": "resources",
+      "schema": "items.pattern = '^(file://)'",
+      "runtime": "accepts skill:// URIs (per https://kiro.dev/docs/cli/custom-agents/creating)",
+      "smithBehavior": "emit skill:// URIs; contract test uses shape assertions instead of full schema validation; doctor's `kiro-cli agent validate` shell-out is the runtime ground truth"
+    }
+  ],
+  "notes": "Schema additionalProperties: false at the top level rejects fields the runtime accepts (e.g. includeMcpJson). Smith's kiro translator emits only schema-documented fields plus skill:// URIs. The drift check in scripts/check-drift.ts filters knownDivergences to avoid false positives."
+}

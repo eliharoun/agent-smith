@@ -1,0 +1,1 @@
+export { KnowledgeIndex } from "./KnowledgeIndex";
