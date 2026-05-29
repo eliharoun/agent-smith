@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitVerify } from "@/hooks/useGitVerify";
 import { useStartJob } from "@/hooks/useStartJob";
+import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Chrome } from "@/ui/Chrome";
@@ -12,6 +13,8 @@ import { Toggle } from "@/ui/Toggle";
 
 type Mode = "register" | "install";
 type Kind = "user-global" | "user-local" | "team-shared";
+
+const URL_RE = /^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/;
 
 /**
  * Two-mode skill onboarding screen:
@@ -43,6 +46,10 @@ export function SkillNew() {
   // install-mode state
   const [installRef, setInstallRef] = useState("");
   const [installAs, setInstallAs] = useState("");
+
+  // URL-detection modal state
+  const [urlModalOpen, setUrlModalOpen] = useState(false);
+  const [urlModalInitial, setUrlModalInitial] = useState("");
 
   const start = useStartJob();
   const verify = useGitVerify();
@@ -84,6 +91,11 @@ export function SkillNew() {
 
   function submitInstall() {
     if (!installRef) return;
+    if (URL_RE.test(installRef.trim())) {
+      setUrlModalInitial(installRef.trim());
+      setUrlModalOpen(true);
+      return;
+    }
     const looksLikePath =
       installRef.startsWith("/") || installRef.startsWith("./") || installRef.startsWith("../");
     start.mutate(
@@ -215,6 +227,12 @@ export function SkillNew() {
           </div>
         )}
       </Card>
+      <InstallFromUrlModal
+        kind="skill"
+        open={urlModalOpen}
+        onClose={() => setUrlModalOpen(false)}
+        initialUrl={urlModalInitial}
+      />
     </ScreenShell>
   );
 }
