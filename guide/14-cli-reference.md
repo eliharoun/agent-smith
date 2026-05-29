@@ -829,7 +829,7 @@ team           [team-shared]      → /Users/you/skills/team
 
 ### `smith skill install [ref]`
 
-**Synopsis:** `smith skill install [ref] [--from <pathOrUrl>] [--as <name>] [--targets <list>] [--git-ref <ref>]`
+**Synopsis:** `smith skill install [ref] [--from <pathOrUrl>] [--as <name>] [--targets <list>] [--git-ref <ref>] [--all] [--skills <list>] [--json]`
 
 **Description:** Install a skill onto one or more platforms. Three modes:
 
@@ -849,7 +849,9 @@ team           [team-shared]      → /Users/you/skills/team
   remote-backed skill catalog, then the install proceeds through the
   normal `<catalog>/<name>` path. When the cloned repo contains a
   single skill, `[ref]` is optional; when it contains more than one,
-  pass `[ref]` to disambiguate (omitting it exits `2` with the list).
+  pass `[ref]`, `--skills`, or `--all` to select which skills to
+  install (omitting all three in a TTY opens an interactive picker;
+  in non-TTY it exits `2` with the list).
   Refuses (exit 1, `already-exists`) when the URL is already registered
   under a different label in either registry — the error names the
   existing catalog and points at `smith {agent,skill} sync <label>`
@@ -862,7 +864,8 @@ Source: `src/cli/commands/skill/install-cmd.ts`.
 **Arguments:**
 
 - `[ref]` — optional. Required unless `--from` is given. With
-  `--from <url>` it disambiguates a multi-skill remote.
+  `--from <url>` it disambiguates a multi-skill remote (mutually
+  exclusive with `--all` and `--skills`).
 
 **Flags:**
 
@@ -876,7 +879,16 @@ Source: `src/cli/commands/skill/install-cmd.ts`.
   `opencode,claude-code,codex,kiro`. Default: all four.
 - `--git-ref <ref>` — branch, tag, or SHA to check out after cloning
   with `--from <url>`. Defaults to the remote's HEAD. Ignored for local
-  paths.
+  paths. (Note: the agent equivalent is `--ref`, not `--git-ref` — this
+  asymmetry is deliberate because `smith skill install` already uses
+  `[ref]` as a positional argument for the skill name.)
+- `--all` — install every skill discovered in `--from <url>`. Mutually
+  exclusive with `[ref]` and `--skills`.
+- `--skills <list>` — comma-separated skill names to install from
+  `--from <url>`. Mutually exclusive with `[ref]` and `--all`.
+- `--json` — discover skills from `--from <url>`, print the discovery
+  payload as JSON, and exit without installing or registering the
+  catalog. Useful for scripting and CI introspection.
 
 **Exit codes:**
 
@@ -1052,7 +1064,7 @@ $ smith agent validate the-architect
 
 ### `smith agent install <name>`
 
-**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--force] [--platform-conventions <scalar>] [--no-platform-conventions]`
+**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--all] [--agents <list>] [--json] [--force] [--platform-conventions <scalar>] [--no-platform-conventions]`
 
 **Description:** Build and render an agent bundle to its targets. Build
 runs first; if any agent build fails, the entire install aborts before
@@ -1070,7 +1082,10 @@ Two acquisition modes:
   shared `installFromUrl` orchestrator, register it as a remote-backed
   catalog (with a `remote` block recording the URL, ref, and pulled
   SHA), then install. `<name>` is optional when the cloned repo
-  contains exactly one bundle; otherwise pass it to disambiguate.
+  contains exactly one bundle; when it contains more than one, pass
+  `<name>`, `--agents`, or `--all` to select which agents to install
+  (omitting all three in a TTY opens an interactive picker; in non-TTY
+  it exits `2` with the list).
   `--from` skips the local-catalog lookup entirely — local agents with
   the same name are not consulted. Refuses (exit 1, `already-exists`)
   when the URL is already registered under a different label in either
@@ -1124,6 +1139,17 @@ agents and a suggestion to run `smith agent install-all` (or
   [Sharing & distribution § 9](./15-sharing-and-distribution.md#9-sharing-via-direct-url).
 - `--ref <ref>` — branch, tag, or SHA to check out after cloning with
   `--from`. Defaults to the remote's HEAD. Ignored without `--from`.
+  (Note: the skill equivalent is `--git-ref`, not `--ref` — this
+  asymmetry is deliberate because `smith skill install` uses `[ref]` as
+  a positional argument for the skill name, so `--ref` would be
+  confusing there.)
+- `--all` — install every agent discovered in `--from <url>`. Mutually
+  exclusive with `[name]` and `--agents`.
+- `--agents <list>` — comma-separated agent names to install from
+  `--from <url>`. Mutually exclusive with `[name]` and `--all`.
+- `--json` — discover agents from `--from <url>`, print the discovery
+  payload as JSON, and exit without installing or registering the
+  catalog. Useful for scripting and CI introspection.
 - `--force` — bypass manifest's would-clobber refusal: smith will
   overwrite a rendered file at any target even when it isn't recorded in
   `installed-agents.json` or its on-disk hash differs from the manifest.

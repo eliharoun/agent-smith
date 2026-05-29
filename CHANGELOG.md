@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+- Multi-bundle `smith {skill,agent} install --from <url>`: discover bundles, pick one or
+  more (and which platforms), install together. CLI picker + GUI two-step modal. New flags
+  `--all`, `--skills`/`--agents`, `--json`.
+
+### Fixed
+- `kiro` is now a valid `--targets` value for skills and installs to `~/.kiro/skills`
+  (the GUI install matrix's kiro toggle previously failed).
+- `skill install --targets <p>` now creates a missing platform skill dir instead of
+  silently skipping it.
+
 ## [1.0.0] — 2026-05-28
 
 Initial public release.
