@@ -116,7 +116,7 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
     >
-      <div className="border border-matrix-green bg-black p-6 w-[32rem] font-mono max-h-[80vh] overflow-y-auto">
+      <div className="border border-matrix-green bg-black p-6 w-[42rem] max-w-[92vw] font-mono max-h-[80vh] overflow-y-auto">
         <h2 className="text-matrix-green text-sm uppercase tracking-widest mb-4">
           // install {kind} from url
         </h2>
@@ -129,25 +129,37 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
               <span className="text-matrix-green">{url.trim()}</span>
             </div>
 
-            {/* Bundle checkboxes */}
+            {/* Bundle checkboxes — aligned name / description / status columns */}
             <fieldset className="border border-matrix-line p-2">
               <legend className="text-[10px] uppercase tracking-widest text-matrix-green-muted px-1">
                 // bundles
               </legend>
-              {data.bundles.map((b) => (
-                <label key={b.name} className="flex items-center gap-2 text-xs text-matrix-body py-0.5">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(b.name)}
-                    disabled={b.alreadyInstalled}
-                    onChange={() => toggleBundle(b.name)}
-                    aria-label={b.name}
-                  />
-                  <span>{b.name}</span>
-                  {b.description && <span className="text-matrix-green-muted">— {b.description}</span>}
-                  {b.alreadyInstalled && <span className="text-matrix-green-muted">[installed]</span>}
-                </label>
-              ))}
+              <div className="grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-4 gap-y-1.5 text-xs">
+                {/* column header */}
+                <div className="contents text-[10px] uppercase tracking-widest text-matrix-green-muted">
+                  <span aria-hidden="true" />
+                  <span>name</span>
+                  <span>description</span>
+                  <span className="text-right">status</span>
+                </div>
+                {data.bundles.map((b) => (
+                  <label key={b.name} className="contents text-matrix-body">
+                    <input
+                      type="checkbox"
+                      className="self-center"
+                      checked={selected.has(b.name)}
+                      disabled={b.alreadyInstalled}
+                      onChange={() => toggleBundle(b.name)}
+                      aria-label={b.name}
+                    />
+                    <span className="whitespace-nowrap text-matrix-green">{b.name}</span>
+                    <span className="text-matrix-green-muted">{b.description}</span>
+                    <span className="whitespace-nowrap text-right text-[10px] uppercase tracking-wide text-matrix-amber">
+                      {b.alreadyInstalled ? "installed" : ""}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
             {/* Platform checkboxes */}
