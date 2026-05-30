@@ -265,7 +265,7 @@ function renderSectionDetail(
       return p && p.platform === "kiro" ? formatKiroSection(p) : null;
     }
     case "model-resolution":
-      return report.modelResolution ? formatModelResolutionSection(report.modelResolution) : null;
+      return report.modelResolution ? formatModelResolutionCompact(report.modelResolution) : null;
     case "workspace":
       return report.workspace ? formatWorkspaceSection(report.workspace) : null;
     case "atlassian-auth":
@@ -297,6 +297,35 @@ function renderSectionDetail(
       throw new Error(`unhandled section id: ${String(_exhaustive)}`);
     }
   }
+}
+
+/**
+ * Default-mode (auto-expanded) renderer for the model-resolution section.
+ * Shows only user-actionable lines — stale installed agents and installed
+ * agents whose platform can't run them. The full readiness + tier-preview
+ * matrix is `--verbose`-only (see formatModelResolutionSection).
+ */
+export function formatModelResolutionCompact(
+  mr: NonNullable<DoctorReport["modelResolution"]>,
+): string {
+  const out: string[] = ["Model resolution:"];
+  for (const a of mr.installedAgents) {
+    if (a.platform === "opencode" && a.inLiveList === false) {
+      out.push(`  [${a.platform}] ${a.agent}  model: ${a.model}  [X] NOT in live list`);
+      out.push(`            -> re-run \`smith agent install\``);
+    }
+  }
+  for (const a of mr.installedAgents) {
+    const st = mr.platforms[a.platform]?.status;
+    if (st === "unauthenticated" || st === "cli-not-installed") {
+      const why = st === "cli-not-installed" ? "CLI not installed" : "not authenticated";
+      const fix = st === "cli-not-installed" ? "install the platform CLI" : "authenticate the platform CLI";
+      out.push(`  [${a.platform}] ${a.agent}: platform ${why}`);
+      out.push(`            -> ${fix} (\`smith doctor --verbose\` for details)`);
+    }
+  }
+  if (out.length === 1) out.push("  See \`smith doctor --verbose\` for details.");
+  return out.join("\n");
 }
 
 export function formatModelResolutionSection(
