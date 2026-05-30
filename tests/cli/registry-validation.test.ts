@@ -99,6 +99,20 @@ describe("sniffPath", () => {
     expect(result.isSingleAgentBundle).toBe(false);
     expect(result.isSingleSkillBundle).toBe(false);
   });
+
+  test("counts nested skill bundles (skills/<name>/SKILL.md convention)", async () => {
+    // Mirrors the superpowers repo layout: skills are nested under a
+    // `skills/` subdirectory rather than at the catalog root.
+    await mkdir(join(dir, "skills", "brainstorming"), { recursive: true });
+    await writeFile(join(dir, "skills", "brainstorming", "SKILL.md"), "# skill");
+    await mkdir(join(dir, "skills", "debugging"), { recursive: true });
+    await writeFile(join(dir, "skills", "debugging", "SKILL.md"), "# skill");
+    await mkdir(join(dir, "docs"), { recursive: true });
+    await writeFile(join(dir, "docs", "README.md"), "# docs");
+    const result = await sniffPath(dir);
+    expect(result.skillBundles).toBe(2);
+    expect(result.emptyBundleDirs).toEqual([]);
+  });
 });
 
 describe("verifyGitRemote", () => {

@@ -79,9 +79,16 @@ export async function sniffPath(path: string): Promise<SniffResult> {
       skillBundles++;
       continue;
     }
-    // Subdirectory has neither agent nor skill marker. If it's also
-    // entirely empty, surface it as a likely leftover from an aborted
-    // `agent init` or manual scaffolding.
+    // No direct marker — recurse to find nested SKILL.md files (matches
+    // discoverSkills' recursive walk convention, e.g. skills/<name>/SKILL.md).
+    const nested = await countNestedSkills(sub);
+    if (nested > 0) {
+      skillBundles += nested;
+      continue;
+    }
+    // Subdirectory has neither agent nor skill marker (even recursively).
+    // If it's also entirely empty, surface it as a likely leftover from
+    // an aborted `agent init` or manual scaffolding.
     if (await directoryIsEmpty(sub)) {
       emptyBundleDirs.push(entry.name);
     }
@@ -103,6 +110,33 @@ async function directoryIsEmpty(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Recursively count SKILL.md files under `dir`, skipping `.git` and
+ * `node_modules`. Mirrors the recursive walk in `discoverSkills` so the
+ * doctor hygiene check matches the loader's discovery convention (e.g.
+ * repos that nest skills under `skills/<name>/SKILL.md`).
+ */
+async function countNestedSkills(dir: string): Promise<number> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const sub = join(dir, entry.name);
+    if (await fileExists(join(sub, "SKILL.md"))) {
+      count++;
+    } else {
+      count += await countNestedSkills(sub);
+    }
+  }
+  return count;
 }
 
 async function fileExists(p: string): Promise<boolean> {
