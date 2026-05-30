@@ -510,10 +510,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
         ? 2
         : 0;
   const modelStale = modelResolution?.hasStale === true;
-  const modelFallbackStale =
-    modelResolution?.curatedFallbacks.some((f) => f.inLiveList === false) === true;
-  const exitCode: 0 | 1 | 2 =
-    baseExitCode === 2 ? 2 : modelStale || modelFallbackStale ? 1 : baseExitCode;
+  const exitCode: 0 | 1 | 2 = baseExitCode === 2 ? 2 : modelStale ? 1 : baseExitCode;
 
   const platforms: DoctorPlatformReport[] = [];
   if (opencode) platforms.push(opencode);
@@ -582,11 +579,11 @@ function opencodeSummary(oc: Extract<DoctorPlatformReport, { platform: "opencode
   }
 }
 
-function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDoneEvent["status"] {
-  // New policy (per-platform refactor): warn only if at least one INSTALLED
-  // agent uses a platform that isn't authenticated. Platforms with no
-  // agents installed against them are informational — the user may simply
-  // not use them.
+export function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDoneEvent["status"] {
+  // warn only on user-actionable conditions: an installed agent on a
+  // platform that can't run it, or a stale installed agent. Curated-
+  // fallback drift is a maintainer concern (the constants ship in the
+  // release) — informational, never a user warn.
   const installedPlatforms = new Set(mr.installedAgents.map((a) => a.platform));
   for (const platform of installedPlatforms) {
     const auth = mr.platforms[platform];
@@ -595,13 +592,6 @@ function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDon
     }
   }
   if (mr.hasStale) return "warn";
-  // Fallback drift is informational unless OpenCode is actually used by an
-  // installed agent. If no opencode agents are installed, drift in the
-  // OpenCode-namespaced curated fallbacks doesn't affect the user.
-  if (installedPlatforms.has("opencode")) {
-    const fallbackDrift = mr.curatedFallbacks.some((f) => f.inLiveList === false);
-    if (fallbackDrift) return "warn";
-  }
   return "ok";
 }
 
