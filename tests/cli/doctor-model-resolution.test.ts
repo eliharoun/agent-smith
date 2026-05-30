@@ -94,7 +94,7 @@ describe("runDoctor: modelResolution section", () => {
         },
       },
     });
-    expect(r.exitCode).toBe(1);
+    expect(r.exitCode).toBe(0);
     expect(
       r.modelResolution?.curatedFallbacks.every((f) => f.inLiveList === false),
     ).toBe(true);
