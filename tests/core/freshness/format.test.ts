@@ -4,6 +4,7 @@ import {
   formatClaudeCodeSection,
   formatCodexSection,
   formatFailuresOnly,
+  formatModelResolutionCompact,
   formatOpencodeSection,
   formatReport,
   formatReportCompact,
@@ -753,8 +754,6 @@ describe("formatFailuresOnly / formatReportCompact", () => {
 });
 
 describe("formatModelResolutionCompact", () => {
-  // Lazy import to verify the export exists
-  const { formatModelResolutionCompact } = require("../../../src/core/freshness/format");
 
   function mrFull(over: Partial<import("../../../src/core/freshness/types").ModelResolutionReport> = {}): import("../../../src/core/freshness/types").ModelResolutionReport {
     return {
@@ -787,5 +786,23 @@ describe("formatModelResolutionCompact", () => {
     expect(out).not.toContain("Platform readiness:");
     expect(out).not.toContain("Tier resolution preview");
     expect(out).not.toContain("Curated high fallback");
+  });
+
+  test("no actionable items → fallback line", () => {
+    const out = formatModelResolutionCompact(
+      mrFull({
+        installedAgents: [
+          { platform: "opencode", agent: "a", model: "p/x", inLiveList: true },
+        ],
+        hasStale: false,
+        platforms: {
+          opencode: { cliInstalled: true, status: "authenticated" },
+          "claude-code": { cliInstalled: true, status: "authenticated" },
+          codex: { cliInstalled: true, status: "authenticated" },
+          kiro: { cliInstalled: true, status: "authenticated" },
+        },
+      }),
+    );
+    expect(out).toContain("See `smith doctor --verbose` for details.");
   });
 });
