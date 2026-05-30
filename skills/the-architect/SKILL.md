@@ -28,17 +28,15 @@ Do NOT use this skill when:
 
 ## Prerequisites — verify before starting any flow
 
-Before any Phase 1 questions, verify the smith binary is recent enough
-to support the skill capability. The other prerequisites are best-
-effort: if USER.md or the registry are missing, the skill degrades
-gracefully and the runtime self-bootstraps when needed.
+No version check is needed: the skill and the `smith` binary ship from
+the same repo clone, so they are always in lockstep and the binary
+already supports every capability this skill uses. The one prerequisite
+is best-effort — if USER.md is missing, the skill degrades gracefully
+and the runtime self-bootstraps when needed.
 
 ```bash
-smith --version       # must be ≥ 0.4.0 (skill capability requires v0.4.0)
 ls ~/.config/agent-smith/USER.md         # optional — enables persona/catalog defaults
 ```
-
-If `smith --version` < 0.4.0 → tell the user to upgrade agent-smith and stop.
 
 If `~/.config/agent-smith/USER.md` is missing or empty, print this
 single line — `no USER.md found; catalog and persona will use defaults`
