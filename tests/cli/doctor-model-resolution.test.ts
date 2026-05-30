@@ -71,7 +71,7 @@ describe("runDoctor: modelResolution section", () => {
     expect(r.exitCode).toBe(1);
   });
 
-  test("exit code 1 when curated fallback not in live list", async () => {
+  test("exit code 0 when only curated fallback drifts (informational, not actionable)", async () => {
     const tmp = await mkdtemp(join(tmpdir(), "smith-doctor-fallback-"));
     const r = await runDoctor({
       vendoredSchema: {},
@@ -94,7 +94,7 @@ describe("runDoctor: modelResolution section", () => {
         },
       },
     });
-    expect(r.exitCode).toBe(1);
+    expect(r.exitCode).toBe(0);
     expect(
       r.modelResolution?.curatedFallbacks.every((f) => f.inLiveList === false),
     ).toBe(true);

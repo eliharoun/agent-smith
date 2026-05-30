@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_FOOTER_LINES,
+  formatAtlassianAuthSection,
   formatClaudeCodeSection,
   formatCodexSection,
   formatFailuresOnly,
+  formatModelResolutionCompact,
   formatOpencodeSection,
   formatReport,
   formatReportCompact,
@@ -750,4 +752,64 @@ describe("formatFailuresOnly / formatReportCompact", () => {
     expect(out.endsWith(FOOTER)).toBe(true);
     expect(out.split("\n").length).toBeLessThanOrEqual(25);
   });
+});
+
+describe("formatModelResolutionCompact", () => {
+
+  function mrFull(over: Partial<import("../../../src/core/freshness/types").ModelResolutionReport> = {}): import("../../../src/core/freshness/types").ModelResolutionReport {
+    return {
+      opencodeCliPath: "/fake/opencode",
+      liveModelCount: 2,
+      curatedFallbacks: [{ tier: "high", value: "p/opus", inLiveList: false }],
+      installedAgents: [
+        { platform: "opencode", agent: "agent-smith", model: "p/old", inLiveList: false },
+        { platform: "codex", agent: "beta", model: "gpt-5", inLiveList: null },
+      ],
+      hasStale: true,
+      detectedProviders: ["opencode"],
+      preferenceOrder: [{ provider: "opencode", source: "default" }],
+      platforms: {
+        opencode: { cliInstalled: true, status: "authenticated" },
+        "claude-code": { cliInstalled: true, status: "authenticated" },
+        codex: { cliInstalled: true, status: "unauthenticated" },
+        kiro: { cliInstalled: true, status: "authenticated" },
+      },
+      tierPreview: [],
+      ...over,
+    };
+  }
+
+  test("shows only actionable lines, not the readiness/tier matrix", () => {
+    const out = formatModelResolutionCompact(mrFull());
+    expect(out).toContain("agent-smith");
+    expect(out).toContain("smith agent install");
+    expect(out).toContain("beta"); // agent on unauthenticated codex
+    expect(out).not.toContain("Platform readiness:");
+    expect(out).not.toContain("Tier resolution preview");
+    expect(out).not.toContain("Curated high fallback");
+  });
+
+  test("no actionable items → fallback line", () => {
+    const out = formatModelResolutionCompact(
+      mrFull({
+        installedAgents: [
+          { platform: "opencode", agent: "a", model: "p/x", inLiveList: true },
+        ],
+        hasStale: false,
+        platforms: {
+          opencode: { cliInstalled: true, status: "authenticated" },
+          "claude-code": { cliInstalled: true, status: "authenticated" },
+          codex: { cliInstalled: true, status: "authenticated" },
+          kiro: { cliInstalled: true, status: "authenticated" },
+        },
+      }),
+    );
+    expect(out).toContain("See `smith doctor --verbose` for details.");
+  });
+});
+
+test("formatAtlassianAuthSection renders a not-applicable branch", () => {
+  const out = formatAtlassianAuthSection({ status: "not-applicable" });
+  expect(out).toContain("Atlassian auth:");
+  expect(out.toLowerCase()).toContain("not used");
 });

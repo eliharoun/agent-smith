@@ -4,14 +4,23 @@ import type {
   DoctorSectionDoneEvent,
   DoctorSectionStartEvent,
 } from "../../../src/core/freshness/run-doctor";
-import { runDoctor } from "../../../src/core/freshness/run-doctor";
+import { modelResolutionEventStatus, runDoctor } from "../../../src/core/freshness/run-doctor";
 import type {
   DoctorDeps,
+  ModelResolutionReport,
   SchemaCache,
   SchemaMeta,
   ToolMapMeta,
 } from "../../../src/core/freshness/types";
+import type { PlatformAuthMatrix } from "../../../src/io/auth/types";
 import type { WorkspaceVersionStatus } from "../../../src/io/workspace-version";
+
+const authedMatrix: PlatformAuthMatrix = {
+  opencode: { platform: "opencode", cliInstalled: true, status: "authenticated" },
+  "claude-code": { platform: "claude-code", cliInstalled: true, status: "authenticated" },
+  codex: { platform: "codex", cliInstalled: true, status: "authenticated" },
+  kiro: { platform: "kiro", cliInstalled: true, status: "authenticated" },
+};
 
 const claudeMeta: ToolMapMeta = {
   lastVerifiedDate: "2026-04-20",
@@ -549,6 +558,7 @@ describe("runDoctor: atlassianAuth section", () => {
       claudeMeta,
       codexMeta,
       deps: deps(),
+      hasAtlassianKnowledgeSources: true,
       resolveAtlassianAuth: () => ({
         email: "alice@x",
         token: "tok-A",
@@ -576,6 +586,7 @@ describe("runDoctor: atlassianAuth section", () => {
       claudeMeta,
       codexMeta,
       deps: deps(),
+      hasAtlassianKnowledgeSources: true,
       resolveAtlassianAuth: () => null,
       onSectionDone: (e) => events.push({ kind: "done", id: e.id, status: e.status }),
     });
@@ -886,5 +897,129 @@ describe("runDoctor: agent-required-skills section", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+function mr(over: Partial<ModelResolutionReport> = {}): ModelResolutionReport {
+  return {
+    opencodeCliPath: "/fake/opencode",
+    liveModelCount: 0,
+    curatedFallbacks: [
+      { tier: "high", value: "p/opus", inLiveList: false },
+      { tier: "balanced", value: "p/sonnet", inLiveList: false },
+      { tier: "fast", value: "p/haiku", inLiveList: false },
+    ],
+    installedAgents: [],
+    hasStale: false,
+    detectedProviders: [],
+    preferenceOrder: [],
+    platforms: {
+      opencode: { cliInstalled: true, status: "authenticated" },
+      "claude-code": { cliInstalled: true, status: "authenticated" },
+      codex: { cliInstalled: true, status: "authenticated" },
+      kiro: { cliInstalled: true, status: "authenticated" },
+    },
+    tierPreview: [],
+    ...over,
+  };
+}
+
+describe("modelResolutionEventStatus (actionable-only)", () => {
+  test("curated-fallback drift alone (no installed agents) → ok", () => {
+    expect(modelResolutionEventStatus(mr())).toBe("ok");
+  });
+
+  test("fallback drift WITH an installed opencode agent → still ok (drift is not actionable)", () => {
+    const r = mr({
+      installedAgents: [
+        { platform: "opencode", agent: "a", model: "p/opus", inLiveList: true },
+      ],
+    });
+    expect(modelResolutionEventStatus(r)).toBe("ok");
+  });
+
+  test("stale installed opencode agent → warn", () => {
+    const r = mr({
+      installedAgents: [
+        { platform: "opencode", agent: "a", model: "p/x", inLiveList: false },
+      ],
+      hasStale: true,
+    });
+    expect(modelResolutionEventStatus(r)).toBe("warn");
+  });
+
+  test("installed agent on an unauthenticated platform → warn", () => {
+    const r = mr({
+      installedAgents: [
+        { platform: "codex", agent: "a", model: "gpt-5", inLiveList: null },
+      ],
+      platforms: {
+        opencode: { cliInstalled: true, status: "authenticated" },
+        "claude-code": { cliInstalled: true, status: "authenticated" },
+        codex: { cliInstalled: true, status: "unauthenticated" },
+        kiro: { cliInstalled: true, status: "authenticated" },
+      },
+    });
+    expect(modelResolutionEventStatus(r)).toBe("warn");
+  });
+});
+
+describe("runDoctor exit code (fallback drift no longer bumps)", () => {
+  test("curated-fallback drift only → exit 0", async () => {
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      modelResolution: {
+        getOpenCodeModels: async () => [],
+        findOpencodeOnPath: async () => "/fake/opencode",
+        installedPaths: {
+          opencodeAgentsDir: "/nonexistent-x",
+          claudeCodeAgentsDir: "/nonexistent-y",
+          codexAgentsDir: "/nonexistent-z",
+        },
+        curatedFallback: { high: "p/opus", balanced: "p/sonnet", fast: "p/haiku" },
+        platformAuth: authedMatrix,
+        detectAuthenticatedProviders: async () => ["opencode"],
+        readEnvFile: () => ({}),
+      },
+    });
+    expect(report.modelResolution?.curatedFallbacks.every((f) => f.inLiveList === false)).toBe(true);
+    expect(report.exitCode).toBe(0);
+  });
+});
+
+import type { InstalledSkillsFile } from "../../../src/io/installed-skills";
+
+const emptySkills = { schemaVersion: 1, installed: [] } as unknown as InstalledSkillsFile;
+
+async function atlStatus(over: {
+  hasAtlassianKnowledgeSources?: boolean;
+}): Promise<string | undefined> {
+  const events: DoctorSectionDoneEvent[] = [];
+  await runDoctor({
+    vendoredSchema,
+    schemaMeta,
+    claudeMeta,
+    codexMeta,
+    deps: deps(),
+    resolveAtlassianAuth: () => null,
+    resolveAtlassianBaseUrl: () => null,
+    loadInstalledSkillsForAuth: async () => emptySkills,
+    ...over,
+    onSectionDone: (e) => events.push(e),
+  });
+  return events.find((e) => e.id === "atlassian-auth")?.status;
+}
+
+describe("Atlassian relevance gating", () => {
+  test("auth missing + no skills + no confluence/jira sources → skipped", async () => {
+    expect(await atlStatus({ hasAtlassianKnowledgeSources: false })).toBe("skipped");
+  });
+
+  test("auth missing + an agent has a confluence/jira source → warn", async () => {
+    expect(await atlStatus({ hasAtlassianKnowledgeSources: true })).toBe("warn");
   });
 });

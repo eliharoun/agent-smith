@@ -285,6 +285,15 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     }
   };
 
+  // Load every registered bundle once: feeds both the required-skills
+  // section and the Atlassian-auth relevance signal.
+  const agentReg = await loadRegistry(canonicalRegistryPath());
+  const bundleResult = await loadAllBundles(agentReg);
+  warnAllLoadFailures(bundleResult.failures, (m) => console.error(m));
+  const hasAtlassianKnowledgeSources = bundleResult.bundles.some((b) =>
+    (b.config.knowledge?.sources ?? []).some((s) => s.type === "confluence" || s.type === "jira"),
+  );
+
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,
     schemaMeta,
@@ -309,15 +318,12 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         }
       },
     },
-    loadAgentsForDoctor: async () => {
-      const reg = await loadRegistry(canonicalRegistryPath());
-      const result = await loadAllBundles(reg);
-      warnAllLoadFailures(result.failures, (m) => console.error(m));
-      return result.bundles.map((b) => ({
+    hasAtlassianKnowledgeSources,
+    loadAgentsForDoctor: async () =>
+      bundleResult.bundles.map((b) => ({
         name: b.config.name,
         ...(b.config.requires ? { requires: b.config.requires } : {}),
-      }));
-    },
+      })),
     loadInstalledSkillNames: async () => {
       const file = await loadInstalledSkills();
       return file.installed.map((e) => e.name);

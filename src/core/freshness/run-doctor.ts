@@ -187,6 +187,12 @@ export interface RunDoctorInput {
    */
   resolveAtlassianAuth?: () => AtlassianAuth | null;
   /**
+   * v0.14: true when any registered agent declares a `confluence`/`jira`
+   * knowledge source. Combined with `atlassian-skills` installed, gates the
+   * Atlassian-auth section's relevance. Default false (back-compat).
+   */
+  hasAtlassianKnowledgeSources?: boolean;
+  /**
    * Optional override mirroring `resolveAtlassianAuth`. Defaults to the
    * production helper. Used by `checkAtlassianAuth` to detect the
    * "auth resolved but no workspace URL" incomplete state.
@@ -304,7 +310,7 @@ export interface RunDoctorInput {
 /**
  * Pure orchestrator for the freshness check. All I/O is injected via `deps`
  * (fetch, fs, clock). Returns a {@link DoctorReport} with a literal exit code:
- * 0 = no drift / offline-skipped, 1 = OpenCode drift detected, 2 = network error.
+ * 0 = no drift / offline-skipped, 1 = OpenCode drift or stale installed agent, 2 = network error.
  *
  * Optionally emits per-section start/done events via `onSectionStart` /
  * `onSectionDone` for streaming UIs (ora spinners). Sections still run
@@ -510,10 +516,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
         ? 2
         : 0;
   const modelStale = modelResolution?.hasStale === true;
-  const modelFallbackStale =
-    modelResolution?.curatedFallbacks.some((f) => f.inLiveList === false) === true;
-  const exitCode: 0 | 1 | 2 =
-    baseExitCode === 2 ? 2 : modelStale || modelFallbackStale ? 1 : baseExitCode;
+  const exitCode: 0 | 1 | 2 = baseExitCode === 2 ? 2 : modelStale ? 1 : baseExitCode;
 
   const platforms: DoctorPlatformReport[] = [];
   if (opencode) platforms.push(opencode);
@@ -582,11 +585,11 @@ function opencodeSummary(oc: Extract<DoctorPlatformReport, { platform: "opencode
   }
 }
 
-function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDoneEvent["status"] {
-  // New policy (per-platform refactor): warn only if at least one INSTALLED
-  // agent uses a platform that isn't authenticated. Platforms with no
-  // agents installed against them are informational — the user may simply
-  // not use them.
+export function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDoneEvent["status"] {
+  // warn only on user-actionable conditions: an installed agent on a
+  // platform that can't run it, or a stale installed agent. Curated-
+  // fallback drift is a maintainer concern (the constants ship in the
+  // release) — informational, never a user warn.
   const installedPlatforms = new Set(mr.installedAgents.map((a) => a.platform));
   for (const platform of installedPlatforms) {
     const auth = mr.platforms[platform];
@@ -595,13 +598,6 @@ function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDon
     }
   }
   if (mr.hasStale) return "warn";
-  // Fallback drift is informational unless OpenCode is actually used by an
-  // installed agent. If no opencode agents are installed, drift in the
-  // OpenCode-namespaced curated fallbacks doesn't affect the user.
-  if (installedPlatforms.has("opencode")) {
-    const fallbackDrift = mr.curatedFallbacks.some((f) => f.inLiveList === false);
-    if (fallbackDrift) return "warn";
-  }
   return "ok";
 }
 
@@ -685,19 +681,20 @@ function workspaceSummary(ws: WorkspaceVersionStatus): string {
 async function checkAtlassianAuth(input: RunDoctorInput): Promise<AtlassianAuthReport> {
   const resolver = input.resolveAtlassianAuth ?? defaultResolveAtlassianAuth;
   const baseUrlResolver = input.resolveAtlassianBaseUrl ?? defaultResolveAtlassianBaseUrl;
-  const auth = resolver();
-  if (!auth) {
-    return { status: "missing" };
-  }
-  const baseUrl = baseUrlResolver();
 
-  // Detect atlassian-skills installation.
   const installedFile = input.loadInstalledSkillsForAuth
     ? await input.loadInstalledSkillsForAuth()
     : await defaultLoadInstalledSkills();
   const atlassianSkillsInstalled = installedFile.installed.some(
     (s) => s.sourceCatalogLabel === "atlassian-skills",
   );
+  const relevant = atlassianSkillsInstalled || input.hasAtlassianKnowledgeSources === true;
+
+  const auth = resolver();
+  if (!auth) {
+    return relevant ? { status: "missing" } : { status: "not-applicable" };
+  }
+  const baseUrl = baseUrlResolver();
 
   let atlassianSkills: AtlassianSkillsRuntimeStatus | undefined;
   if (atlassianSkillsInstalled) {
@@ -720,6 +717,7 @@ async function checkAtlassianAuth(input: RunDoctorInput): Promise<AtlassianAuthR
   }
 
   if (!baseUrl) {
+    if (!relevant) return { status: "not-applicable" };
     return atlassianSkills
       ? { status: "incomplete", source: auth.source, reason: "missing-base-url", atlassianSkills }
       : { status: "incomplete", source: auth.source, reason: "missing-base-url" };
@@ -739,7 +737,9 @@ function defaultReadEnvForBridge(): Record<string, string> {
 }
 
 function atlassianAuthEventStatus(auth: AtlassianAuthReport): DoctorSectionDoneEvent["status"] {
-  return auth.status === "configured" ? "ok" : "warn";
+  if (auth.status === "configured") return "ok";
+  if (auth.status === "not-applicable") return "skipped";
+  return "warn";
 }
 
 function atlassianAuthSummary(auth: AtlassianAuthReport): string {
@@ -748,6 +748,9 @@ function atlassianAuthSummary(auth: AtlassianAuthReport): string {
   }
   if (auth.status === "incomplete") {
     return `Atlassian auth incomplete: workspace URL missing (Confluence/Jira sources will fail)`;
+  }
+  if (auth.status === "not-applicable") {
+    return "Atlassian auth: not used (no Confluence/Jira sources)";
   }
   return "Atlassian auth not configured (Confluence/Jira sources will fail)";
 }

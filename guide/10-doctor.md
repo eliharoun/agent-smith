@@ -58,9 +58,9 @@ The exact message string is exported from `src/cli/commands/doctor.ts` as `NO_PL
 | 2 | `claude-code` | `data/claude-code-tool-map.json` provenance metadata. No live fetch — Claude Code has no published tool surface to diff against. | Informational |
 | 3 | `codex` | `data/codex-tool-map.json` provenance metadata. Same shape as `claude-code`. | Informational |
 | 4 | `kiro` | `data/kiro-tool-map.json` and `data/kiro.agent-v1.schema.json` provenance metadata. Same shape as `claude-code`. | Informational |
-| 5 | `model-resolution` | For every installed agent: does the `model:` literal in the per-platform output still appear in `opencode models`? Curated fallback (`CURATED_FALLBACK_V0_6_0`) is also checked against the live list. | Stale agent OR drifted curated fallback → `1` |
+| 5 | `model-resolution` | For every installed agent: does the `model:` literal in the per-platform output still appear in `opencode models`? Curated fallback (`CURATED_FALLBACK_V0_6_0`) is also checked against the live list. | Stale agent → `1`; curated-fallback drift alone is informational |
 | 6 | `workspace` | `git status`-equivalent of the agent-smith checkout against `origin/main`: current / ahead / behind / diverged / unknown. | **Informational, including `unknown:network-error`** — see Caveats |
-| 7 | `atlassian-auth` | Reports which of the two credential resolution tiers produced a hit (`env-smith` / `file-smith`) or `missing`. When atlassian-skills is installed, also checks the env-var bridge (`JIRA_*`/`CONFLUENCE_*`) and Python runtime availability. | Informational |
+| 7 | `atlassian-auth` | Reports which of the two credential resolution tiers produced a hit (`env-smith` / `file-smith`) or `missing`. Reports `not-applicable` (event status `skipped`) when credentials are absent AND no `atlassian-skills` is installed AND no agent has a Confluence/Jira knowledge source. When atlassian-skills is installed, also checks the env-var bridge (`JIRA_*`/`CONFLUENCE_*`) and Python runtime availability. | Informational |
 | 8 | `skill-drift` | For each skill in `installed-skills.json`: hash the dest dir and compare to the recorded `contentHash`. Reports `ok` / `drift` / `missing` / `source-missing`. | Informational |
 | 9 | `agent-required-skills` | For each agent that declares `requires.skills`, diff against the installed-skills list; report unsatisfied entries with a `smith skill install <ref>` hint. | Informational |
 | 10 | `registry-hygiene` | For every registered agent or skill catalog, confirm `rootPath` exists, contains bundles, and (if `gitRemote` is set) a matching git remote is configured. The protected `atlassian-skills` skill catalog is exempt (lazy-cloned). | Informational |
@@ -78,7 +78,7 @@ Doctor uses its own three-value exit-code system that pre-dates the unified CLI 
 | Doctor exit | Meaning |
 |---|---|
 | `0` | All checks clean, or skipped via `--offline` with no model-resolution staleness |
-| `1` | OpenCode schema drift detected, OR an installed OpenCode agent's `model:` literal is no longer in the live model list, OR a curated fallback model is no longer in the live list |
+| `1` | OpenCode schema drift detected, OR an installed OpenCode agent's `model:` literal is no longer in the live model list |
 | `2` | Network error fetching the live OpenCode schema (dominates `1` if both occur) |
 
 The exit-code logic is computed near the end of `runDoctor` in `src/core/freshness/run-doctor.ts`:
@@ -89,7 +89,7 @@ baseExitCode = !opencode                              ? 0    # OpenCode not dete
               : opencode.status === "network-error"   ? 2
               : 0
 exitCode     = baseExitCode === 2                     ? 2
-              : modelStale || modelFallbackStale      ? 1
+              : modelStale                            ? 1
               : baseExitCode
 ```
 
@@ -253,6 +253,7 @@ smith doctor --offline --no-cache --skip-model-resolution
 | Skill `source-missing` (catalog gone) | Re-register the source catalog with `smith skill register <path>`, or remove the install record with `smith skill uninstall <name>`. |
 | Required-skill missing | `smith skill install <ref>` for each entry the report lists. |
 | `atlassian-auth: missing` | Create `~/.config/agent-smith/.env` with `SMITH_ATLASSIAN_EMAIL` + `SMITH_ATLASSIAN_API_TOKEN`. See [guide/04-knowledge.md](./04-knowledge.md#atlassian-authenticated-sources). |
+| `atlassian-auth: not-applicable` | No action needed — Atlassian credentials are not relevant because no `atlassian-skills` is installed and no agent has a Confluence/Jira knowledge source. |
 | `registry-hygiene` warning: `rootPath does not exist` | `smith agent register <new-path>` then `smith agent unregister <old-path>`. See [guide/08-registries-and-catalogs.md](./08-registries-and-catalogs.md). |
 | `registry-hygiene` warning: `gitRemote does not match` | `git remote add` the expected URL, or unregister and re-register without `--git-remote`. |
 
@@ -272,6 +273,7 @@ The atlassian-auth section also reads the credential env vars (`SMITH_ATLASSIAN_
 - **`workspace: unknown:network-error` does NOT bump the exit code.** This is an explicit exception — the workspace section is informational even when the underlying `git ls-remote` fails. Documented at `src/core/freshness/run-doctor.ts:182-184`. Network failures from the workspace check appear in the report but never affect `$?`.
 - **Doctor is primarily read-only, with one repair flag.** Most drift requires the corresponding remediation command. The exception is `--fix-knowledge-refresh`, which auto-repairs missing hooks, corrupt caches, and orphaned consent records (see [Flags](#flags)).
 - **The exit-code policy is asymmetric on purpose.** OpenCode schema (section 1) > model-resolution (section 5) > everything-else-is-informational. Skill drift, required-skills, registry-hygiene, atlassian-auth, and the Claude Code / Codex tool map sections cannot affect the exit code, no matter how many warnings they raise. If you want CI to fail on, say, missing required skills, parse the `--json` output and key on `agentRequiredSkills.status === "warn"`.
+- **The default view is actionable-only.** Non-actionable findings (curated-fallback drift, unused Atlassian auth) render as a one-line summary in the default output; only sections with `warn` or `error` status auto-expand with full detail. Pass `--verbose` to see the full per-section report regardless of status.
 - **The model-resolution section is auto-skipped when `opencode` is not on PATH.** The section is OpenCode-specific (it shells out to `opencode models` and inspects installed OpenCode agents). When OpenCode is absent, the section is omitted entirely and cannot affect the exit code. If you have OpenCode installed but still want to skip the section, pass `--skip-model-resolution`.
 - **The `atlassian-skills` skill catalog is exempt from `registry-hygiene` checks** because it is lazy-cloned and may not exist on disk until first use (`run-doctor.ts:768-770`).
 - **Failures from `getOpenCodeModels` are not memoized** for the lifetime of the process (`src/io/opencode-models.ts:84-95`). A transient failure during one doctor run does not poison subsequent runs in the same process — relevant for the daemon's 15-minute reinstall loop, less so for one-shot CLI invocations.
