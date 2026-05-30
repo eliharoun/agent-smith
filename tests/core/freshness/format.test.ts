@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_FOOTER_LINES,
+  formatAgentDriftSection,
   formatAtlassianAuthSection,
   formatClaudeCodeSection,
   formatCodexSection,
@@ -12,7 +13,7 @@ import {
   formatWorkspaceSection,
 } from "../../../src/core/freshness/format";
 import type { CapturedSectionSummary } from "../../../src/core/freshness/run-doctor";
-import type { DoctorReport } from "../../../src/core/freshness/types";
+import type { AgentDriftReport, DoctorReport } from "../../../src/core/freshness/types";
 import type { WorkspaceVersionStatus } from "../../../src/io/workspace-version";
 
 const baseClaude = {
@@ -813,9 +814,6 @@ test("formatAtlassianAuthSection renders a not-applicable branch", () => {
   expect(out).toContain("Atlassian auth:");
   expect(out.toLowerCase()).toContain("not used");
 });
-
-import { formatAgentDriftSection } from "../../../src/core/freshness/format";
-import type { AgentDriftReport } from "../../../src/core/freshness/types";
 
 describe("formatAgentDriftSection", () => {
   test("renders ok/drift/missing with fix hints", () => {

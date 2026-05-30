@@ -912,6 +912,7 @@ async function checkAgentDrift(
   return { entries };
 }
 
+/** @internal Exported for unit testing; not part of the public API. */
 export function agentDriftEventStatus(r: AgentDriftReport): DoctorSectionDoneEvent["status"] {
   if (r.entries.length === 0) return "ok";
   return r.entries.some((e) => e.status !== "ok") ? "warn" : "ok";

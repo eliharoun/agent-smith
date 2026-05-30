@@ -4,8 +4,9 @@ import type {
   DoctorSectionDoneEvent,
   DoctorSectionStartEvent,
 } from "../../../src/core/freshness/run-doctor";
-import { modelResolutionEventStatus, runDoctor } from "../../../src/core/freshness/run-doctor";
+import { modelResolutionEventStatus, runDoctor, agentDriftEventStatus } from "../../../src/core/freshness/run-doctor";
 import type {
+  AgentDriftReport,
   DoctorDeps,
   ModelResolutionReport,
   SchemaCache,
@@ -1023,9 +1024,6 @@ describe("Atlassian relevance gating", () => {
     expect(await atlStatus({ hasAtlassianKnowledgeSources: true })).toBe("warn");
   });
 });
-
-import { agentDriftEventStatus } from "../../../src/core/freshness/run-doctor";
-import type { AgentDriftReport } from "../../../src/core/freshness/types";
 
 describe("agentDriftEventStatus", () => {
   const ok: AgentDriftReport = {

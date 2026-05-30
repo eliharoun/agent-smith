@@ -141,6 +141,8 @@ export interface SkillDriftReport {
   entries: SkillDriftEntry[];
 }
 
+// Mirrors SkillDriftEntry but for single rendered agent files — no `source-missing`
+// variant: agents render from the registered bundle, not a copied source dir.
 export type AgentDriftEntry =
   | { name: string; platform: string; status: "ok"; path: string }
   | {
