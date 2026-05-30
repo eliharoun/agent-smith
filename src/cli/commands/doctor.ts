@@ -22,6 +22,7 @@ import { CURATED_FALLBACK_V0_6_0 } from "../../core/model-resolution";
 import { toMessage } from "../../core/to-message";
 import type { InstallPaths } from "../../core/types";
 import { defaultCacheRoot } from "../../io/cache-root";
+import { hashContent, loadInstalledAgents } from "../../io/installed-agents";
 import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
 import { getOpenCodeModels } from "../../io/opencode-models";
 import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
@@ -313,6 +314,18 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         try {
           const s = await stat(p);
           return s.isDirectory();
+        } catch {
+          return false;
+        }
+      },
+    },
+    agentDrift: {
+      loadInstalled: loadInstalledAgents,
+      hashFile: async (p: string) => hashContent(await readFile(p, "utf8")),
+      pathExists: async (p: string) => {
+        try {
+          const s = await stat(p);
+          return s.isFile();
         } catch {
           return false;
         }

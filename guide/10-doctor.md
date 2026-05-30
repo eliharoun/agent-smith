@@ -1,6 +1,6 @@
 # Doctor
 
-> `smith doctor` runs fourteen health checks against your agent-smith install — schema drift (per platform), model resolution, workspace freshness, credentials, installed-skill drift, registry hygiene. It's a read-only diagnostic. Run it after `smith agent install`, after `smith update`, when something feels off, and in CI to gate deployments.
+> `smith doctor` runs fifteen health checks against your agent-smith install — schema drift (per platform), model resolution, workspace freshness, credentials, installed-skill drift, installed-agent drift, registry hygiene. It's a read-only diagnostic. Run it after `smith agent install`, after `smith update`, when something feels off, and in CI to gate deployments.
 >
 > As of v0.13, `smith doctor` defaults to a **compact summary** (one line per check; failing sections auto-expand). Use `--verbose` for the pre-v0.13 full per-section detail report, or `--quiet` to suppress all human output while preserving the exit code.
 
@@ -8,7 +8,7 @@
 
 ## Mental model
 
-Doctor walks fourteen sections sequentially, each producing a structured row in the report. Sections fall into two buckets:
+Doctor walks fifteen sections sequentially, each producing a structured row in the report. Sections fall into two buckets:
 
 - **Exit-code-affecting** — the `opencode` schema check and the `model-resolution` check. These can bump the exit code to `1` (drift) or `2` (network error).
 - **Informational** — every other section (workspace, atlassian-auth, skill-drift, agent-required-skills, registry-hygiene, claude-code/codex tool maps). They report status, surface remediation hints, but never affect the exit code.
@@ -50,7 +50,7 @@ In `--json` mode the refusal emits a canonical envelope:
 
 The exact message string is exported from `src/cli/commands/doctor.ts` as `NO_PLATFORM_REFUSAL_MESSAGE` for downstream consumers and integration tests.
 
-## The fourteen sections
+## The fifteen sections
 
 | # | Section id | What it checks | Exit-code contribution |
 |---|---|---|---|
@@ -68,6 +68,7 @@ The exact message string is exported from `src/cli/commands/doctor.ts` as `NO_PL
 | 12 | `duplicate-catalogs` | Walks both registries, groups entries by `normalizeGitUrl(remote.url)` (scheme/case/`.git`-suffix insensitive), and warns on clusters of size ≥ 2. Surfaces back-catalog duplicates accumulated under rc.1 — RC2-4 closes the forward door (`install --from` hard-errors on duplicates) but pre-existing duplicates need this audit to discover. Pure check; no IO beyond reading registry files. v1-task RC2-10. | Informational |
 | 13 | `knowledge-refresh` | Knowledge-refresh hook integrity (per-platform): missing hook, orphaned consent record, corrupt cache. `--fix-knowledge-refresh` repairs. | Informational |
 | 14 | `knowledge-prompt-disk-consistency` | Cross-checks each agent's prompt frontmatter against the materialized knowledge dir on disk to catch out-of-sync state. | Informational |
+| 15 | `agent-drift` | For each agent in `installed-agents.json`: hash the installed file and compare to the recorded `contentHash`. Reports `ok` / `drift` / `missing`. | Informational |
 
 The section ids in this table match the values you'll see in `--json` output and in the `DoctorSectionId` union (`src/core/freshness/run-doctor.ts:52-62`).
 
@@ -251,6 +252,8 @@ smith doctor --offline --no-cache --skip-model-resolution
 | Skill drift (`drift` status) | `smith skill update <name>` — overwrites local edits with the source. |
 | Skill `missing` (dest gone) | `smith skill update <name>` — same command, recreates the dest. |
 | Skill `source-missing` (catalog gone) | Re-register the source catalog with `smith skill register <path>`, or remove the install record with `smith skill uninstall <name>`. |
+| Agent drift (`drift` status) | `smith agent install <name>` — re-renders and overwrites the installed file. |
+| Agent `missing` (installed file gone) | `smith agent install <name>` — same command, recreates the file. |
 | Required-skill missing | `smith skill install <ref>` for each entry the report lists. |
 | `atlassian-auth: missing` | Create `~/.config/agent-smith/.env` with `SMITH_ATLASSIAN_EMAIL` + `SMITH_ATLASSIAN_API_TOKEN`. See [guide/04-knowledge.md](./04-knowledge.md#atlassian-authenticated-sources). |
 | `atlassian-auth: not-applicable` | No action needed — Atlassian credentials are not relevant because no `atlassian-skills` is installed and no agent has a Confluence/Jira knowledge source. |

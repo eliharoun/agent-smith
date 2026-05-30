@@ -110,6 +110,7 @@ export const DoctorReport = z.object({
   workspace: z.unknown().optional(),
   atlassianAuth: AtlassianAuth,
   skillDrift: z.unknown().optional(),
+  agentDrift: z.unknown().optional(),
   agentRequiredSkills: z.unknown().optional(),
   registryHygiene: z.unknown().optional(),
   remoteCatalogs: z.unknown().optional(),

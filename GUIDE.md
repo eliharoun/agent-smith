@@ -60,7 +60,7 @@ The 15 spokes are grouped by intent. Each one is a self-contained reference for 
 - [03 — Installing and rendering](./guide/03-installing-and-rendering.md). What `smith agent install` actually does. Build pipeline, per-platform output, cross-platform knowledge grants, the dual meaning of `--yes`.
 - [08 — Registries and catalogs](./guide/08-registries-and-catalogs.md). The two registries (agents vs skills), kind vocabularies, ad-hoc catalogs, registry hygiene.
 - [09 — The daemon](./guide/09-daemon.md). What it watches, reinstall triggers, git pull cadence, heartbeat file, lifecycle commands.
-- [10 — Doctor](./guide/10-doctor.md). The 14 health-check sections, internal exit codes (the trap), `--json` output, schema cache.
+- [10 — Doctor](./guide/10-doctor.md). The 15 health-check sections, internal exit codes (the trap), `--json` output, schema cache.
 - [11 — Update and uninstall](./guide/11-update-and-uninstall.md). `smith update` pipeline, `agent uninstall` / `agent uninstall-all` / `agent destroy` / `jack-out` — when to use which.
 
 ### Reference (look something up)
@@ -101,7 +101,7 @@ Every `smith` command, alphabetical. Follow the link for full synopsis, flags, e
 | [`smith daemon start`](./guide/14-cli-reference.md#smith-daemon-start) | Spawn the daemon detached and verify startup via heartbeat poll |
 | [`smith daemon status`](./guide/14-cli-reference.md#smith-daemon-status) | Report daemon liveness: not running, running, or stale pid file |
 | [`smith daemon stop`](./guide/14-cli-reference.md#smith-daemon-stop) | Stop the daemon (SIGTERM with SIGKILL fallback); always exits `0` |
-| [`smith doctor`](./guide/14-cli-reference.md#smith-doctor) | Run the 14-section health check (includes offline `remote-catalogs` drift report and per-platform detection) |
+| [`smith doctor`](./guide/14-cli-reference.md#smith-doctor) | Run the 15-section health check (includes offline `remote-catalogs` drift report and per-platform detection) |
 | [`smith init`](./guide/14-cli-reference.md#smith-init) | Initialize `~/.config/agent-smith/` (idempotent) |
 | [`smith agent init <name>`](./guide/14-cli-reference.md#smith-agent-init-name) | Scaffold a new bundle (clone with `--from`, or scaffold into a registered catalog with `--catalog`) |
 | [`smith init-user`](./guide/14-cli-reference.md#smith-init-user) | Open `USER.md` in `$EDITOR` |
@@ -169,7 +169,7 @@ Definitions for the vocabulary used across the spokes. Each entry links to the s
 - **Bundle** — a directory containing `agent.config.json` and the persona files (`IDENTITY.md`, `EXPERTISE.md`, `SOUL.md`, `USER.md`). The canonical agent definition. See [02 — Bundle anatomy](./guide/02-bundle-anatomy.md).
 - **Catalog** — a registered directory containing one or more bundles (agent catalog) or one or more `SKILL.md`-rooted directories (skill catalog). Tracked in `registry.json` (agents) or `skill-catalogs.json` (skills). See [08 — Registries and catalogs](./guide/08-registries-and-catalogs.md).
 - **Daemon** — the optional background watcher (`smith daemon start`) that re-installs on bundle changes, pulls git-backed catalogs every 15 minutes, and refreshes `ttl`-mode knowledge sources on an independent 5-minute tick. See [09 — The daemon](./guide/09-daemon.md).
-- **Doctor** — the 14-section health check (`smith doctor`) covering schema drift, model resolution, skill drift, registry hygiene, per-platform detection (opencode, claude-code, codex, kiro), and more. Has its own internal exit-code system. See [10 — Doctor](./guide/10-doctor.md).
+- **Doctor** — the 15-section health check (`smith doctor`) covering schema drift, model resolution, skill drift, registry hygiene, per-platform detection (opencode, claude-code, codex, kiro), and more. Has its own internal exit-code system. See [10 — Doctor](./guide/10-doctor.md).
 - **Drift** — the recorded source-content hash for an installed skill no longer matches the source on disk. Reported by `smith skill list` and `smith doctor`; never blocks operations. See [05 — Skills, "Drift and doctor"](./guide/05-skills.md#drift-and-doctor).
 - **Heartbeat** — the JSON file `~/.local/state/agent-smith/daemon.heartbeat.json` that the daemon rewrites atomically every few seconds. `smith daemon start` polls it to confirm successful startup; `smith daemon status` does not consult it. See [09 — The daemon, "Heartbeat"](./guide/09-daemon.md#heartbeat).
 - **Install** — `smith agent install <name>` builds the bundle, resolves required skills and the model tier, materializes knowledge, and writes per-platform files. See [03 — Installing and rendering](./guide/03-installing-and-rendering.md).
