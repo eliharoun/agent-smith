@@ -106,7 +106,9 @@ export function flattenChecks(r: DoctorResponse): FlatCheck[] {
     detail:
       r.atlassianAuth.status === "configured"
         ? `source: ${r.atlassianAuth.source}`
-        : "not configured",
+        : r.atlassianAuth.status === "not-applicable"
+          ? "not needed"
+          : "not configured",
   });
   // (z.unknown() sections are not flattened — they remain available
   // on the report for future expansion without forcing a schema bump.)
