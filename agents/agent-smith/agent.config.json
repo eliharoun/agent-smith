@@ -1,0 +1,45 @@
+{
+  "name": "agent-smith",
+  "description": "Use proactively for any work in the agent-smith ecosystem: tutoring the smith CLI, designing agent bundles (via the-architect skill), and authoring skills (via the-keymaker skill).",
+  "targets": ["opencode", "claude-code", "codex", "kiro"],
+  "modelTier": "opus",
+  "mode": "all",
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "edit": "allow",
+    "task": "allow",
+    "bash": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "skill": {
+      "the-architect": "allow",
+      "the-keymaker": "allow",
+      "brainstorming": "allow",
+      "verification-before-completion": "allow",
+      "*": "deny"
+    }
+  },
+  "knowledge": {
+    "sources": [
+      {
+        "id": "agent-smith-guide",
+        "type": "dir",
+        "path": "../../guide",
+        "delivery": "file",
+        "description": "Complete agent-smith guide: getting-started, bundle anatomy, installing/rendering, knowledge, skills, permissions/platforms, models, registries/catalogs, daemon, doctor, update/uninstall, error taxonomy, paths/state, CLI reference, and sharing/distribution. Authoritative source for everything about the smith CLI and the bundle ecosystem."
+      }
+    ]
+  },
+  "thresholds": {
+    "lineRanges": {
+      "identity": [8, 12],
+      "soul": [40, 60],
+      "user": [5, 10]
+    }
+  }
+}

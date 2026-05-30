@@ -1,0 +1,52 @@
+{
+  "skill": "the-architect",
+  "evals": [
+    {
+      "id": "create-vague",
+      "prompt": "create me a code-reviewer agent",
+      "expects": [
+        "smith agent init invoked with --description",
+        "all 4 source files exist after Phase 3 (IDENTITY, EXPERTISE, SOUL drafted; USER symlink intact)",
+        "smith agent validate exit 0",
+        "smith agent install ran and reported per-target paths",
+        "all persona files in second person (no '\\bI am\\b' patterns)",
+        "USER.md not edited (still a symlink to canonical)"
+      ]
+    },
+    {
+      "id": "create-detailed",
+      "prompt": "build me an agent that reviews TypeScript code, finds N+1 queries and missing error handling, speaks tersely, never apologizes, and uses the github MCP server",
+      "expects": [
+        "agent.config.json includes mcpServers: ['github']",
+        "agent.config.json permission is read-only or read-edit (allows read; denies or omits bash/webfetch for review work)",
+        "EXPERTISE.md captures N+1 queries and missing error handling as concrete distinctions",
+        "SOUL.md captures terseness and no-apology rules",
+        "smith agent validate exit 0",
+        "smith agent install ran",
+        "skill asked every Phase A1 question, presenting prompt-derived answers as suggested defaults the user explicitly confirmed (no silent inference, no collapsed confirmation block)"
+      ]
+    },
+    {
+      "id": "modify-targeted",
+      "prompt": "edit the code-reviewer to also catch missing test coverage",
+      "expects": [
+        "existing bundle read first (no rescaffold)",
+        "EXPERTISE.md edited to add test-coverage capability",
+        "no other persona files touched unnecessarily",
+        "smith agent validate exit 0",
+        "smith agent install ran"
+      ]
+    },
+    {
+      "id": "clone-with-tweak",
+      "prompt": "clone code-reviewer to make a terse version called code-reviewer-terse",
+      "expects": [
+        "smith agent init --from code-reviewer used",
+        "config name updated to code-reviewer-terse",
+        "SOUL.md edited for terseness (other persona files largely inherited)",
+        "smith agent validate exit 0",
+        "smith agent install ran"
+      ]
+    }
+  ]
+}

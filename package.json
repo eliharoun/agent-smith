@@ -1,0 +1,68 @@
+{
+  "name": "agent-smith",
+  "version": "1.0.0",
+  "workspaces": ["gui/server", "gui/web", "gui/shared"],
+  "description": "Lifecycle manager for persona-driven AI coding agents",
+  "private": true,
+  "repository": "github:eliharoun/agent-smith",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "test:install": "bash tests/bin/install.test.sh",
+    "test:watch": "bun test --watch",
+    "typecheck": "tsc --noEmit && bun run gui:typecheck",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "check": "biome check --write .",
+    "postinstall": "bun run scripts/bootstrap.ts --mode=postinstall",
+    "refresh-schemas": "bun run scripts/refresh-schemas.ts",
+    "check-drift": "bun run scripts/check-drift.ts",
+    "gui:dev": "bun run --filter gui-web dev",
+    "gui:build": "bun run --filter gui-web build && bun run --filter gui-server build",
+    "gui:test": "bun test gui/",
+    "gui:typecheck": "bash -c 'cd gui/web && ../../scripts/run-with-node.sh node_modules/typescript/bin/tsc --noEmit'",
+    "gui:check": "biome check gui/"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "files": [
+    "src",
+    "skills",
+    "agents",
+    "examples",
+    "scripts/bootstrap.ts",
+    "README.md",
+    "GUIDE.md",
+    "CHANGELOG.md"
+  ],
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "chokidar": "^5.0.0",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "gpt-tokenizer": "^3.4.0",
+    "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.1",
+    "jsdom": "^29.1.1",
+    "microdiff": "^1.5.0",
+    "ora": "8",
+    "picocolors": "^1.1.1",
+    "picomatch": "^4.0.4",
+    "smol-toml": "^1.6.1",
+    "turndown": "^7.2.4",
+    "zod": "^4.4.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsdom": "^28.0.1",
+    "@types/picomatch": "^4.0.3",
+    "@types/turndown": "^5.0.6",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^5.5.0"
+  }
+}

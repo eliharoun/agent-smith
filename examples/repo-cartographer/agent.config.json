@@ -1,0 +1,23 @@
+{
+  "name": "repo-cartographer",
+  "description": "Use proactively for codebase exploration questions — maps file structure, traces call graphs, locates implementations. Read-only.",
+  "targets": ["opencode", "claude-code", "codex"],
+  "modelTier": "sonnet",
+  "mode": "subagent",
+  "permission": {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "edit": "deny",
+    "bash": "deny",
+    "task": "allow",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "skill": {
+      "*": "deny"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "confluence-mixed-pages",
+  "type": "confluence",
+  "delivery": "file",
+  "space": "ENG",
+  "pages": ["Onboarding", { "id": 42 }, "Runbook"]
+}

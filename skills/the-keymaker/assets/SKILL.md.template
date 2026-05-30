@@ -1,0 +1,48 @@
+---
+name: {{NAME}}
+description: TODO — describe WHEN to use this skill in 1-1024 chars. Start with "Use when…". List concrete trigger phrases the user would say, file types, error symptoms, and situations. Be pushy — undertriggering is the more common failure. Example, "Use when the user wants to X, says phrases like 'Y' or 'Z', encounters W, or works with files matching V."
+---
+
+# {{NAME}}
+
+## Overview
+
+TODO — one to three sentences. What does this skill help an agent accomplish? State the core principle.
+
+## When to use this skill
+
+Use this skill when:
+- TODO — concrete situation 1
+- TODO — concrete situation 2
+- TODO — concrete situation 3
+
+Do NOT use this skill when:
+- TODO — adjacent-but-different case the agent might confuse with this one
+
+## Core concepts
+
+TODO — two to five domain ideas an agent needs before executing this skill. Delete this section if the domain is self-explanatory.
+
+## Workflow
+
+TODO — step-by-step instructions. Explain *why* each step matters, not just what to do.
+
+1. Step one
+2. Step two
+3. Step three
+
+## Quick reference
+
+| Task | Command / file |
+|---|---|
+| TODO | TODO |
+
+## Gotchas
+
+TODO — non-obvious facts that defy reasonable assumptions. Often the highest-value section. Delete if the domain has none.
+
+## Common mistakes
+
+| Mistake | Fix |
+|---|---|
+| TODO | TODO |

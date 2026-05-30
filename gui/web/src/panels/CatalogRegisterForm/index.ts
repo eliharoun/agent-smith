@@ -1,0 +1,1 @@
+export { CatalogRegisterForm } from "./CatalogRegisterForm";

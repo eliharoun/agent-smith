@@ -1,0 +1,7 @@
+{
+  "id": "confluence-string-pages",
+  "type": "confluence",
+  "delivery": "file",
+  "space": "ENG",
+  "pages": ["My Page Title", "Another Page"]
+}

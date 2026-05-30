@@ -1,0 +1,9 @@
+{
+  "id": "git-source",
+  "type": "git",
+  "delivery": "file",
+  "url": "https://github.com/example/repo.git",
+  "subpath": "docs",
+  "ref": "main",
+  "include": ["**/*.md"]
+}

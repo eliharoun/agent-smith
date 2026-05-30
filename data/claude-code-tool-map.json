@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "lastVerifiedDate": "2026-05-01",
+    "verifiedAgainstVersion": "claude-code (current docs as of verification date)",
+    "sourceUrl": "https://docs.anthropic.com/en/docs/claude-code/sdk/agents/tools",
+    "notes": "Initial map shipped with agent-smith v0.2.0. Permission groups absent from the mapping (lsp, external_directory, question, doom_loop) have no claude-code tool equivalent and are silently skipped during expansion."
+  },
+  "mapping": {
+    "read": ["Read"],
+    "glob": ["Glob"],
+    "grep": ["Grep"],
+    "list": ["LS"],
+    "edit": ["Edit", "Write", "MultiEdit", "NotebookEdit"],
+    "bash": ["Bash"],
+    "task": ["Task"],
+    "skill": ["Skill"],
+    "webfetch": ["WebFetch"],
+    "websearch": ["WebSearch"],
+    "todowrite": ["TodoWrite"]
+  }
+}

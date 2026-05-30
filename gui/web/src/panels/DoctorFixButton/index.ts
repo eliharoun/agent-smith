@@ -1,0 +1,1 @@
+export { DoctorFixButton } from "./DoctorFixButton";

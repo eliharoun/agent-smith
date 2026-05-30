@@ -1,0 +1,1 @@
+export { AgentPermissionsView } from "./AgentPermissionsView";

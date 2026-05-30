@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`v1 surface — web URLs > inventory of client-side routes is stable 1`] = `
+[
+  "/",
+  "/agents",
+  "/agents/:name",
+  "/agents/install-matrix",
+  "/agents/new",
+  "/catalogs",
+  "/catalogs/register",
+  "/knowledge",
+  "/knowledge/:agent",
+  "/knowledge/:agent/refresh-history",
+  "/knowledge/refresh-history",
+  "/onboarding",
+  "/skills",
+  "/skills/:name",
+  "/skills/new",
+  "/system/atlassian-setup",
+  "/system/daemon",
+  "/system/doctor",
+  "/system/history",
+  "/system/jack-out",
+  "/system/model-config",
+  "/system/settings",
+  "/system/update",
+]
+`;

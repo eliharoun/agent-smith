@@ -1,0 +1,42 @@
+{
+  "name": "gui-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "../../scripts/run-with-node.sh node_modules/vite/bin/vite.js",
+    "build": "../../scripts/run-with-node.sh node_modules/typescript/bin/tsc --noEmit && ../../scripts/run-with-node.sh node_modules/vite/bin/vite.js build",
+    "preview": "../../scripts/run-with-node.sh node_modules/vite/bin/vite.js preview",
+    "test": "../../scripts/run-with-node.sh node_modules/vitest/vitest.mjs run",
+    "e2e": "rm -rf .e2e-config && playwright test",
+    "storybook": "storybook dev -p 6006"
+  },
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.26.0",
+    "@tanstack/react-query": "^5.50.0",
+    "zustand": "^4.5.0",
+    "zod": "^4.0.0",
+    "gui-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0",
+    "vitest": "^2.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.4.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "jsdom": "^25.0.0",
+    "msw": "~2.10.0",
+    "@storybook/react": "^8.3.0",
+    "@storybook/react-vite": "^8.3.0",
+    "storybook": "^8.3.0",
+    "@playwright/test": "^1.47.0"
+  }
+}

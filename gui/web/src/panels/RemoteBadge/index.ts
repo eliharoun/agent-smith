@@ -1,0 +1,1 @@
+export { RemoteBadge } from "./RemoteBadge";
