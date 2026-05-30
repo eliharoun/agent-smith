@@ -558,6 +558,7 @@ describe("runDoctor: atlassianAuth section", () => {
       claudeMeta,
       codexMeta,
       deps: deps(),
+      hasAtlassianKnowledgeSources: true,
       resolveAtlassianAuth: () => ({
         email: "alice@x",
         token: "tok-A",
@@ -585,6 +586,7 @@ describe("runDoctor: atlassianAuth section", () => {
       claudeMeta,
       codexMeta,
       deps: deps(),
+      hasAtlassianKnowledgeSources: true,
       resolveAtlassianAuth: () => null,
       onSectionDone: (e) => events.push({ kind: "done", id: e.id, status: e.status }),
     });
