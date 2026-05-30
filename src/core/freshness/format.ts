@@ -7,6 +7,7 @@ import type { DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { RemoteCatalogsReport } from "./remote-catalogs";
 import type { CapturedSectionSummary } from "./run-doctor";
 import type {
+  AgentDriftReport,
   AgentRequiredSkillsReport,
   AtlassianAuthReport,
   DoctorPlatformReport,
@@ -128,6 +129,10 @@ export function formatReport(report: DoctorReport): string {
   }
   if (report.skillDrift) {
     blocks.push(formatSkillDriftSection(report.skillDrift));
+    blocks.push("");
+  }
+  if (report.agentDrift) {
+    blocks.push(formatAgentDriftSection(report.agentDrift));
     blocks.push("");
   }
   if (report.agentRequiredSkills) {
@@ -272,6 +277,8 @@ function renderSectionDetail(
       return report.atlassianAuth ? formatAtlassianAuthSection(report.atlassianAuth) : null;
     case "skill-drift":
       return report.skillDrift ? formatSkillDriftSection(report.skillDrift) : null;
+    case "agent-drift":
+      return report.agentDrift ? formatAgentDriftSection(report.agentDrift) : null;
     case "agent-required-skills":
       return report.agentRequiredSkills
         ? formatAgentRequiredSkillsSection(report.agentRequiredSkills)
@@ -606,6 +613,30 @@ export function formatSkillDriftSection(sd: SkillDriftReport): string {
       case "source-missing":
         lines.push(`  [src!]    ${e.name}`);
         lines.push(`            -> source missing at ${e.sourceDir}; reinstall from a new source`);
+        break;
+    }
+  }
+  return lines.join("\n");
+}
+
+export function formatAgentDriftSection(r: AgentDriftReport): string {
+  const lines: string[] = ["Installed agents:"];
+  if (r.entries.length === 0) {
+    lines.push("  (none tracked)");
+    return lines.join("\n");
+  }
+  for (const e of r.entries) {
+    switch (e.status) {
+      case "ok":
+        lines.push(`  [ok]      ${e.name} (${e.platform})`);
+        break;
+      case "drift":
+        lines.push(`  [drift]   ${e.name} (${e.platform})`);
+        lines.push(`            -> on-disk file edited since install; run \`smith agent install ${e.name}\``);
+        break;
+      case "missing":
+        lines.push(`  [missing] ${e.name} (${e.platform})`);
+        lines.push(`            -> installed file gone (${e.path}); run \`smith agent install ${e.name}\``);
         break;
     }
   }

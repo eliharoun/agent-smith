@@ -141,6 +141,22 @@ export interface SkillDriftReport {
   entries: SkillDriftEntry[];
 }
 
+export type AgentDriftEntry =
+  | { name: string; platform: string; status: "ok"; path: string }
+  | {
+      name: string;
+      platform: string;
+      status: "drift";
+      path: string;
+      recordedHash: string;
+      currentHash: string;
+    }
+  | { name: string; platform: string; status: "missing"; path: string };
+
+export interface AgentDriftReport {
+  entries: AgentDriftEntry[];
+}
+
 /**
  * Agent ↔ skill binding report. One entry per agent that declares
  * `requires.skills` AND has at least one not currently installed. Agents
@@ -206,6 +222,8 @@ export interface DoctorReport {
    * tweak installed skills before the next `smith skill update`.
    */
   skillDrift?: SkillDriftReport;
+  /** Optional installed-agent drift report. Informational; never affects exitCode. */
+  agentDrift?: AgentDriftReport;
   /**
    * Optional agent ↔ required-skill check. Undefined when the
    * caller doesn't request the check. Informational only — never affects

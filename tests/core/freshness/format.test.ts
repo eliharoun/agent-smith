@@ -813,3 +813,27 @@ test("formatAtlassianAuthSection renders a not-applicable branch", () => {
   expect(out).toContain("Atlassian auth:");
   expect(out.toLowerCase()).toContain("not used");
 });
+
+import { formatAgentDriftSection } from "../../../src/core/freshness/format";
+import type { AgentDriftReport } from "../../../src/core/freshness/types";
+
+describe("formatAgentDriftSection", () => {
+  test("renders ok/drift/missing with fix hints", () => {
+    const r: AgentDriftReport = {
+      entries: [
+        { name: "incident-debugger", platform: "claude-code", status: "ok", path: "/p" },
+        { name: "pr-reviewer", platform: "claude-code", status: "drift", path: "/q", recordedHash: "sha256:1", currentHash: "sha256:2" },
+        { name: "release-scribe", platform: "codex", status: "missing", path: "/r" },
+      ],
+    };
+    const out = formatAgentDriftSection(r);
+    expect(out).toContain("Installed agents:");
+    expect(out).toContain("[ok]      incident-debugger (claude-code)");
+    expect(out).toContain("[drift]   pr-reviewer (claude-code)");
+    expect(out).toContain("smith agent install pr-reviewer");
+    expect(out).toContain("[missing] release-scribe (codex)");
+  });
+  test("empty → none tracked", () => {
+    expect(formatAgentDriftSection({ entries: [] })).toContain("(none tracked)");
+  });
+});

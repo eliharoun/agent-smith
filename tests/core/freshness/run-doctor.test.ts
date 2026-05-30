@@ -1023,3 +1023,51 @@ describe("Atlassian relevance gating", () => {
     expect(await atlStatus({ hasAtlassianKnowledgeSources: true })).toBe("warn");
   });
 });
+
+import { agentDriftEventStatus } from "../../../src/core/freshness/run-doctor";
+import type { AgentDriftReport } from "../../../src/core/freshness/types";
+
+describe("agentDriftEventStatus", () => {
+  const ok: AgentDriftReport = {
+    entries: [{ name: "a", platform: "claude-code", status: "ok", path: "/p" }],
+  };
+  const drift: AgentDriftReport = {
+    entries: [
+      { name: "a", platform: "claude-code", status: "ok", path: "/p" },
+      { name: "b", platform: "codex", status: "drift", path: "/q", recordedHash: "sha256:1", currentHash: "sha256:2" },
+    ],
+  };
+  test("all ok → ok", () => expect(agentDriftEventStatus(ok)).toBe("ok"));
+  test("empty → ok", () => expect(agentDriftEventStatus({ entries: [] })).toBe("ok"));
+  test("any drift/missing → warn", () => expect(agentDriftEventStatus(drift)).toBe("warn"));
+});
+
+describe("checkAgentDrift via runDoctor", () => {
+  test("ok + drift + missing classified; section warn but exit code unaffected", async () => {
+    const events: DoctorSectionDoneEvent[] = [];
+    const installed = {
+      schemaVersion: 1 as const,
+      installed: [
+        { name: "ok-agent", platform: "claude-code", path: "/x/ok", contentHash: "sha256:OK", installedAt: "t" },
+        { name: "drift-agent", platform: "codex", path: "/x/drift", contentHash: "sha256:OLD", installedAt: "t" },
+        { name: "gone-agent", platform: "kiro", path: "/x/gone", contentHash: "sha256:G", installedAt: "t" },
+      ],
+    };
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      agentDrift: {
+        loadInstalled: async () => installed,
+        pathExists: async (p: string) => p !== "/x/gone",
+        hashFile: async (p: string) => (p === "/x/drift" ? "sha256:NEW" : "sha256:OK"),
+      },
+      onSectionDone: (e) => events.push(e),
+    });
+    expect(report.agentDrift?.entries.map((e) => e.status)).toEqual(["ok", "drift", "missing"]);
+    expect(events.find((e) => e.id === "agent-drift")?.status).toBe("warn");
+    expect(report.exitCode).toBe(0);
+  });
+});

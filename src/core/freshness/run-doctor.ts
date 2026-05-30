@@ -15,6 +15,11 @@ import {
   type InstalledSkillsFile,
 } from "../../io/installed-skills";
 import {
+  hashContent as defaultHashContent,
+  loadInstalledAgents as defaultLoadInstalledAgents,
+  type InstalledAgentsFile,
+} from "../../io/installed-agents";
+import {
   detectPython as defaultDetectPython,
   type PythonRuntimeStatus,
 } from "../../io/python-runtime";
@@ -55,6 +60,8 @@ import type { InstalledModelsPaths } from "./installed-models";
 import { scanInstalledModels } from "./installed-models";
 import { checkRemoteCatalogs, type RemoteCatalogsReport } from "./remote-catalogs";
 import type {
+  AgentDriftEntry,
+  AgentDriftReport,
   AgentRequiredSkillsReport,
   AtlassianAuthReport,
   AtlassianSkillsRuntimeStatus,
@@ -88,6 +95,7 @@ export type DoctorSectionId =
   | "workspace"
   | "atlassian-auth"
   | "skill-drift"
+  | "agent-drift"
   | "agent-required-skills"
   | "registry-hygiene"
   | "remote-catalogs"
@@ -230,6 +238,17 @@ export interface RunDoctorInput {
      * Returns true if the path exists and is a directory; false otherwise.
      * Defaults to a node:fs/promises stat() probe. Test seam.
      */
+    pathExists?: (path: string) => Promise<boolean>;
+  };
+  /**
+   * Optional. If omitted, the agent-drift section is skipped. When provided,
+   * classifies each installed-agent entry as ok | drift | missing.
+   * Informational only — never affects exitCode.
+   */
+  agentDrift?: {
+    homeDir?: string;
+    loadInstalled?: (opts?: { homeDir?: string }) => Promise<InstalledAgentsFile>;
+    hashFile?: (path: string) => Promise<string>;
     pathExists?: (path: string) => Promise<boolean>;
   };
   /**
@@ -421,6 +440,13 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let agentDrift: AgentDriftReport | undefined;
+  if (input.agentDrift) {
+    emitStart(input, "agent-drift", "Installed agents");
+    agentDrift = await checkAgentDrift(input.agentDrift);
+    emitDone(input, "agent-drift", agentDriftEventStatus(agentDrift), agentDriftSummary(agentDrift));
+  }
+
   let agentRequiredSkills: AgentRequiredSkillsReport | undefined;
   if (input.loadAgentsForDoctor) {
     emitStart(input, "agent-required-skills", "Required skills");
@@ -533,6 +559,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(workspace ? { workspace } : {}),
     atlassianAuth,
     ...(skillDrift ? { skillDrift } : {}),
+    ...(agentDrift ? { agentDrift } : {}),
     ...(agentRequiredSkills ? { agentRequiredSkills } : {}),
     ...(registryHygiene ? { registryHygiene } : {}),
     ...(remoteCatalogs ? { remoteCatalogs } : {}),
@@ -838,6 +865,67 @@ function skillDriftSummary(r: SkillDriftReport): string {
   if (missing > 0) parts.push(`${missing} missing on disk`);
   if (sourceMissing > 0) parts.push(`${sourceMissing} source missing`);
   return `Installed skills: ${parts.join(", ")}`;
+}
+
+async function defaultAgentFileExists(path: string): Promise<boolean> {
+  try {
+    const { stat } = await import("node:fs/promises");
+    const s = await stat(path);
+    return s.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function defaultHashAgentFile(path: string): Promise<string> {
+  const { readFile } = await import("node:fs/promises");
+  return defaultHashContent(await readFile(path, "utf8"));
+}
+
+async function checkAgentDrift(
+  cfg: NonNullable<RunDoctorInput["agentDrift"]>,
+): Promise<AgentDriftReport> {
+  const load = cfg.loadInstalled ?? defaultLoadInstalledAgents;
+  const hashFile = cfg.hashFile ?? defaultHashAgentFile;
+  const exists = cfg.pathExists ?? defaultAgentFileExists;
+  const file = await load(cfg.homeDir ? { homeDir: cfg.homeDir } : undefined);
+  const entries: AgentDriftEntry[] = [];
+  for (const e of file.installed) {
+    if (!(await exists(e.path))) {
+      entries.push({ name: e.name, platform: e.platform, status: "missing", path: e.path });
+      continue;
+    }
+    const currentHash = await hashFile(e.path);
+    if (currentHash === e.contentHash) {
+      entries.push({ name: e.name, platform: e.platform, status: "ok", path: e.path });
+    } else {
+      entries.push({
+        name: e.name,
+        platform: e.platform,
+        status: "drift",
+        path: e.path,
+        recordedHash: e.contentHash,
+        currentHash,
+      });
+    }
+  }
+  return { entries };
+}
+
+export function agentDriftEventStatus(r: AgentDriftReport): DoctorSectionDoneEvent["status"] {
+  if (r.entries.length === 0) return "ok";
+  return r.entries.some((e) => e.status !== "ok") ? "warn" : "ok";
+}
+
+function agentDriftSummary(r: AgentDriftReport): string {
+  if (r.entries.length === 0) return "No installed agents tracked";
+  const drifted = r.entries.filter((e) => e.status === "drift").length;
+  const missing = r.entries.filter((e) => e.status === "missing").length;
+  if (drifted + missing === 0) return `Installed agents: ${r.entries.length} verified`;
+  const parts: string[] = [];
+  if (drifted > 0) parts.push(`${drifted} drifted`);
+  if (missing > 0) parts.push(`${missing} missing`);
+  return `Installed agents: ${parts.join(", ")}`;
 }
 
 async function buildModelResolutionReport(
