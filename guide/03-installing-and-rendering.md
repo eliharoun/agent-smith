@@ -270,7 +270,7 @@ Required-skills are part of install but documented canonically in [05-skills.md]
 
 There is no `--targets` flag on `smith agent install` or `smith agent install-all`. The bundle's `targets` array (set in `agent.config.json` and editable via `smith agent init --targets`) is the single source of truth for which platforms get written to. If a bundle's `targets` is `["opencode"]`, only the OpenCode file is rendered and written; Claude Code, Codex, and Kiro paths are not touched.
 
-(`smith skill bootstrap` and `smith skill install` *do* have `--targets` flags. They control which platforms the bundled-asset / skill-copy operation writes to — valid values are `opencode`, `claude-code`, `codex`, and `kiro`. See [01-getting-started.md](./01-getting-started.md) and [05-skills.md](./05-skills.md).)
+(`smith skill bootstrap` and `smith skill install` *do* have `--targets` flags. They control which platforms the bundled-asset / skill-copy operation writes to — valid values are `opencode`, `claude-code`, `codex`, and `kiro`. When `--targets` is passed explicitly, the platform's skill directory is created if absent; without `--targets`, platforms whose skill directory doesn't already exist are silently skipped. See [01-getting-started.md](./01-getting-started.md) and [05-skills.md](./05-skills.md).)
 
 A consequence: if you remove a target from a bundle's `targets` array and re-install, the file at the previously-targeted platform is **not deleted**. You have to `smith agent uninstall <name>` first to clean up the stale install, then re-install with the new targets list. See [11-update-and-uninstall.md](./11-update-and-uninstall.md).
 

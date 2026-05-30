@@ -90,9 +90,11 @@ Every 5 seconds by default (`src/daemon/index.ts:146`), overridable per-process 
 
 ```json
 {
+  "schemaVersion": 2,
   "pid": 47213,
   "startedAt": 1759622400000,
   "lastBeatAt": 1759622415000,
+  "status": "ready",
   "sources": {
     "team-agents": "idle",
     "team-agents": "dirty"
@@ -102,9 +104,11 @@ Every 5 seconds by default (`src/daemon/index.ts:146`), overridable per-process 
 
 | Field | Meaning |
 |---|---|
+| `schemaVersion` | Schema version (`1` or `2`). Current daemon writes `2`. |
 | `pid` | The daemon's own process id, useful for log correlation. |
-| `startedAt` | ms epoch when initial install completed. Stable for the daemon's lifetime. |
+| `startedAt` | ms epoch when the daemon process started (set before initial install begins). Stable for the daemon's lifetime. |
 | `lastBeatAt` | ms epoch of the most recent heartbeat write. Staleness is `now - lastBeatAt`. |
+| `status` | Current daemon phase: `"installing"` (initial install in progress), `"ready"` (last install succeeded), or `"degraded"` (last install had errors). |
 | `sources` | Per-source pull state snapshot. Only git-pullable sources appear. Values: `idle`, `pulling`, `dirty`, `error`. |
 
 Writes are atomic: the daemon writes to a tempfile in the same directory, then renames onto the final path (`src/daemon/heartbeat.ts:27-37`). Same-directory rename is atomic on POSIX, so concurrent readers (`smith daemon status`, an external monitor `cat`-ing the file) never see a torn JSON document.
@@ -144,7 +148,9 @@ $ smith daemon start
 Daemon started 47213
 ```
 
-Algorithm (`src/cli/commands/daemon.ts:75-134`):
+Before spawning, `daemon start` runs `migrateLegacyDaemonFiles()` which moves any pre-rc.5 daemon files (`daemon.pid`, `daemon.heartbeat.json`, `daemon.log`) from the legacy `~/.config/agent-smith/` location to `~/.local/state/agent-smith/`. The migration is idempotent and best-effort — failures are swallowed.
+
+Algorithm (`src/cli/commands/daemon.ts`):
 
 1. If pid file exists **and** that pid is alive → log `Daemon already running <pid>`, exit 0. The existing daemon is left alone.
 2. If pid file exists but the pid is dead → silently overwrite. The new daemon takes over.
@@ -158,6 +164,8 @@ Algorithm (`src/cli/commands/daemon.ts:75-134`):
 7. If the poll times out → SIGTERM the child, remove pid file, log `Daemon failed to start within 10000ms`, exit 1.
 
 Steps 5–7 close DAEMON-12 / DAEMON-15: previously, `daemon start` would print "Daemon started" the moment `spawn()` returned, even if the child crashed in `loadRegistry()` milliseconds later. Now the success message means the child is genuinely running and writing heartbeats.
+
+The daemon child establishes its heartbeat **before** running the initial install, so the parent's 10 s poll succeeds even when install takes 40+ seconds (large Confluence/URL knowledge sources). During the initial install, a 30-second watchdog logs `initial install still running after Ns` to `daemon.log` so operators have a debugging trail for stuck installs.
 
 Exit code is always 0 on success or "already running"; 1 on spawn failure, child crash, or timeout.
 
@@ -183,28 +191,28 @@ Algorithm (`src/cli/commands/daemon.ts:262-316`):
 
 ### `smith daemon status`
 
-Report whether the pid-tracked daemon is alive (`src/cli/commands/daemon.ts:318-330`).
+Report whether the pid-tracked daemon is alive and healthy (`src/cli/commands/daemon.ts`).
 
 ```
 $ smith daemon status
-running 47213
+running 47213 (heartbeat 312ms ago, status=ready)
 ```
 
-Three states:
+The status command checks both process liveness **and** heartbeat freshness. A process that's alive but hasn't written a heartbeat within 7 seconds is reported as `stuck`.
 
 | Output | Meaning | Exit code |
 |---|---|---|
 | `not running` | No pid file. | 0 |
-| `running <pid>` | Pid file exists, that process is alive. | 0 |
-| `stale pid file <pid>` | Pid file exists but process is dead. Run `smith daemon stop` to clean up, then `smith daemon start`. | 0 |
+| `stale pid file <pid> (invalid pid removed)` | Pid file contained garbage; removed. | 0 |
+| `stale pid file <pid> (process not alive; removed)` | Pid file exists but process is dead. Run `smith daemon start`. | 0 |
+| `running <pid> (no heartbeat yet)` | Process alive, heartbeat file not yet written (very early startup). | 0 |
+| `running <pid> (heartbeat from pid X — possible stale heartbeat file)` | Heartbeat belongs to a prior daemon instance. | 0 |
+| `running <pid> (installing... heartbeat Xms ago)` | Daemon alive, initial install still in progress. | 0 |
+| `running <pid> (heartbeat Xms ago, status=ready)` | Daemon alive and healthy. | 0 |
+| `running <pid> (heartbeat Xms ago, status=degraded)` | Daemon alive but last install had errors. | 0 |
+| `stuck <pid> (heartbeat Xs ago, threshold 7s)` | Process alive but event loop is blocked — heartbeat is stale. Investigate `daemon.log` and consider `daemon stop && daemon start`. | 0 |
 
-`status` does **not** check heartbeat freshness — it only checks whether the process is alive. A process that's alive but wedged (no heartbeat ticks for 30 s) will still report `running`. To detect wedge, read the heartbeat file directly:
-
-```bash
-cat ~/.local/state/agent-smith/daemon.heartbeat.json
-```
-
-If `lastBeatAt` is more than ~7 seconds behind wall clock, the daemon is alive but its event loop is blocked.
+Exit code is always 0 — `status` is informational. Scripts that need to distinguish states should parse the text output or use `--json` (future).
 
 ### `smith daemon run`
 
@@ -249,7 +257,7 @@ Invalid or non-positive values are silently ignored and the default applies. To 
 smith daemon status
 ```
 
-If it says `running <pid>` but you suspect the process is wedged, check heartbeat freshness:
+If it reports `stuck <pid>`, the daemon's event loop is blocked. Check `daemon.log` for the cause and consider `daemon stop && daemon start`. You can also inspect the raw heartbeat file:
 
 ```bash
 cat ~/.local/state/agent-smith/daemon.heartbeat.json
@@ -326,7 +334,7 @@ sudo kill -9 <pid>    # if you don't own the process
   : > ~/.local/state/agent-smith/daemon.log
   smith daemon start
   ```
-- **`daemon status` checks process liveness, not heartbeat freshness.** A wedged-but-alive daemon reports `running`. Read the heartbeat file directly to detect wedge.
+- **`daemon status` reports heartbeat freshness.** A wedged-but-alive daemon is reported as `stuck` with the heartbeat age and threshold. See the status table above for all possible outputs.
 - **Heartbeat is removed on graceful shutdown only.** A daemon killed with SIGKILL (or that crashed without running its shutdown handlers) leaves the heartbeat behind. The next `daemon start` will overwrite it; in the meantime, the file's stale `lastBeatAt` is the signal that something went wrong.
 - **One daemon per user.** The pid file enforces single-instance. Running `daemon start` while one is already alive is a no-op.
 

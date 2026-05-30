@@ -39,11 +39,13 @@ For sequential pipelines like `smith update`, `EXIT_PARTIAL` is also used when a
 ```text
 usage-error         → 2  (EXIT_USAGE)
 validation-failed   → 2  (EXIT_USAGE)
+already-exists      → 2  (EXIT_USAGE)
+config-missing      → 2  (EXIT_USAGE)
 partial-failure     → 3  (EXIT_PARTIAL)
 <everything else>   → 1  (EXIT_RUNTIME)
 ```
 
-The "everything else" bucket — catalog file problems (`registry-version`, `registry-corrupt-json`, `skill-registry-version`, `skill-registry-corrupt-json`), state file corruption (`installed-skills-corrupt`), missing config (`config-missing`), system-level (`permission-denied`), state preconditions (`not-found`, `already-exists`, `protected-catalog`) — all map to `EXIT_RUNTIME`. The reasoning: these are all "operation could not complete" outcomes, distinguishable from each other by the rendered headline but not by the shell-level exit code.
+The "everything else" bucket — catalog file problems (`registry-version`, `registry-corrupt-json`, `skill-registry-version`, `skill-registry-corrupt-json`), state file corruption (`installed-skills-corrupt`), system-level (`permission-denied`), state preconditions (`not-found`, `protected-catalog`), model resolution (`model-resolution-failed`), network/HTTP errors — all map to `EXIT_RUNTIME`. The reasoning: these are all "operation could not complete" outcomes, distinguishable from each other by the rendered headline but not by the shell-level exit code.
 
 ### Subsystem exit codes that don't fit the taxonomy
 
@@ -56,7 +58,7 @@ This is a deliberate trade-off: doctor's exit-code semantics pre-date the unifie
 
 ## SmithError variant catalog
 
-Every classified error in smith is a `SmithError` carrying a discriminated payload. The union has 17 variants (`src/core/smith-error.ts`). For each variant: what triggers it, what the renderer prints, what exit code it maps to, and an example.
+Every classified error in smith is a `SmithError` carrying a discriminated payload. The union has 18 variants (`src/core/smith-error.ts`). For each variant: what triggers it, what the renderer prints, what exit code it maps to, and an example.
 
 The renderer is the same for every variant (`src/cli/wrap.ts:172-199`):
 
@@ -122,7 +124,7 @@ The `installed-skills.json` state file is not parseable. Source: `src/io/install
 - **Body:** `<path>: <parseError>`
 - **Remediation:** `rm <path>`, then re-run `smith skill install <ref>` for each skill you had installed. (You'll need to remember which ones, since the file that tracked them is what's broken.)
 
-### `config-missing` → exit `1`
+### `config-missing` → exit `2`
 
 A required config file does not exist. The thrower knows the right initialization command to suggest.
 
@@ -200,7 +202,7 @@ A named entity (agent, skill, catalog, knowledge source) does not exist in the r
 - **Body:** empty (headline conveys it)
 - **Remediation:** `Try: <suggestedCommand>` if supplied (e.g. `Try: smith agent list` to enumerate what does exist), otherwise empty.
 
-### `already-exists` → exit `1`
+### `already-exists` → exit `2`
 
 A named entity already exists when the caller expected a fresh slot.
 
@@ -218,39 +220,49 @@ The user tried to unregister a catalog that is marked `protected: true` in the o
 - **Body:** empty
 - **Remediation:** None — protected catalogs are protected by design. The variant intentionally omits the `Try:` line.
 
+### `model-resolution-failed` → exit `1`
+
+The layered model resolver exhausted all providers for the requested tier. Thrown when no authenticated model provider can satisfy the bundle's `modelTier` for a given target. Source: `src/core/smith-error.ts`.
+
+- **Headline:** `model resolution failed for tier '<tier>'`
+- **Body:** names the agent, tier, preferences tried, and authenticated providers available.
+- **Remediation:** a hint string from the resolver (e.g. "Set OPENCODE_MODEL_* or configure a provider").
+
 ### Quick reference table
 
 | Variant code | Exit | Headline form | Where thrown (representative) |
 |---|---|---|---|
 | `registry-version` | 1 | `agent catalog file version mismatch` | `src/io/registry.ts` |
 | `registry-corrupt-json` | 1 | `agent catalog file is corrupt` | `src/io/registry.ts` |
-| `registry-corrupt-shape` | 1 | `agent catalog file has corrupt shape` | `src/io/registry.ts` (Zod-shape rejection) |
+| `registry-corrupt-shape` | 1 | `agent catalog file has invalid shape` | `src/io/registry.ts` (Zod-shape rejection) |
 | `skill-registry-version` | 1 | `skill catalog file version mismatch` | `src/io/skill-registry.ts` |
 | `skill-registry-corrupt-json` | 1 | `skill catalog file is corrupt` | `src/io/skill-registry.ts` |
-| `skill-registry-corrupt-shape` | 1 | `skill catalog file has corrupt shape` | `src/io/skill-registry.ts` (Zod-shape rejection) |
+| `skill-registry-corrupt-shape` | 1 | `skill catalog file has invalid shape` | `src/io/skill-registry.ts` (Zod-shape rejection) |
 | `installed-skills-corrupt` | 1 | `installed-skills state file is corrupt` | `src/io/installed-skills.ts` |
-| `config-missing` | 1 | `config file missing` | various io-layer load paths |
+| `config-missing` | 2 | `config file missing` | various io-layer load paths |
 | `permission-denied` | 1 | `permission denied` | various io-layer write paths; `httpErrorFor` 401/403; `classifyFsError` EACCES/EPERM |
 | `http-error` | 1 | `<service><op>: HTTP <status>` | `httpErrorFor` (atlassian-http, confluence, jira, acquire.ts) |
 | `network-error` | 1 | `<operation> failed: network error` | `acquireUrl` raw `fetch()` wrap (Batch 16); URL pre-redacted via `redactSecrets` |
+| `model-resolution-failed` | 1 | `model resolution failed for tier '<tier>'` | `src/core/smith-error.ts` (layered resolver exhausted) |
 | `usage-error` | 2 | `<message>` | `src/cli/commands/*` (30+ sites); `formatCommanderError` |
 | `validation-failed` | 2 | `<what> validation failed` | `src/cli/commands/validate.ts`, register/install paths |
 | `partial-failure` | 3 | `<operation> completed with errors` | `agent install-all`, `agent uninstall-all`, knowledge fetch, bootstrap, knowledge validate |
 | `not-found` | 1 | `<what> not found: <identifier>` | install/uninstall lookup paths, agent init --catalog |
-| `already-exists` | 1 | `<what> already exists: <identifier>` | `agent init`, `skill install --from --as` |
+| `already-exists` | 2 | `<what> already exists: <identifier>` | `agent init`, `skill install --from --as` |
 | `protected-catalog` | 1 | `cannot unregister protected catalog '<name>'` | `src/io/skill-registry.ts` |
 
 ## Update pipeline
 
-`smith update` is a five-step sequential pipeline (`src/cli/commands/update.ts:101-209`) and its exit codes don't match a single SmithError variant. Spokes 11 and 14 link this section as `#update-pipeline`.
+`smith update` is a six-step sequential pipeline (`src/cli/commands/update.ts:101-209`) and its exit codes don't match a single SmithError variant. Spokes 11 and 14 link this section as `#update-pipeline`.
 
 The pipeline:
 
 1. Resolve the workspace from `import.meta.url`. If `null`, refuse with a reinstall pointer.
 2. `git pull --ff-only` (refuses on dirty workspace; fails on network/non-fast-forward).
 3. `bun install` to sync dependencies.
-4. `smith agent install agent-smith` to refresh the companion agent's bundled knowledge dir from `guide/`. A failure here prints `Re-run: smith agent install agent-smith` and the pipeline continues — doctor still runs.
-5. `smith doctor` to verify the install. Doctor's exit code is propagated **verbatim** as `update`'s exit code, except when reinstall (Step 4) failed and doctor passed clean — that combination promotes to `EXIT_PARTIAL`.
+4. `bun run gui:build` to rebuild the GUI SPA bundle. Warn-and-continue on failure.
+5. `smith agent install agent-smith` to refresh the companion agent's bundled knowledge dir from `guide/`. A failure here prints `Re-run: smith agent install agent-smith` and the pipeline continues — doctor still runs.
+6. `smith doctor` to verify the install. Doctor's exit code is propagated **verbatim** as `update`'s exit code, except when reinstall (Step 5) or GUI build (Step 4) failed and doctor passed clean — that combination promotes to `EXIT_PARTIAL`.
 
 Step 1 should not fire under the single-mode install (every clone lives at `~/.agent-smith/`). When it does, the printed pointer is `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` (`src/cli/commands/update.ts:114`).
 
@@ -263,6 +275,7 @@ Exit code mapping (canonical — spokes 11 and 14 link here):
 | `git fetch origin main` failure (during `--dry-run`) | `3` (`EXIT_PARTIAL`) | `src/cli/commands/update.ts:135` |
 | `git pull` error (network, non-fast-forward, etc.) | `3` (`EXIT_PARTIAL`) | `src/cli/commands/update.ts:170` |
 | `bun install` failure | `3` (`EXIT_PARTIAL`) | `src/cli/commands/update.ts:179` |
+| `bun run gui:build` failure, doctor clean | `3` (`EXIT_PARTIAL`) | `src/cli/commands/update.ts:207` |
 | `smith agent install agent-smith` failure, doctor clean | `3` (`EXIT_PARTIAL`) | `src/cli/commands/update.ts:207` |
 | `smith agent install agent-smith` failure, doctor non-zero | propagated from doctor | `src/cli/commands/update.ts:209` |
 | Doctor reports clean (post-pull, reinstall ok) | `0` | propagated from doctor |
@@ -275,7 +288,7 @@ Exit code mapping (canonical — spokes 11 and 14 link here):
 
 - **`1` for refusals** — the pipeline never started (preconditions failed). No partial state on disk; same shape as any other "operation could not complete" outcome.
 - **`3` for git/bun failures** — the pipeline started but aborted mid-way. After a failed `bun install` your workspace has the new source code but the old `node_modules`; that's a half-applied state, which fits the partial-failure category. The user's recovery is to re-run `bun install` manually, then re-try `update`.
-- **`3` for reinstall-only failures** — git pull and `bun install` succeeded but `smith agent install agent-smith` failed; doctor still passed. The companion-agent bundle on platforms is now stale relative to the just-pulled `guide/`. Re-run `smith agent install agent-smith` to recover.
+- **`3` for reinstall-only failures** — git pull and `bun install` succeeded but `smith agent install agent-smith` failed (or the GUI build failed); doctor still passed. The companion-agent bundle on platforms is now stale relative to the just-pulled `guide/`. Re-run `smith agent install agent-smith` (or `bun run gui:build`) to recover.
 - **Doctor's verbatim propagation** — see [Subsystem exit codes that don't fit the taxonomy](#subsystem-exit-codes-that-dont-fit-the-taxonomy). Doctor's `2` is a network error, not a usage error. A `2` from `smith update` post-pull means the update technically succeeded, doctor just couldn't verify it. When reinstall *also* failed but doctor returned non-zero, doctor wins (the reinstall partial is shadowed by the more actionable doctor signal).
 
 ### Migration note
@@ -308,9 +321,11 @@ Every smith command, alphabetised. The exit codes listed are the codes the comma
 | `daemon status` | reported (any state) | could not read pid file due to permissions | bad flag | — |
 | `daemon stop` | always (even if no daemon running) | — | bad flag | — |
 | `agent destroy` | source bundle removed; dry-run succeeded | confirmation token mismatch | agent not found; non-`user-global` catalog; rendered files exist without `--force`; bad flag | — |
+| `config get [key]` | reported (key optional — shows full overview when omitted; shows value or `(unset)` for a valid key) | invalid key name | — | — |
+| `config set <key> <value>` | value written | invalid key name | — | — |
 | `doctor` | clean (or OpenCode absent) | drift detected (requires OpenCode on `PATH`) | **network error OR no-platform refusal** (NOT usage error — see [10-doctor.md](./10-doctor.md)) | — |
 | `init` | success / idempotent re-run | could not write the config dir | bad flag | — |
-| `agent init` | bundle scaffolded | name already exists; write failure; `--catalog` value not a registered catalog | bad flag; invalid name regex; invalid `--permission-json` | — |
+| `agent init` | bundle scaffolded | write failure | bad flag; invalid name regex; invalid `--permission-json`; name already exists; `--catalog` value not a registered catalog | — |
 | `init-user` | editor exited 0 | editor exited non-zero | `$EDITOR` not on PATH | — |
 | `agent install` | rendered & written; idempotent re-run | bundle not found; write failure; manifest hash-mismatch refusal (without `--force`) | bad flag | — |
 | `agent install-all` | every bundle installed (or registry empty) | unrecoverable failure before any bundle ran | bad flag | at least one bundle failed; others succeeded |
@@ -332,7 +347,7 @@ Every smith command, alphabetised. The exit codes listed are the codes the comma
 | `agent uninstall` | every target removed (or absent); dry-run | agent not found in any catalog | bad flag | at least one path failed to remove; manifest hash-mismatch refusal (without `--force`) |
 | `agent uninstall-all` | every file removed; registry empty; dry-run | declined confirmation prompt | bad flag | at least one path failed to remove; manifest hash-mismatch refusal (without `--force`) |
 | `agent unregister` | catalog removed | catalog not registered | bad flag | — |
-| `update` | clean pipeline; dry-run | corrupt-install refusal; dirty workspace; doctor drift | doctor network error | git pull / git fetch / bun install failed |
+| `update` | clean pipeline; dry-run | corrupt-install refusal; dirty workspace; doctor drift | doctor network error | git pull / git fetch / bun install / gui-build failed |
 | `agent validate` | clean | unrecoverable failure | bad flag; bundle validation failed | — |
 
 For commands that compose subsystems (`update`, `bootstrap`), the per-step mapping is in the spoke that owns the command. Cross-links: [11-update-and-uninstall.md](./11-update-and-uninstall.md) for `update`, [01-getting-started.md](./01-getting-started.md) for `bootstrap`.

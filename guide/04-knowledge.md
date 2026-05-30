@@ -690,7 +690,7 @@ sources:
     space: ENG
     refresh:
       mode: session
-      timeout: 3      # per-source budget in seconds (default 5)
+      timeout: 3      # per-source budget in seconds (default 5, max 60)
   - id: cache-poll
     type: url
     url: https://example.com/api/spec
@@ -698,6 +698,8 @@ sources:
       mode: ttl
       ttl: 30m        # required when mode=ttl
 ```
+
+The `timeout` field is capped at 60 seconds by the schema (`src/core/knowledge/schema.ts`). Values above 60 fail validation. The runtime default is 5s.
 
 ### Legacy shorthand
 
@@ -769,6 +771,15 @@ local content is a no-op. The validator rejects any non-install mode on these ty
     opencode-consenting agent is removed; when the last consenting
     agent is uninstalled, the plugin directory and the
     `opencode.json` plugin entry are removed entirely.
+
+  - **Kiro** *(v0.25.0)*: smith adds an `agentSpawn` hook entry to the
+    installed kiro agent JSON file (`~/.kiro/agents/<name>.json`). The
+    hook calls `smith knowledge refresh-session --agent <name> --platform kiro`
+    on every agent spawn. The hook entry is identified by an ownership
+    signature on the `command` field (same pattern as Claude Code's
+    frontmatter hooks). `smith agent uninstall` removes the entry
+    surgically; co-resident hooks (AIM telemetry, kiro-lens, user-
+    authored) are preserved.
 
 The unified entrypoint that hooks call into is `smith knowledge refresh-session`
 — see the [CLI reference](./14-cli-reference.md#smith-knowledge-refresh-session) for details.
@@ -864,6 +875,7 @@ to auto-repair (overwriting a user-owned `~/.codex/hooks.json`).
 | Hook didn't fire on session start (Claude Code) | Hook block missing from the installed agent's frontmatter | `smith doctor --fix-knowledge-refresh` |
 | Hook didn't fire on session start (Codex) | `~/.codex/hooks.json` doesn't list the agent in its `_smith_managed` sentinel | `smith doctor --fix-knowledge-refresh` |
 | Hook didn't fire on session start (OpenCode) | Plugin dir / `opencode.json` out of sync with the `.smith-managed` sentinel | `smith doctor --fix-knowledge-refresh` |
+| Hook didn't fire on agent spawn (Kiro) | `agentSpawn` hook entry missing from the installed kiro agent JSON | `smith doctor --fix-knowledge-refresh` |
 | Daemon never refreshed a TTL source | Cache meta file missing or corrupt | check `~/.cache/agent-smith/agents/<name>/sources/<id>.meta.json`; run `smith doctor` |
 | Upgrading from <0.15: `smith agent install --target codex` fails with "hooks.json exists and is not managed by smith" | Pre-existing hand-written `~/.codex/hooks.json` | `smith knowledge migrate-codex` |
 | `smith doctor` reports `unmanaged-codex-hooks` | Same as above | `smith knowledge migrate-codex` (review output, then re-run install) |
@@ -912,6 +924,18 @@ opencode session.created event
               └─> superset of installed opencode-targeted agents:
                   per session/always source:
                   materializeOneSource → write <id>.content + <id>.meta.json
+```
+
+**Kiro** (per-agent hook in the installed agent's JSON):
+
+```
+kiro agent spawn
+  └─> reads installed agent JSON (~/.kiro/agents/<name>.json)
+      └─> matches smith-injected hooks.agentSpawn entry
+          └─> spawns: smith knowledge refresh-session --agent <name> --platform kiro
+              └─> reads refresh-manifest.json (consent + source list)
+                  └─> per session/always source:
+                      materializeOneSource → write <id>.content + <id>.meta.json
 ```
 
 Refresh failures never block a session — see [Failure behavior](#failure-behavior).

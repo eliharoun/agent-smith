@@ -47,7 +47,7 @@ smith doctor                                         # verify installation healt
 |---|---|---|
 | Install (fresh) | `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` | Clones to `~/.agent-smith/`, runs `bun install` (which fires `scripts/bootstrap.ts` postinstall to install bundled skills), installs the `agent-smith` persona, and symlinks `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`. Requires `bun >= 1.1.0` and `gh`. |
 | First-time setup (optional) | `smith init && smith init-user` | Both are optional — installer Step 8b runs `smith init` automatically. `smith init-user` self-bootstraps a missing `USER.md`. Use these to recover from a corrupt registry or to edit your shared persona file. |
-| Update | `smith update` | `git pull --ff-only` + `bun install` + `doctor`. Idempotent — equivalent to re-running `bash ~/.agent-smith/bin/install`. |
+| Update | `smith update` | `git pull --ff-only` + `bun install` + `gui:build` + `agent-smith` reinstall + `doctor`. Idempotent — equivalent to re-running `bash ~/.agent-smith/bin/install`. |
 | Re-install bundled skills | `smith skill bootstrap` | Re-installs `the-architect` + `the-keymaker` skills (normally fired by the `bun install` postinstall). |
 | Re-install agent-smith persona | `smith agent install agent-smith` | Re-installs the companion agent (normally part of `bin/install` and `smith update`). |
 
@@ -158,7 +158,7 @@ Scaffold a new agent bundle. Defaults to `~/.config/agent-smith/agents/<name>/`;
 
 **Notes:**
 - Invalid enum values exit `2` with the accepted list printed.
-- A `<name>` already in use exits `1`. To reuse the name, run `smith agent destroy <name>` first (NOT `agent uninstall`, which leaves the source bundle in place). An unregistered `--catalog` value also exits `1` (`not-found`); run `smith agent catalogs` to list valid labels.
+- A `<name>` already in use exits `2`. To reuse the name, run `smith agent destroy <name>` first (NOT `agent uninstall`, which leaves the source bundle in place). An unregistered `--catalog` value also exits `1` (`not-found`); run `smith agent catalogs` to list valid labels.
 
 **Example:**
 ```bash
@@ -291,9 +291,15 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--no-skills` | bool | `false` | Skip required-skill installs entirely; warn at end. |
 | `--no-refresh-hooks` | bool | `false` | Skip refresh hook install; no consent prompt, no `SessionStart` block written, no `refresh-manifest.json`. Refresh stays manual via `smith knowledge fetch`. |
 | `--refresh-consent <yn>` | enum: `y\|yes\|n\|no` (case-insensitive) | — | Pre-answer the refresh-hook consent prompt. Required in non-TTY/CI when you want hooks (default in non-TTY is *no* with a warning). See [guide/04 — Consent and the refresh manifest](./guide/04-knowledge.md#consent-and-the-refresh-manifest). |
-| `--from <url>` | git URL (https://, ssh://, git@, file://) | — | Clone an external git repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. Skips local lookup; `[name]` becomes optional when the cloned repo contains exactly one bundle. Refuses (exit 1, `already-exists`) when the URL is already registered under a different label — the error message names the existing catalog (v1-task RC2-4). v1-task C3.9. See [guide/15 — Sharing via direct URL](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
+| `--from <url>` | git URL (https://, ssh://, git@, file://) | — | Clone an external git repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. Skips local lookup; `[name]` becomes optional when the cloned repo contains exactly one bundle. Refuses (exit 2, `already-exists`) when the URL is already registered under a different label — the error message names the existing catalog (v1-task RC2-4). v1-task C3.9. See [guide/15 — Sharing via direct URL](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
 | `--ref <ref>` | git ref | remote HEAD | Git branch, tag, or SHA to check out after cloning with `--from`. Ignored without `--from`. |
 | `--force` | bool | `false` | Bypass smith's would-clobber refusal: write the rendered file even if the destination exists and isn't claimed by smith's `installed-agents.json` manifest. Also re-claims a manifest entry whose recorded path no longer matches the new render's relativePath (rename / translator change). |
+| `--allow-missing-mcp` | bool | `false` | Demote missing-MCP-server errors to warnings (install blocks by default). |
+| `--platforms <list>` | comma-list of `opencode\|claude-code\|codex\|kiro` | all declared targets | Restrict install to specific platforms (subset of the agent's declared targets). |
+| `--all` | bool | `false` | Install every agent discovered in `--from <url>`. |
+| `--agents <list>` | comma-list | — | Comma-separated agent names to install from `--from <url>`. |
+| `--json` | bool | `false` | Discover agents from `--from <url>`, print JSON, do not install. |
+| `--verbose` | bool | `false` | Show info-level warnings (pattern fallbacks, platform truisms). |
 | `--platform-conventions <strategy>` | enum: `accept-all\|reject-all\|use-defaults\|prompt` | (3-tier resolver) | Convention-injection strategy. Per-bundle `platformConventions` field wins (tier 1); else `~/.config/agent-smith/conventions.json` saved prefs (tier 2); else this flag → interactive prompt (TTY) → fail-safe-reject (non-TTY). `accept-all` emits every registered convention for every target; `use-defaults` emits only those marked `promptDefault: true`. |
 | `--no-platform-conventions` | bool | `false` | Alias for `--platform-conventions=reject-all` (this run only; doesn't persist to `conventions.json`). |
 
@@ -369,13 +375,14 @@ Inverse of `agent init`: remove the source bundle from `~/.config/agent-smith/ag
 
 Grant or revoke per-platform knowledge-refresh consent on an already-installed agent. Updates `~/.config/agent-smith/agents/<name>/refresh-manifest.json` and installs/removes the platform's session_start hook (claude-code frontmatter block, codex `hooks.json` entry, or opencode plugin registration) accordingly. Idempotent — re-granting an already-granted platform is a no-op.
 
-**Synopsis:** `smith agent reconfigure <name> [--grant <platform>...] [--revoke <platform>...]`
+**Synopsis:** `smith agent reconfigure <name> [--grant <platform>...] [--revoke <platform>...] [--yes]`
 
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--grant <platform>` | repeatable; one of `opencode\|claude-code\|codex\|kiro` | — | Add refresh consent for the named platform. Platform must be a target of the installed agent. |
 | `--revoke <platform>` | repeatable; same enum | — | Remove refresh consent for the named platform. |
+| `--yes` | bool | `false` | Grant refresh hooks for every platform the agent is installed for (non-interactive). Mutually exclusive with `--grant`/`--revoke`. |
 
 **Notes:**
 - Use when you installed the agent before the consent flow shipped (pre-0.15), or want to add a newly-added platform to refresh consent.
@@ -449,25 +456,25 @@ Pull the latest `agent-smith` from `origin/main`, run `bun install`, refresh the
 | `--dry-run` | bool | `false` | Show what update would do without pulling, installing, or running doctor. |
 
 **Notes:**
-- Pipeline (5 steps): resolve workspace → `git pull --ff-only` → `bun install` → `smith agent install agent-smith` (refreshes knowledge dir) → `smith doctor`.
+- Pipeline (6 steps): resolve workspace → `git pull --ff-only` → `bun install` → `bun run gui:build` → `smith agent install agent-smith` (refreshes knowledge dir) → `smith doctor`.
 - Workspace dirty (`git status` not clean) inside `~/.agent-smith/` exits `1`.
 - Workspace not resolvable from `import.meta.url` (running from outside the clone) exits `1` with a reinstall hint.
-- `git pull` / `bun install` / `git fetch` / `agent-smith` reinstall failures emit `3` (EXIT_PARTIAL).
+- `git pull` / `bun install` / `git fetch` / `gui:build` / `agent-smith` reinstall failures emit `3` (EXIT_PARTIAL).
 - `update` propagates `doctor`'s exit code verbatim as the final pipeline step — so an `update` exit of `2` after a successful pull means doctor saw a network error.
 
 ---
 
 ### Configuration
 
-#### `smith config get <key>`
+#### `smith config get [key]`
 
-Read a model-resolution config value from `~/.config/agent-smith/.env`.
+Read a model-resolution config value from `~/.config/agent-smith/.env`. When a key is given, prints the value (or `(unset)` if valid but absent). When no key is given, prints a full config overview.
 
-**Synopsis:** `smith config get <key>`
+**Synopsis:** `smith config get [key]`
 
 **Keys:** `model.providers`, `model.tier.high`, `model.tier.balanced`, `model.tier.fast`
 
-**Exit codes:** `0` — value printed. `1` — key not set. `2` — invalid key.
+**Exit codes:** `0` — value printed (including `(unset)`), or full overview. `1` — invalid key.
 
 #### `smith config set <key> <value>`
 
@@ -483,7 +490,7 @@ smith config set model.providers "anthropic,github-copilot,openrouter"
 smith config set model.tier.high "anthropic/claude-opus-4"
 ```
 
-**Exit codes:** `0` — written. `2` — invalid key or value.
+**Exit codes:** `0` — written. `1` — invalid key.
 
 #### `smith config unset <key>`
 
@@ -491,7 +498,7 @@ Remove a model-resolution config value from `~/.config/agent-smith/.env` (revert
 
 **Synopsis:** `smith config unset <key>`
 
-**Exit codes:** `0` — removed (or was already absent). `2` — invalid key.
+**Exit codes:** `0` — removed (or was already absent). `1` — invalid key.
 
 **See also:** [Models](./guide/07-models.md) for the full resolution pipeline.
 
@@ -507,7 +514,12 @@ Bare `smith knowledge` exits `2` with a hint to pass a subcommand.
 
 Print materialized knowledge for one agent, or — if the agent declares sources but hasn't been installed — print the unmaterialized list with a hint to run `smith agent install <agent>`.
 
-**Synopsis:** `smith knowledge list <agent>`
+**Synopsis:** `smith knowledge list [--json] <agent>`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--json` | bool | `false` | Emit machine-readable JSON instead of human output. |
 
 **Notes:**
 - Exits `0` for declared-but-unmaterialized agents (with the install hint). Only exits `1` when the agent itself isn't registered.
@@ -526,6 +538,19 @@ Re-fetch URL/git caches for an agent and re-install. Use after upstream content 
 **Example:**
 ```bash
 smith knowledge fetch code-reviewer --source api-docs
+```
+
+#### `smith knowledge remove <agent> <source-id>`
+
+Remove a knowledge source from an agent's `agent.config.json` by its `id`. Does not auto-materialize — installed knowledge files remain until the next `smith agent install`.
+
+**Synopsis:** `smith knowledge remove <agent> <source-id>`
+
+**Exit codes:** `0` — removed. `1` — source id not found. `2` — config missing.
+
+**Example:**
+```bash
+smith knowledge remove my-agent api-docs
 ```
 
 #### `smith knowledge migrate-codex`
@@ -560,7 +585,7 @@ Refresh installed agents' knowledge sources whose `refresh.mode` is `session` or
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--agent <name>` | string | — | Restrict to one agent's sources. |
-| `--platform <id>` | enum: `claude-code\|codex\|opencode` | — | Platform that invoked us. When `codex` is given without `--agent`, smith sniffs the parent process for `codex --profile <name>` to scope refresh to one agent; on miss, refreshes the superset of installed codex-targeted agents. Unknown values silently drop. |
+| `--platform <id>` | enum: `claude-code\|codex\|kiro\|opencode` | — | Platform that invoked us. When `codex` is given without `--agent`, smith sniffs the parent process for `codex --profile <name>` to scope refresh to one agent; on miss, refreshes the superset of installed codex-targeted agents. Unknown values silently drop. |
 | `--timeout <ms>` | number | `5000` | Override global wall-clock budget. |
 | `--json` | flag | — | Emit `{ refreshed, failed, skipped, totalDurationMs }` on stdout. |
 
@@ -887,6 +912,41 @@ Install the bundled `the-architect` and `the-keymaker` skills. Normally fired by
 | `--dry-run` | bool | `false` | Print what would be installed without touching the filesystem. |
 | `--targets <list>` | comma-list of `opencode\|claude-code\|codex` | all three | Restrict bootstrap to specific platforms. |
 
+#### `smith skill validate <name>`
+
+Validate a registered skill's SKILL.md frontmatter.
+
+**Synopsis:** `smith skill validate <name>`
+
+**Exit codes:** `0` — valid. `1` — not found. `2` — invalid frontmatter or ambiguous.
+
+#### `smith agent catalog rename <old> <new>`
+
+Rename an agent catalog label in `registry.json`.
+
+**Synopsis:** `smith agent catalog rename <old-label> <new-label>`
+
+**Exit codes:** `0` — renamed. `1` — old label not found. `2` — new label already in use.
+
+#### `smith skill catalog rename <old> <new>`
+
+Rename a skill catalog label in `skill-catalogs.json`.
+
+**Synopsis:** `smith skill catalog rename <old-label> <new-label>`
+
+**Exit codes:** `0` — renamed. `1` — old label not found. `2` — new label already in use.
+
+#### `smith migrate-clones`
+
+One-shot helper to migrate rc.1 external-repo clones from `$XDG_CONFIG_HOME` to `$XDG_STATE_HOME`.
+
+**Synopsis:** `smith migrate-clones [--dry-run]`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--dry-run` | bool | `false` | Classify each entry without moving files or updating registries. |
+
 State files used by skill commands:
 - `~/.config/agent-smith/skill-catalogs.json` — registered catalogs
 - `~/.config/agent-smith/installed-skills.json` — what's installed where, with content hashes for drift detection
@@ -1023,7 +1083,7 @@ Common triage:
 - `1` from `agent install` / `agent validate` → run `smith agent validate <name>` for the failure list.
 - `1` from `update` → workspace dirty (`git status` inside `~/.agent-smith/`) or `~/.agent-smith/` is not a git workspace. `git pull` / `bun install` / `git fetch` failures emit `3`, not `1`.
 - `1` from `agent unregister` / `skill unregister` → catalog isn't registered (check `smith status`).
-- `1` from `agent init` → an agent of that name already exists (`smith agent destroy <name>` first), OR `--catalog` value is not a registered catalog (`not-found`; run `smith agent catalogs`).
+- `1` from `agent init` → an agent of that name already exists — exit `2` (`smith agent destroy <name>` first), OR `--catalog` value is not a registered catalog (`not-found`; run `smith agent catalogs`).
 - `2` from `knowledge add` schema rejection → check the bounds (e.g. `--max-pages` 1–100, `--max-results` 1–500, `--format` enum).
 - `2` from `knowledge` (or any subcommand) → missing positional arg or unknown subcommand (the headline names what's missing).
 - `2` from `agent install` / `knowledge fetch` for a git-source failure (clone / fetch / reset / lock-timeout) — these surface as `validation-failed`.
@@ -1051,8 +1111,23 @@ All smith state lives under one root resolved by `stateHome()` (`src/io/state-ho
 | `installed-agents.json` | manifest of every (name, platform) smith installed, with `contentHash` for would-clobber refusal on install + hash-mismatch refusal on uninstall (both `--force`-bypassable). Lazy-created on first install. Schema: `{ schemaVersion: 1, installed: InstalledAgent[] }`. |
 | `installed-agents.json.lock` | sibling lockfile that serializes concurrent manifest read-modify-write cycles (`withFileLock`); held for milliseconds during the install/uninstall manifest update. |
 | `conventions.json` | per-platform-convention preferences for the 3-tier resolver (workspace-steering / global-steering for Kiro). Lazy-created on first persistence. Schema: `{ schemaVersion: 1, platformConventions: { <Target>: { default?, explicit? } } }`. |
+| `gui-state.json` | GUI server state (tour completion, preferences). Lazy-created. |
 | `USER.md` | shared user context (resolved by `canonicalUserPath()`) |
-| `daemon.{pid,log}` | daemon state |
+
+### Runtime state (`~/.local/state/agent-smith/` — or `${XDG_STATE_HOME}/agent-smith/`)
+
+| Path | Role |
+|---|---|
+| `daemon.pid` | daemon PID file |
+| `daemon.log` | daemon log output |
+| `daemon.heartbeat.json` | daemon heartbeat (schemaVersion, pid, lastBeatAt, status) |
+| `remote/` | managed clones from `--from <url>` installs |
+
+### Caches (`~/.cache/agent-smith/` — or `${XDG_CACHE_HOME}/agent-smith/`)
+
+| Path | Role |
+|---|---|
+| `locks/<safe>.lock` | per-source file locks for concurrent refresh serialization |
 
 ### Install targets
 
@@ -1085,6 +1160,7 @@ All smith state lives under one root resolved by `stateHome()` (`src/io/state-ho
 | `EDITOR` | `init-user` | editor for `USER.md` (default `vi`) |
 | `XDG_CONFIG_HOME` | every smith command (via `stateHome()`) | base dir for smith's state root; resolves to `${XDG_CONFIG_HOME}/agent-smith/...` when set, `~/.config/agent-smith/...` when unset/empty |
 | `XDG_CACHE_HOME` | `doctor` | base dir for schema cache (falls back to `~/.cache`) |
+| `XDG_STATE_HOME` | daemon, `migrate-clones` | base dir for runtime state (`daemon.pid`, `daemon.log`, `daemon.heartbeat.json`, managed clones); falls back to `~/.local/state` |
 | `AGENT_SMITH_DISABLE_LIVE_RESOLUTION=1` | `doctor`, orchestrator | force vendored-only OpenCode model resolution |
 | `AGENT_SMITH_SKIP_POSTINSTALL=1` | `scripts/bootstrap.ts` | skip the `bun install` postinstall hook |
 | `CI=true` | `scripts/bootstrap.ts` | skip postinstall in CI environments |
@@ -1093,6 +1169,10 @@ All smith state lives under one root resolved by `stateHome()` (`src/io/state-ho
 | `SMITH_TIER_HIGH` | model resolver | per-tier override for `high` (format: `<provider>/<model>`) |
 | `SMITH_TIER_BALANCED` | model resolver | per-tier override for `balanced` (format: `<provider>/<model>`) |
 | `SMITH_TIER_FAST` | model resolver | per-tier override for `fast` (format: `<provider>/<model>`) |
+| `SMITH_CLAUDE_TIER_HIGH`, `…_BALANCED`, `…_FAST` | Claude Code model resolver | per-platform per-tier override (format: `<model>`) |
+| `SMITH_CODEX_TIER_HIGH`, `…_BALANCED`, `…_FAST` | Codex model resolver | per-platform per-tier override (format: `<model>`) |
+| `SMITH_KIRO_TIER_HIGH`, `…_BALANCED`, `…_FAST` | Kiro model resolver | per-platform per-tier override (format: `<model>`) |
+| `SMITH_GUI_NO_AUTOBUILD` | `smith gui` | when `1`, skip the automatic GUI bundle rebuild on launch |
 | `SMITH_PULL_INTERVAL_MS` | `smith daemon run` | override default git-pull cadence (ms); invalid values silently ignored |
 | `SMITH_HEARTBEAT_INTERVAL_MS` | `smith daemon run` | override default heartbeat write cadence (ms); invalid values silently ignored |
 | `SMITH_ATLASSIAN_EMAIL` | atlassian-auth | SMITH-tier Atlassian email (highest precedence) |

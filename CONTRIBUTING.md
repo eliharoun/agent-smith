@@ -53,6 +53,16 @@ bun install
 bun test           # 3000+ tests across 300+ files
 bun run typecheck
 bun run lint
+bun run format     # auto-format with Biome
+bun run format:check  # check formatting without writing
+bun run check      # Biome check --write (lint + format)
+
+# GUI workspace scripts
+bun run gui:dev       # Vite dev server for the GUI SPA
+bun run gui:build     # production build (web + server)
+bun run gui:test      # run GUI tests
+bun run gui:typecheck # typecheck the GUI workspace
+bun run gui:check     # Biome check on gui/
 ```
 
 ## Release workflow

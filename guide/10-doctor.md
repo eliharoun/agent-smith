@@ -24,7 +24,7 @@ The orchestrator lives in `src/core/freshness/run-doctor.ts` (the `runDoctor` fu
 | OpenCode | `opencode` | https://opencode.ai/docs |
 | Claude Code | `claude` | `npm i -g @anthropic-ai/claude-code` |
 | Codex | `codex` | `npm i -g @openai/codex` |
-| Kiro | `kiro-cli` (preferred) or `kiro` | https://kiro.dev/ |
+| Kiro | `kiro-cli` (preferred) or `kiro` | `curl -fsSL https://cli.kiro.dev/install \| bash` (CLI) / `https://kiro.dev/downloads/` (IDE) |
 
 When a platform is absent from PATH:
 
@@ -43,7 +43,7 @@ In `--json` mode the refusal emits a canonical envelope:
 ```json
 {
   "error": "no-platform-detected",
-  "message": "No supported AI coding platform detected on PATH.\n\nInstall one of:\n  OpenCode:    https://opencode.ai/docs\n  Claude Code: npm i -g @anthropic-ai/claude-code\n  Codex:       npm i -g @openai/codex\n  Kiro:        https://kiro.dev/\n\nThen re-run `smith doctor`.",
+  "message": "No supported AI coding platform detected on PATH.\n\nInstall one of:\n  OpenCode:    https://opencode.ai/docs\n  Claude Code: npm i -g @anthropic-ai/claude-code\n  Codex:       npm i -g @openai/codex\n  Kiro:        curl -fsSL https://cli.kiro.dev/install | bash  (CLI)  /  https://kiro.dev/downloads/  (IDE)\n\nThen re-run `smith doctor`.",
   "exitCode": 2
 }
 ```
@@ -146,7 +146,10 @@ Output to a pipe, or invocations with `--json`, never stream — they print the 
 | `--offline` | Skip the live OpenCode schema fetch. The `opencode` section reports `offline-skipped` (status `skipped`, no exit-code contribution). The cache is still consulted and the rest of the sections still run. |
 | `--no-cache` | Bypass the 24h schema cache; force a fresh HTTPS fetch of `https://opencode.ai/config.json`. Ignored when `--offline` is also set. |
 | `--json` | Emit machine-readable JSON to stdout. Disables spinners and color. The exit code is still set normally. |
-| `--skip-model-resolution` | Skip section 4 entirely. The report omits the `modelResolution` field and that section can't bump the exit code. (When OpenCode is not on PATH the section is auto-skipped anyway — see [Platform auto-detection](#platform-auto-detection); this flag is for the case where OpenCode is installed but you still want a hermetic pass.) |
+| `--skip-model-resolution` | Skip section 5 entirely. The report omits the `modelResolution` field and that section can't bump the exit code. (When OpenCode is not on PATH the section is auto-skipped anyway — see [Platform auto-detection](#platform-auto-detection); this flag is for the case where OpenCode is installed but you still want a hermetic pass.) |
+| `-v`, `--verbose` | Full per-section detail report (pre-v0.13 default behavior). |
+| `-q`, `--quiet` | Suppress all human output; preserve exit code. JSON still emits when combined with `--json`. For CI scripts that only need pass/fail. |
+| `--fix-knowledge-refresh` | After running the `knowledge-refresh` detection section, auto-repair each finding: re-register missing hooks, delete corrupt cache entries, clear orphaned consent records. `unmanaged-codex-hooks` findings are not auto-fixed (requires `smith knowledge migrate-codex`). |
 
 ### Flag combinations
 
@@ -244,7 +247,7 @@ smith doctor --offline --no-cache --skip-model-resolution
 | `codex` tool map drift | Update `data/codex-tool-map.json` manually. |
 | `kiro` tool map / agent schema drift | Update `data/kiro-tool-map.json` and `data/kiro.agent-v1.schema.json` manually; bump `_meta.lastVerifiedDate`. |
 | Stale model resolution (agent's `model:` literal not in live list) | `smith agent install-all` — re-resolves every agent's tier against the current `opencode models` output. |
-| Stale curated fallback | Update `CURATED_FALLBACK_V0_6_0` in `src/core/model-resolution.ts`. |
+| Stale curated fallback | Update `CURATED_FALLBACK_V0_6_0` in `src/core/model-resolution/types.ts`. |
 | Skill drift (`drift` status) | `smith skill update <name>` — overwrites local edits with the source. |
 | Skill `missing` (dest gone) | `smith skill update <name>` — same command, recreates the dest. |
 | Skill `source-missing` (catalog gone) | Re-register the source catalog with `smith skill register <path>`, or remove the install record with `smith skill uninstall <name>`. |
@@ -267,9 +270,9 @@ The atlassian-auth section also reads the credential env vars (`SMITH_ATLASSIAN_
 ## Caveats and gotchas
 
 - **`workspace: unknown:network-error` does NOT bump the exit code.** This is an explicit exception — the workspace section is informational even when the underlying `git ls-remote` fails. Documented at `src/core/freshness/run-doctor.ts:182-184`. Network failures from the workspace check appear in the report but never affect `$?`.
-- **Doctor never fixes anything.** It only reports. Every drift requires the corresponding remediation command. There is no `smith doctor --fix`.
-- **The exit-code policy is asymmetric on purpose.** OpenCode schema (section 1) > model-resolution (section 4) > everything-else-is-informational. Skill drift, required-skills, registry-hygiene, atlassian-auth, and the Claude Code / Codex tool map sections cannot affect the exit code, no matter how many warnings they raise. If you want CI to fail on, say, missing required skills, parse the `--json` output and key on `agentRequiredSkills.status === "warn"`.
-- **A fresh system without `opencode` on PATH still runs the model-resolution check** — the live model list is `null` and the check falls back to validating per-agent `model:` literals against the curated fallback. If any installed agent's tier resolved to something other than the curated fallback (e.g. it was installed on a different machine where `opencode models` returned a different best-match), the section status is `warn` and the exit code goes to `1`. Re-run `smith agent install-all` to re-resolve. See the troubleshooting recipe in [guide/12-error-handling.md](./12-error-handling.md#subsystem-exit-codes-that-dont-fit-the-taxonomy).
+- **Doctor is primarily read-only, with one repair flag.** Most drift requires the corresponding remediation command. The exception is `--fix-knowledge-refresh`, which auto-repairs missing hooks, corrupt caches, and orphaned consent records (see [Flags](#flags)).
+- **The exit-code policy is asymmetric on purpose.** OpenCode schema (section 1) > model-resolution (section 5) > everything-else-is-informational. Skill drift, required-skills, registry-hygiene, atlassian-auth, and the Claude Code / Codex tool map sections cannot affect the exit code, no matter how many warnings they raise. If you want CI to fail on, say, missing required skills, parse the `--json` output and key on `agentRequiredSkills.status === "warn"`.
+- **The model-resolution section is auto-skipped when `opencode` is not on PATH.** The section is OpenCode-specific (it shells out to `opencode models` and inspects installed OpenCode agents). When OpenCode is absent, the section is omitted entirely and cannot affect the exit code. If you have OpenCode installed but still want to skip the section, pass `--skip-model-resolution`.
 - **The `atlassian-skills` skill catalog is exempt from `registry-hygiene` checks** because it is lazy-cloned and may not exist on disk until first use (`run-doctor.ts:768-770`).
 - **Failures from `getOpenCodeModels` are not memoized** for the lifetime of the process (`src/io/opencode-models.ts:84-95`). A transient failure during one doctor run does not poison subsequent runs in the same process — relevant for the daemon's 15-minute reinstall loop, less so for one-shot CLI invocations.
 - **`skill-drift` checks only one dest path per skill.** The installer copies identical content to all platforms, so the report samples the first present dest in the order opencode → claude-code → codex → kiro. If the user edited only one platform's copy, the check might miss it.

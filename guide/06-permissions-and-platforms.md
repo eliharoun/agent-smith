@@ -89,11 +89,11 @@ runtime, so they collapse the map to its broadest action and warn — see
 Three named presets are available via `--permission <name>` on
 `agent init`. They are defined at `src/core/permission-presets.ts:6-49`.
 
-| Preset | read/glob/grep/list/lsp | edit | bash | task | webfetch / websearch / external_directory | skill |
-|---|---|---|---|---|---|---|
-| `read-only` | allow | deny | deny | deny | deny | **allow** |
-| `read-edit` | allow | allow | deny | allow | deny | **allow** |
-| `full` | allow | allow | allow | allow | allow | **allow** |
+| Preset | read/glob/grep/list/lsp | edit | bash | task | webfetch / websearch | external_directory | skill |
+|---|---|---|---|---|---|---|---|
+| `read-only` | allow | deny | deny | deny | deny | deny | **allow** |
+| `read-edit` | allow | allow | deny | allow | deny | deny | **allow** |
+| `full` | allow | allow | allow | allow | allow | allow | **allow** |
 
 Three things to notice:
 
@@ -179,7 +179,7 @@ target-native frontmatter plus a markdown body.
 | `permission.skill` | per-skill rules supported | collapsed to broadest action, warning | warning emitted; otherwise ignored (no skill-tool runtime) | emitted as `skill://allow/<name>`, `skill://ask/<name>`, `skill://deny/<name>` URIs in `resources[]` |
 | Per-agent model field | supported (`model:` literal in frontmatter) | tier-only via tool map; `model:` is the resolved tier literal | not supported (no per-agent model) | `modelId` is the resolved tier literal (static map) |
 | `mode`, `temperature`, `color` | supported | not supported | not supported | not supported |
-| Install layout | `<dir>/<name>.md` | `<dir>/<name>.md` | `<dir>/<name>/<name>.md` (per-agent subdir) | `<dir>/<name>.json` |
+| Install layout | `<dir>/<name>.md` | `<dir>/<name>.md` | `<dir>/<name>/SKILL.md` (per-agent subdir) | `<dir>/<name>.json` |
 | Tool vocabulary source | `data/opencode.config.schema.json` (canonical) | `data/claude-code-tool-map.json` | `data/codex-tool-map.json` | `data/kiro-tool-map.json` |
 
 Source references: `src/core/translators/opencode.ts`,
@@ -221,10 +221,11 @@ The Claude Code translator
 The Codex translator (`src/core/translators/codex.ts:25-77`) parallels
 Claude Code with two extras:
 
-- **`permission.skill` always warns:** if the canonical permission block
-  contains a `skill` key, Codex emits `permission.skill: codex has no
-  native skill-tool runtime; permission ignored.` regardless of the action
-  (allow, ask, deny, or per-pattern).
+- **`permission.skill` and `deny` warnings are suppressed:** Codex uses a
+  positive allowlist and has no native skill-tool runtime, so the `deny`
+  summary warning and the `permission.skill` warning that would fire on
+  virtually every install are intentionally suppressed to keep install
+  output focused on actionable items.
 - **`allowed_tools` is an array,** not a comma-separated string (snake_case
   per existing Codex convention).
 
@@ -263,6 +264,9 @@ across all four platforms. Beyond that:
 
 - **OpenCode** supports the full canonical model: every action, every
   group, per-pattern rules, per-skill rules, and per-agent model overrides.
+  Additional OpenCode-only groups (`lsp`, `external_directory`, `question`,
+  `doom_loop`) are recognized by `KNOWN_PERMISSION_GROUPS` and silently
+  skipped on platforms that have no equivalent.
 - **Claude Code** silently drops `lsp` and `external_directory` (no
   equivalent). It additionally exposes an undocumented `todowrite` group
   not used by any preset; declare it via `--permission-json '{"todowrite":
@@ -349,7 +353,7 @@ For each target a bundle installs to, agent-smith resolves the requested convent
 2. **User-global override** — entries in `~/.config/agent-smith/conventions.json`'s `platformConventions.<target>.{explicit,denied}`. The user can pin a convention on or off across every bundle for that target.
 3. **CLI / prompt / safe default** — when `--platform-conventions=accept-all` (or `--no-platform-conventions`) is passed, that flag wins; otherwise on a TTY the user is prompted; otherwise the safe default is to **reject** (don't inject — the safest interpretation of "no signal").
 
-The CLI scalar parser (`src/cli/parse-platform-conventions.ts`) accepts `accept-all`, `accept=<id1,id2,...>`, `deny=<id1,...>`, and combinations. See [14 — CLI reference](./14-cli-reference.md) for the full flag grammar.
+The CLI scalar parser (`src/cli/parse-platform-conventions.ts`) accepts four values: `accept-all`, `reject-all`, `use-defaults`, and `prompt`. See [14 — CLI reference](./14-cli-reference.md) for the full flag grammar.
 
 ### Rendered effect
 
@@ -371,13 +375,16 @@ The list is sorted and deduplicated before write so the manifest hash is idempot
   "schemaVersion": 1,
   "platformConventions": {
     "kiro": {
+      "default": "use-defaults",
       "explicit": ["workspace-steering"]
     }
   }
 }
 ```
 
-Both `explicit` (always-include) and `denied` (always-exclude) lists are supported per target. The GUI's `/system/conventions` page (`gui/server/src/routes/conventions.ts`) reads/writes this file directly.
+The `default` field sets the auto-resolution strategy (`accept-all`, `reject-all`, `use-defaults`, or `prompt`). The `explicit` list, when present, bypasses `default` and pins the exact convention IDs to use. The GUI's `/system/conventions` page (`gui/server/src/routes/conventions.ts`) reads/writes this file directly.
+
+Kiro registers two conventions: `workspace-steering` (`file://.kiro/steering/**/*.md`) and `global-steering` (`file://~/.kiro/steering/**/*.md`). The `use-defaults` strategy resolves to the platform's default convention set (e.g. `workspace-steering` for Kiro).
 
 ## MCP server dependencies
 

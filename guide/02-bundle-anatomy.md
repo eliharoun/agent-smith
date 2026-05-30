@@ -28,6 +28,7 @@ The schema is enforced by zod in `src/core/config-schema.ts:35-61` and the under
 
 | Field | Type | Required | Default | Constraint |
 |---|---|---|---|---|
+| `schemaVersion` | number | yes | — | must be `1` (auto-migrated from legacy configs without it) |
 | `name` | string | yes | — | matches `KEBAB` regex; must equal bundle dirname |
 | `description` | string | yes | — | 10–200 chars; matches `ACTION_PHRASE` regex |
 | `targets` | array | yes | — | non-empty; each entry one of `opencode`, `claude-code`, `codex`, `kiro` |
@@ -132,7 +133,7 @@ The four markdown files together form the agent's system prompt. They are concat
 
 ### Line-count windows (warnings only)
 
-The validator (`src/core/validator.ts:11-16`) enforces a recommended line range for each file:
+The validator (`src/core/validator.ts`, with defaults from `src/core/thresholds.ts`) enforces a recommended line range for each file:
 
 | File | Min lines | Max lines |
 |---|---|---|
@@ -152,7 +153,7 @@ Two character thresholds apply to the *assembled body* (all four files concatena
 | 32,000 chars | `WARN_CHARS` | warning emitted; install proceeds |
 | 64,000 chars | `FAIL_CHARS` | error emitted; validator fails |
 
-Source: `src/core/validator.ts:4-5`. When a knowledge block declares an `inlineBudget`, the renderer applies a separate length check (`validateAssembledTotal()` in `src/core/validator.ts:127`) that allows the body to grow by `inlineBudgetTokens × 4` characters. The prose-only check above still runs against author-written content; the knowledge-aware check guards the final rendered output.
+Source: `WARN_CHARS` is defined in `src/core/thresholds.ts`; `FAIL_CHARS` remains in `src/core/validator.ts`. When a knowledge block declares an `inlineBudget`, the renderer applies a separate length check (`validateAssembledTotal()` in `src/core/validator.ts:127`) that allows the body to grow by `inlineBudgetTokens × 4` characters. The prose-only check above still runs against author-written content; the knowledge-aware check guards the final rendered output.
 
 ### Empty-file rule
 

@@ -16,7 +16,7 @@ You need:
 
 - **[Bun](https://bun.sh) >= 1.1.** Smith runs on the Bun runtime; it does not work under Node. Verify with `bun --version`. Source: `package.json:24-26`.
 - **At least one of the four target platforms installed.** Smith targets OpenCode (`~/.config/opencode/`), Claude Code (`~/.claude/`), Codex (`~/.codex/` and `~/.agents/`), and Kiro (`~/.kiro/`). You do not need all four — bundles can declare any subset of `opencode`, `claude-code`, `codex`, `kiro` in their `targets` field. Platforms whose install directories don't exist are skipped silently.
-- **Write access to your home directory.** Smith owns `~/.config/agent-smith/` for its registry, source bundles, USER.md, and daemon state. It writes per-platform agent files into the directories above and skill files into `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`, and `~/.kiro/skills/`.
+- **Write access to your home directory.** Smith owns `~/.config/agent-smith/` for its registry, source bundles, and USER.md. Daemon runtime files live under `~/.local/state/agent-smith/`. It writes per-platform agent files into the directories above and skill files into `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`, and `~/.kiro/skills/`.
 
 If you intend to use Atlassian-backed knowledge sources (Confluence, Jira) or the bundled atlassian-skills catalog (Jira/Confluence/Bitbucket runtime tools), see [04-knowledge.md#atlassian-authenticated-sources](./04-knowledge.md#atlassian-authenticated-sources) for credential setup. None of that is required to start.
 
@@ -41,11 +41,12 @@ The installer:
 2. Detects whether this is a fresh install or an update of an existing `~/.agent-smith/` install (or refuses with migration hints if a conflicting `smith` is on PATH).
 3. Installs Bun if needed (with a consent prompt).
 4. (Update mode) `git pull --ff-only origin main`. Refuses on a dirty tree.
-5. Runs `bun install`, which fires the postinstall hook. The hook installs only the bundled skills (`the-architect` and `the-keymaker`) into the per-platform skill dirs; it does **not** install the `agent-smith` persona. Persona installation happens separately in Step 9 below (or, for manual recovery, via `smith agent install agent-smith`).
-6. (Fresh install) Creates the symlink `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`.
-7. Adds `~/.local/bin` to your PATH via a marker block in your shell rc (`~/.zshrc`, `~/.bash_profile`, or `~/.bashrc`). Use `--no-modify-path` to skip this.
-8. Prints a summary.
-9. Runs `smith agent install agent-smith` so the in-platform companion agent is rendered into every detected platform (OpenCode, Claude Code, Codex, Kiro) with its bundled knowledge dir materialized from `guide/`. A failure here prints a warning and continues — the rest of the install (binary, PATH wiring, state init) is already complete.
+5. Runs `bun install`, which fires the postinstall hook. The hook installs only the bundled skills (`the-architect` and `the-keymaker`) into the per-platform skill dirs; it does **not** install the `agent-smith` persona. Persona installation happens separately in Step 10 below (or, for manual recovery, via `smith agent install agent-smith`).
+6. (Fresh and update) Builds the GUI SPA bundle (`bun run gui:build`). Warn-and-continue on failure — the CLI works regardless, but `smith gui` will 404 until you run `bun run gui:build` manually.
+7. (Fresh install) Creates the symlink `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`.
+8. Adds `~/.local/bin` to your PATH via a marker block in your shell rc (`~/.zshrc`, `~/.bash_profile`, or `~/.bashrc`). Use `--no-modify-path` to skip this.
+9. Prints a summary.
+10. Runs `smith agent install agent-smith` so the in-platform companion agent is rendered into every detected platform (OpenCode, Claude Code, Codex, Kiro) with its bundled knowledge dir materialized from `guide/`. A failure here prints a warning and continues — the rest of the install (binary, PATH wiring, state init) is already complete.
 
 ### Verify
 
@@ -201,7 +202,6 @@ After `smith agent install my-debugger`, files exist in several places. This is 
 | `installed-agents.json` | what agents are installed where, with hashes for hash-mismatch refusal and lazy-claim |
 | `conventions.json` | user-global platform-conventions overrides (kiro steering paths, etc.) — see [06-permissions-and-platforms.md](./06-permissions-and-platforms.md) |
 | `USER.md` | shared user context, symlinked into every bundle |
-| `daemon.{pid,log,heartbeat.json}` | daemon state (only present if you've run `smith daemon start`) |
 
 ### Per-platform agent files
 

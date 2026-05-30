@@ -41,7 +41,7 @@ Knowledge, skills, and permissions are **orthogonal concerns** layered on top:
 
 ## Spoke map
 
-The 14 spokes are grouped by intent. Each one is a self-contained reference for its topic.
+The 15 spokes are grouped by intent. Each one is a self-contained reference for its topic.
 
 ### Getting started
 
@@ -51,7 +51,7 @@ The 14 spokes are grouped by intent. Each one is a self-contained reference for 
 
 - [02 — Bundle anatomy](./guide/02-bundle-anatomy.md). The five files inside a bundle, the complete `agent.config.json` schema, validation rules.
 - [04 — Knowledge](./guide/04-knowledge.md). Per-agent knowledge sources: file, dir, glob, url, git, confluence, jira. Delivery (inline / file / auto), inline budget, sidecar `knowledge.json`, Atlassian credential resolution.
-- [05 — Skills](./guide/05-skills.md). The skill catalog model, the seven `smith skill` subcommands, `requires.skills` semantics (canonical home), drift detection.
+- [05 — Skills](./guide/05-skills.md). The skill catalog model, the eleven `smith skill` subcommands, `requires.skills` semantics (canonical home), drift detection.
 - [06 — Permissions and platforms](./guide/06-permissions-and-platforms.md). Permission presets and JSON, per-platform translator behavior, capability gaps, MCP server declarations.
 - [07 — Models](./guide/07-models.md). Tier resolution (`balanced|fast|high|inherit`; legacy aliases `opus|sonnet|haiku`), per-platform handling, OpenCode live-resolution opt-out.
 
@@ -60,7 +60,7 @@ The 14 spokes are grouped by intent. Each one is a self-contained reference for 
 - [03 — Installing and rendering](./guide/03-installing-and-rendering.md). What `smith agent install` actually does. Build pipeline, per-platform output, cross-platform knowledge grants, the dual meaning of `--yes`.
 - [08 — Registries and catalogs](./guide/08-registries-and-catalogs.md). The two registries (agents vs skills), kind vocabularies, ad-hoc catalogs, registry hygiene.
 - [09 — The daemon](./guide/09-daemon.md). What it watches, reinstall triggers, git pull cadence, heartbeat file, lifecycle commands.
-- [10 — Doctor](./guide/10-doctor.md). The 10 health-check sections, internal exit codes (the trap), `--json` output, schema cache.
+- [10 — Doctor](./guide/10-doctor.md). The 14 health-check sections, internal exit codes (the trap), `--json` output, schema cache.
 - [11 — Update and uninstall](./guide/11-update-and-uninstall.md). `smith update` pipeline, `agent uninstall` / `agent uninstall-all` / `agent destroy` / `jack-out` — when to use which.
 
 ### Reference (look something up)

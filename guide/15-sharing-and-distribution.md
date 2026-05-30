@@ -316,7 +316,7 @@ Materialization happens in `src/core/knowledge/pipeline.ts` and lives under each
 
 - If `smith agent install` fails with a knowledge acquisition error, you almost certainly need network access, repo access, or credentials that the publisher's machine had but yours doesn't.
 - **Re-materialization happens on `install` by default.** Static sources need a manual `smith agent install <name>` (or `smith knowledge fetch <name>`) to pick up upstream content changes. The daemon does this automatically for *catalog* source changes; it does **not** poll the content that knowledge sources point at.
-- **Bundle authors can opt sources into auto-refresh.** Sources whose `refresh.mode` is `session` or `always` are eligible for per-platform refresh hooks; sources whose mode is `ttl` are refreshed by the daemon on a 5-minute tick (see [guide/09-daemon.md § Knowledge TTL refresh](./09-daemon.md#knowledge-ttl-refresh)). As of v0.15, Claude Code, Codex, and OpenCode are all wired up for session/always refresh. On first install of an agent with `session`/`always` sources targeting any of those platforms, smith prompts you for consent to install the refresh integration. For claude-code, smith adds a `hooks.SessionStart` block to the rendered agent file; for codex, smith writes a global `SessionStart` entry to `~/.codex/hooks.json` (smith-managed via a `_smith_managed` ownership marker) and prints a one-line advisory to run `/hooks` inside codex to trust it; for opencode, smith installs a shared session-start plugin at `~/.config/opencode/plugins/agent-smith-refresh/` and registers it in `~/.config/opencode/opencode.json`'s `plugin` array (tracked via a `.smith-managed` sentinel that lists every consenting agent — the plugin and opencode.json entry are removed automatically when the last consenting agent is uninstalled). If `~/.codex/hooks.json` pre-exists without smith's marker, install fails — smith never overwrites user-owned hook config. You can pre-answer with `--refresh-consent yes|no` (broadcasts to every consent-eligible platform; required for CI / non-TTY) or skip the prompt entirely with `--no-refresh-hooks`. See [guide/04-knowledge.md § Consent and the refresh manifest](./04-knowledge.md#consent-and-the-refresh-manifest) for the prompt UX, the manifest shape, and the per-source advisory lock that prevents concurrent sessions from double-fetching.
+- **Bundle authors can opt sources into auto-refresh.** Sources whose `refresh.mode` is `session` or `always` are eligible for per-platform refresh hooks; sources whose mode is `ttl` are refreshed by the daemon on a 5-minute tick (see [guide/09-daemon.md § Knowledge TTL refresh](./09-daemon.md#knowledge-ttl-refresh)). As of v0.15, Claude Code, Codex, OpenCode, and Kiro are all wired up for session/always refresh. On first install of an agent with `session`/`always` sources targeting any of those platforms, smith prompts you for consent to install the refresh integration. For claude-code, smith adds a `hooks.SessionStart` block to the rendered agent file; for codex, smith writes a global `SessionStart` entry to `~/.codex/hooks.json` (smith-managed via a `_smith_managed` ownership marker) and prints a one-line advisory to run `/hooks` inside codex to trust it; for opencode, smith installs a shared session-start plugin at `~/.config/opencode/plugins/agent-smith-refresh/` and registers it in `~/.config/opencode/opencode.json`'s `plugin` array (tracked via a `.smith-managed` sentinel that lists every consenting agent — the plugin and opencode.json entry are removed automatically when the last consenting agent is uninstalled). If `~/.codex/hooks.json` pre-exists without smith's marker, install fails — smith never overwrites user-owned hook config. You can pre-answer with `--refresh-consent yes|no` (broadcasts to every consent-eligible platform; required for CI / non-TTY) or skip the prompt entirely with `--no-refresh-hooks`. See [guide/04-knowledge.md § Consent and the refresh manifest](./04-knowledge.md#consent-and-the-refresh-manifest) for the prompt UX, the manifest shape, and the per-source advisory lock that prevents concurrent sessions from double-fetching.
 - **Declining consent (or passing `--no-refresh-hooks`) keeps refresh manual.** No hook block is written and `smith knowledge fetch <name>` remains the way to pick up content changes. Re-running `smith agent install <name>` later will re-prompt.
 
 ---
@@ -426,7 +426,15 @@ smith agent install --from git@github.com:acme/team-agents.git
 
 # Skill (same shape)
 smith skill install --from git@github.com:acme/team-skills.git
+
+# Skill — multi-bundle flags for catalogs with multiple skills
+smith skill install --all --from git@github.com:acme/team-skills.git
+smith skill install --skills lint-rules,format-output --from git@github.com:acme/team-skills.git
+smith skill install --json --from git@github.com:acme/team-skills.git   # discover only, print JSON
+smith skill install --from git@github.com:acme/team-skills.git --git-ref v2.0  # pin to branch/tag/SHA
 ```
+
+> **Register-on-install:** `--from <url>` registers the cloned catalog only after a successful install. Discovery alone (e.g. `--json`) does NOT persist a registry entry.
 
 What happens under the hood:
 
@@ -478,6 +486,7 @@ The `--purge-clone` flag is refused for catalogs whose `rootPath` is not under `
 - `https://github.com/owner/repo.git`
 - `git@github.com:owner/repo.git`
 - `ssh://git@github.com/owner/repo.git`
+- `ssh://github.com/owner/repo.git` (user-less SSH — any `ssh://[user@]host/…` form is accepted)
 - `file:///abs/path/to/bare.git` (intended for fixtures and integration tests; production use is allowed but unusual — local URLs are routed to `<stateHome>/remote/_local/<8-char-hash>-<basename>`)
 
 Rejected:

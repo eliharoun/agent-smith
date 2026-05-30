@@ -36,8 +36,8 @@ The system has four zones: **what you type** (the CLI), **what smith owns** (sta
 ```mermaid
 flowchart TB
     subgraph CLI["smith CLI — what you type"]
-        L["Lifecycle<br/>init, status, doctor,<br/>update, daemon, gui, jack-out"]
-        A["smith agent<br/>init, install, register,<br/>validate, list, uninstall,<br/>sync, ..."]
+        L["Lifecycle<br/>init, status, doctor,<br/>update, daemon, gui, jack-out,<br/>config"]
+        A["smith agent<br/>init, install, register,<br/>validate, list, uninstall,<br/>reconfigure, sync, ..."]
         S["smith skill<br/>install, register, list,<br/>sync, validate, ..."]
         K["smith knowledge<br/>add, fetch, list,<br/>validate, ..."]
     end
@@ -240,8 +240,8 @@ Every term that appears in this document, alphabetized. The first six are summar
 | **Assembler** | The function that merges IDENTITY + EXPERTISE + SOUL + USER + knowledge into the final agent body before translation. | `src/core/assembler.ts` |
 | **Bundle** | A folder with the four persona files (IDENTITY/EXPERTISE/SOUL/USER) and `agent.config.json`. The canonical source-of-truth for an agent. | `~/.config/agent-smith/agents/<name>/` (user-global) or any registered catalog. |
 | **Catalog** | A directory containing one or more bundles, registered with smith. Agent kinds: `user-global`, `project`, `registered`. Skill kinds: `user-global`, `user-local`, `team-shared`. | Anywhere on disk; tracked in `registry.json` / `skill-catalogs.json`. |
-| **Daemon** | Optional background watcher. On a 5-minute tick, it `git pull`s every `registered` catalog (agents and skills) and refreshes `ttl`-mode knowledge sources. Writes a heartbeat file. Does **not** pull the agent-smith install itself — that's `smith update`. | `smith daemon start/stop/status` |
-| **Doctor** | Health-check command. Verifies platform installs, model resolution, skill drift, registry hygiene, Atlassian credentials. | `smith doctor` |
+| **Daemon** | Optional background watcher. On a 15-minute tick, it `git pull`s every `registered` catalog (agents and skills); on a separate 5-minute tick, it refreshes `ttl`-mode knowledge sources. Writes a heartbeat file to `~/.local/state/agent-smith/daemon.heartbeat.json`. Does **not** pull the agent-smith install itself — that's `smith update`. | `smith daemon start/stop/status` |
+| **Doctor** | Health-check command. Verifies platform installs, model resolution, skill drift, registry hygiene, Atlassian credentials, knowledge-refresh hooks, knowledge-prompt-disk-consistency, remote-catalogs, and duplicate-catalogs. | `smith doctor` |
 | **EXPERTISE.md** | One of the four persona files. Domain knowledge, methodology, techniques the agent applies. | Inside each bundle. |
 | **IDENTITY.md** | One of the four persona files. The agent's role and primary purpose ("you are a code reviewer who…"). | Inside each bundle. |
 | **installed-agents.json** | Manifest of every rendered agent file: path + content hash per platform. Drives idempotent reinstall, `would-clobber` refusal, and hash-mismatch refusal on uninstall. | `~/.config/agent-smith/installed-agents.json` |

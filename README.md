@@ -44,7 +44,7 @@ Then `smith agent install` emits the right native config for every platform you 
 gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install
 ```
 
-Requires [`gh`](https://cli.github.com/) and bash. The installer offers to install [Bun](https://bun.sh) if it's missing.
+Requires bash (the installer itself is a bash script and offers to install [Bun](https://bun.sh) if it's missing). [`gh`](https://cli.github.com/) is a convenience for the clone above — you can substitute `git clone https://github.com/eliharoun/agent-smith ~/.agent-smith` if you prefer.
 
 After install, open a new shell and verify:
 
@@ -140,6 +140,12 @@ smith agent list                           # all known agents and their targets
 
 smith skill list                           # installed skills + drift status
 smith skill install <catalog>/<name>       # install a skill into all platforms
+
+smith skill validate <name>                # validate a skill's frontmatter
+
+smith config get [key]                     # show model resolution settings
+smith agent reconfigure <name>             # grant/revoke refresh hooks for an agent
+smith knowledge remove <agent> <source-id> # remove a knowledge source from a bundle
 
 smith doctor                               # platform health, schema drift, registry hygiene
 smith status                               # registry + paths

@@ -97,48 +97,89 @@ not auto-propagate; you have to re-run `smith agent install <name>` (or
 ### Claude Code
 
 `resolveClaudeCodeModel`
-(`src/core/model-resolution/claude-code.ts`) is trivial:
+(`src/core/model-resolution/claude-code.ts`) implements a layered
+resolution algorithm analogous to OpenCode's:
 
-- `inherit` → `undefined` (no `model:` line).
-- Anything else → returns the Claude Code tier name. Semantic names
-  (`high`, `balanced`, `fast`) are normalized to their Claude Code
-  equivalents (`opus`, `sonnet`, `haiku`) via the canonical-to-claude-code
-  reverse map.
+1. **`inherit`.** If `modelTier === "inherit"`, returns `undefined` (no
+   `model:` line).
+2. **Per-bundle `model` override.** If `agent.config.json` has a `model`
+   field, it is returned verbatim.
+3. **Per-tier env override.** If `SMITH_CLAUDE_TIER_<TIER>` is set (e.g.
+   `SMITH_CLAUDE_TIER_HIGH=opus`), that value is returned verbatim.
+4. **Auth detection.** `detectClaudeCodeAuth()` probes the local Claude
+   Code CLI:
+   - **CLI not installed** → throws `PlatformUnavailableError` (the
+     orchestrator catches this and skips the target).
+   - **Unauthenticated** → returns `undefined` with a warning suggesting
+     `claude auth login` or the env override.
+   - **Authenticated with `availableModels`** → prefers the legacy tier
+     name (`opus`/`sonnet`/`haiku`); if absent, substitutes the closest
+     available family with a warning.
+   - **Authenticated without `availableModels`** → returns the legacy
+     tier name. Claude Code's runtime resolves it natively.
 
-The Claude Code translator writes that string verbatim into frontmatter
-`model:`. Claude Code's runtime resolves the tier name to a concrete
-model on its side; smith does not query a Claude Code CLI and does not
-consult any tool map for model selection.
-
-The OpenCode-only `model` override field is **ignored** by the Claude
-Code resolver (the validator emits an info-note when both `model` and
-`modelTier` are set on a config that targets Claude Code).
+The Claude Code translator writes the resolved string verbatim into
+frontmatter `model:`.
 
 ### Codex
 
-`resolveCodexModel` (`src/core/model-resolution/codex.ts`) always
-returns `undefined`, regardless of `modelTier` or `model`. The Codex
-translator does not consult the resolved value at all — its frontmatter
-is hard-coded to `name`, `description`, and `allowed_tools?`.
+`resolveCodexModel` (`src/core/model-resolution/codex.ts`) implements a
+layered resolution algorithm:
 
-There is **no warning** emitted when Codex drops the model. The field
-silently disappears for Codex installs. (Spoke
-[06-permissions-and-platforms.md](./06-permissions-and-platforms.md#per-platform-translator-behavior)
-records this as "not supported (no per-agent model)" in the comparison
-table.)
+1. **`inherit`.** If `modelTier === "inherit"`, returns `undefined`.
+2. **Per-bundle `model` override.** If `agent.config.json` has a `model`
+   field and the bundle targets codex, it is returned verbatim.
+3. **Per-tier env override.** If `SMITH_CODEX_TIER_<TIER>` is set (e.g.
+   `SMITH_CODEX_TIER_HIGH=gpt-5-codex`), that value is returned verbatim.
+4. **Auth detection.** `detectCodexAuth()` probes the local Codex CLI:
+   - **CLI not installed** → throws `PlatformUnavailableError` (the
+     orchestrator catches this and skips the target).
+   - **Unauthenticated** → returns `undefined` with a warning suggesting
+     `codex login`, `OPENAI_API_KEY`, or the env override.
+   - **Authenticated** → returns the static tier literal.
+
+Static tier table:
+
+| `modelTier` | Resolved literal |
+|---|---|
+| `high` | `gpt-5-codex` |
+| `balanced` | `gpt-5` |
+| `fast` | `gpt-5-mini` |
+
+The resolver returns a real model literal. The Codex **translator**
+drops the field — no `model:` line is emitted in the rendered Codex
+frontmatter. This separation means the resolver can still be tested and
+inspected (e.g. by `smith doctor`'s tier preview) even though the
+translator suppresses the output.
 
 ### Kiro
 
-`resolveKiroModel` (`src/core/model-resolution/kiro.ts`) is a pure static map:
+`resolveKiroModel` (`src/core/model-resolution/kiro.ts`) implements a
+layered resolution algorithm:
+
+1. **`inherit`.** If `modelTier === "inherit"`, returns `undefined` (no
+   `modelId` field emitted; Kiro uses its workspace default).
+2. **Per-bundle `model` override.** If `agent.config.json` has a `model`
+   field and the bundle targets kiro, it is returned verbatim.
+3. **Per-tier env override.** If `SMITH_KIRO_TIER_<TIER>` is set (e.g.
+   `SMITH_KIRO_TIER_HIGH=claude-opus-4.6`), that value is returned
+   verbatim.
+4. **Auth detection.** `detectKiroAuth()` probes the local kiro-cli:
+   - **CLI not installed** → throws `PlatformUnavailableError` (the
+     orchestrator catches this and skips the target).
+   - **Unauthenticated** → returns `undefined` with a warning suggesting
+     `kiro-cli login` or the env override.
+   - **Authenticated** → returns the static tier literal.
+
+Static tier table:
 
 | `modelTier` | Resolved `modelId` |
 |---|---|
 | `high` (alias `opus`) | `claude-opus-4.6` |
 | `balanced` (alias `sonnet`) | `claude-sonnet-4.6` |
 | `fast` (alias `haiku`) | `claude-haiku-4.5` |
-| `inherit` | `undefined` (no `modelId` field emitted; Kiro uses its workspace default) |
 
-There is no live registry call, no provider preference walk, and no curated fallback. The OpenCode-only `model` override field is **ignored** by the Kiro resolver. The Kiro translator writes the resolved literal into the JSON document's `modelId` field.
+The Kiro translator writes the resolved literal into the JSON document's `modelId` field.
 
 ## What ends up on disk
 
@@ -210,18 +251,17 @@ Behavior:
 - **OpenCode:** the `model` value is returned verbatim by step 1 of
   `resolveOpenCodeModel`. No live query happens; no warning is emitted;
   no provider preference walk occurs.
-- **Claude Code:** ignored. The Claude Code resolver only looks at
-  `modelTier`.
-- **Codex:** ignored. Codex never emits a `model:` line.
-- **Kiro:** ignored. The Kiro resolver only looks at `modelTier` and
-  resolves to a static literal.
+- **Claude Code:** the `model` value is returned verbatim by step 2 of
+  `resolveClaudeCodeModel`. No auth detection occurs.
+- **Codex:** the `model` value is returned verbatim by step 2 of
+  `resolveCodexModel` (when the bundle targets codex). The Codex
+  translator still drops the field from rendered output.
+- **Kiro:** the `model` value is returned verbatim by step 2 of
+  `resolveKiroModel` (when the bundle targets kiro).
 
-If a bundle sets `model` but does not list `opencode` in `targets`, the
-validator emits an info-note — the field has no effect on output.
-
-There is no per-agent model override for Claude Code or Codex. The
-override exists only because OpenCode is the platform whose resolver is
-nondeterministic across machines.
+If a bundle sets `model` but does not list any platform in `targets`
+that would use it, the validator emits an info-note — the field has no
+effect on output for platforms that aren't targeted.
 
 ## Provider preferences
 
@@ -266,12 +306,28 @@ For power-user control, set a per-tier environment variable to bypass
 the entire provider preference walk for that tier:
 
 ```bash
+# OpenCode-specific (used by resolveOpenCodeModel)
 export SMITH_TIER_HIGH=openai/gpt-5
 export SMITH_TIER_BALANCED=anthropic/claude-sonnet-4-6-20260101
 export SMITH_TIER_FAST=anthropic/claude-haiku-4-5-20260101
+
+# Claude Code-specific (used by resolveClaudeCodeModel)
+export SMITH_CLAUDE_TIER_HIGH=opus
+export SMITH_CLAUDE_TIER_BALANCED=sonnet
+export SMITH_CLAUDE_TIER_FAST=haiku
+
+# Codex-specific (used by resolveCodexModel)
+export SMITH_CODEX_TIER_HIGH=gpt-5-codex
+export SMITH_CODEX_TIER_BALANCED=gpt-5
+export SMITH_CODEX_TIER_FAST=gpt-5-mini
+
+# Kiro-specific (used by resolveKiroModel)
+export SMITH_KIRO_TIER_HIGH=claude-opus-4.6
+export SMITH_KIRO_TIER_BALANCED=claude-sonnet-4.6
+export SMITH_KIRO_TIER_FAST=claude-haiku-4.5
 ```
 
-These can also be set in `~/.config/agent-smith/.env`:
+The OpenCode overrides can also be set in `~/.config/agent-smith/.env`:
 
 ```bash
 smith config set model.tier.high openai/gpt-5
@@ -357,9 +413,13 @@ Valid keys:
 | Key | Env var | Effect |
 |---|---|---|
 | `model.providers` | `SMITH_MODEL_PROVIDERS` | Provider preference order |
-| `model.tier.high` | `SMITH_TIER_HIGH` | Override for `high` tier |
-| `model.tier.balanced` | `SMITH_TIER_BALANCED` | Override for `balanced` tier |
-| `model.tier.fast` | `SMITH_TIER_FAST` | Override for `fast` tier |
+| `model.tier.high` | `SMITH_TIER_HIGH` | Override for `high` tier (OpenCode) |
+| `model.tier.balanced` | `SMITH_TIER_BALANCED` | Override for `balanced` tier (OpenCode) |
+| `model.tier.fast` | `SMITH_TIER_FAST` | Override for `fast` tier (OpenCode) |
+
+Per-platform tier overrides (`SMITH_CLAUDE_TIER_*`, `SMITH_CODEX_TIER_*`,
+`SMITH_KIRO_TIER_*`) are read from the process environment only — they
+are not managed by `smith config`.
 
 `smith config get` (no key) prints a full overview:
 
@@ -404,7 +464,8 @@ Use this when:
   fallbacks are pinned per release).
 
 Note that the env var only affects OpenCode resolution. Claude Code,
-Codex, and Kiro resolvers don't query anything live in the first place.
+Codex, and Kiro resolvers don't query a live model list, though they do
+perform auth detection (CLI presence and login status).
 
 ## Doctor's model-resolution check
 
@@ -506,8 +567,8 @@ The `model` field is returned verbatim — no resolution occurs.
 - **No model-resolution result on disk.** The resolver writes nothing
   back to the bundle. The only persistent record of which model was
   picked is the `model:` line in the installed `.md` file.
-- **Codex silently drops the model.** No warning is printed when Codex
-  omits the field.
+- **Codex translator silently drops the model.** The resolver produces a
+  real literal, but the translator does not emit it in rendered output.
 - **Unknown tier names are rejected at config-parse time.** The
   validator schema constrains `modelTier` to the semantic names, their
   aliases, and `inherit`. A typo like `"sonet"` produces a validation
@@ -541,15 +602,14 @@ time without editing the bundle's `model` field or setting a
 
 - **No model fallback chain across tiers.** If `high` resolution fails
   it does not "downgrade" to `balanced`.
-- **No per-platform model overrides for Claude Code or Codex.** Only
-  OpenCode honors a per-bundle `model` field.
 - **No write-back to bundle config.** The resolver never edits
   `agent.config.json` to record what it picked.
-- **No Codex model warning.** Setting `modelTier` and targeting Codex
-  produces no diagnostic.
-- **No live Claude Code model query.** The Claude Code resolver does
-  not shell out to anything; it is a pure function from `modelTier` to
-  the Claude Code tier name.
+- **No Codex model in rendered output.** The Codex translator drops the
+  resolved model — no `model:` line appears in Codex frontmatter, even
+  though the resolver produces a real literal internally.
+- **No live Claude Code or Kiro model query.** Those resolvers consult
+  auth state (CLI presence and login status) but do not query a live
+  model list — they resolve to static tier names.
 - **No persistent model-resolution cache.** Each install re-spawns
   `opencode models`. Within a single CLI invocation the result is
   memoized; across invocations it is not.

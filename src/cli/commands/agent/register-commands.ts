@@ -109,7 +109,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
     .command("init <name>")
     .description("Scaffold a new agent bundle")
     .option("--description <text>", "One-line description of the agent")
-    .option("--targets <list>", "Comma-separated targets: opencode,claude-code,codex")
+    .option("--targets <list>", "Comma-separated targets: opencode,claude-code,codex,kiro")
     .option(
       "--model-tier <tier>",
       "high | balanced | fast | inherit (aliases: opus, sonnet, haiku)",

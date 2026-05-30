@@ -30,6 +30,7 @@ duplication and surfaces only in tests, not user-visible output.
 | Command | Summary | Spoke |
 |---|---|---|
 | [`agent catalogs`](#smith-agent-catalogs) | List registered agent catalogs (sources) | [08](./08-registries-and-catalogs.md) |
+| [`agent catalog rename <old> <new>`](#smith-agent-catalog-rename-old-new) | Rename an agent catalog label | [08](./08-registries-and-catalogs.md) |
 | [`agent destroy <name>`](#smith-agent-destroy-name) | Inverse of `agent init`: remove a user-global source bundle from `~/.config/agent-smith/agents/` | [11](./11-update-and-uninstall.md) |
 | [`agent init <name>`](#smith-agent-init-name) | Scaffold a new agent bundle (optionally `--from` an existing one, optionally `--catalog` into a registered catalog) | [01](./01-getting-started.md) |
 | [`agent install <name>`](#smith-agent-install-name) | Build and render an agent to its targets | [03](./03-installing-and-rendering.md) |
@@ -41,7 +42,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`agent uninstall-all`](#smith-agent-uninstall-all) | Remove every registered agent from every target | [11](./11-update-and-uninstall.md) |
 | [`agent unregister <path-or-label>`](#smith-agent-unregister-path-or-label) | Remove a registered agent catalog | [08](./08-registries-and-catalogs.md) |
 | [`agent validate [name]`](#smith-agent-validate-name) | Validate one or all agent bundles | [02](./02-bundle-anatomy.md) |
-| [`config get <key>`](#smith-config-get-key) | Read a model-resolution config value | [07](./07-models.md) |
+| [`config get [key]`](#smith-config-get-key) | Read a model-resolution config value (or full overview) | [07](./07-models.md) |
 | [`config set <key> <value>`](#smith-config-set-key-value) | Write a model-resolution config value | [07](./07-models.md) |
 | [`config unset <key>`](#smith-config-unset-key) | Remove a model-resolution config value (revert to auto-detection) | [07](./07-models.md) |
 | [`daemon run`](#smith-daemon-run) | Run the daemon in foreground (internal; used by `daemon start`) | [09](./09-daemon.md) |
@@ -49,6 +50,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`daemon status`](#smith-daemon-status) | Report whether the daemon is running, stale, or absent | [09](./09-daemon.md) |
 | [`daemon stop`](#smith-daemon-stop) | Stop the daemon (SIGTERM with SIGKILL fallback) | [09](./09-daemon.md) |
 | [`doctor`](#smith-doctor) | Run the 12-section health check across schemas, skills, models, registry, remote catalogs, and duplicate detection | [10](./10-doctor.md) |
+| [`gui`](#smith-gui) | Launch the smith browser GUI | — |
 | [`init`](#smith-init) | Initialize `~/.config/agent-smith` (idempotent) | [01](./01-getting-started.md) |
 | [`init-user`](#smith-init-user) | Open `USER.md` in `$EDITOR` | [01](./01-getting-started.md) |
 | [`jack-out`](#smith-jack-out) | Full offboarding: uninstall everything and remove `~/.config/agent-smith` | [11](./11-update-and-uninstall.md) |
@@ -57,15 +59,19 @@ duplication and surfaces only in tests, not user-visible output.
 | [`knowledge migrate-codex`](#smith-knowledge-migrate-codex) | Take ownership of a pre-existing `~/.codex/hooks.json` (upgrade helper) | [04](./04-knowledge.md) |
 | [`knowledge refresh-session`](#smith-knowledge-refresh-session) | Refresh session-mode sources for installed agents (soft-fail; for hook use) | [04](./04-knowledge.md) |
 | [`knowledge list`](#smith-knowledge-list-agent) | Show installed knowledge for an agent (from the manifest) | [04](./04-knowledge.md) |
+| [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
 | [`knowledge validate`](#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents | [04](./04-knowledge.md) |
+| [`migrate-clones`](#smith-migrate-clones) | Migrate rc.1 external-repo clones from config to state dir | [13](./13-paths-and-state.md) |
 | [`skill bootstrap`](#smith-skill-bootstrap) | Install the bundled `the-architect` and `the-keymaker` skills to all platforms | [01](./01-getting-started.md) |
 | [`skill catalogs`](#smith-skill-catalogs) | List registered skill catalogs (including protected/adhoc) | [05](./05-skills.md) |
+| [`skill catalog rename <old> <new>`](#smith-skill-catalog-rename-old-new) | Rename a skill catalog label | [05](./05-skills.md) |
 | [`skill install`](#smith-skill-install-ref) | Install a skill from a catalog ref or `--from <path>` | [05](./05-skills.md) |
 | [`skill list`](#smith-skill-list) | List skills discovered across registered (non-adhoc) catalogs | [05](./05-skills.md) |
 | [`skill register <path>`](#smith-skill-register-path) | Register a directory as a skill catalog | [05](./05-skills.md) |
 | [`skill uninstall <name>`](#smith-skill-uninstall-name) | Remove an installed skill from all platforms | [05](./05-skills.md) |
 | [`skill unregister <path-or-label>`](#smith-skill-unregister-path-or-label) | Remove a registered skill catalog | [05](./05-skills.md) |
 | [`skill update [name]`](#smith-skill-update-name) | Re-copy installed skill(s) from their source catalogs | [05](./05-skills.md) |
+| [`skill validate <name>`](#smith-skill-validate-name) | Validate a registered skill's frontmatter | [05](./05-skills.md) |
 | [`status`](#smith-status) | Print registry locations and registered catalog summary | [08](./08-registries-and-catalogs.md) |
 | [`update`](#smith-update) | Pull latest agent-smith from `origin/main`, install deps, run doctor | [11](./11-update-and-uninstall.md) |
 
@@ -276,11 +282,11 @@ Source: `src/cli/commands/init-agent.ts:230-308` and `src/cli/commands/agent/reg
 **Exit codes:**
 
 - `0` — bundle created.
-- `1` — agent already exists (`already-exists`); source not found;
-  `--catalog` value did not match any registered catalog (`not-found`).
-- `2` — source config invalid; merged config invalid; missing
-  `--description`; invalid `--permission` value or malformed
-  `--permission-json`.
+- `1` — source not found.
+- `2` — agent already exists (`already-exists`); `--catalog` value did
+  not match any registered catalog (`not-found`); source config invalid;
+  merged config invalid; missing `--description`; invalid `--permission`
+  value or malformed `--permission-json`.
 
 **Examples:**
 
@@ -299,7 +305,7 @@ $ smith agent init code-reviewer --catalog team-agents \
 
 ### `smith agent reconfigure <name>`
 
-**Synopsis:** `smith agent reconfigure <name> [--grant <platform>...] [--revoke <platform>...]`
+**Synopsis:** `smith agent reconfigure <name> [--grant <platform>...] [--revoke <platform>...] [--yes]`
 
 **Description:** Update per-platform knowledge-refresh consent on an
 already-installed agent. Use this when:
@@ -328,10 +334,12 @@ invocation. Source: `src/cli/commands/agent/reconfigure.ts`.
 **Flags:**
 
 - `--grant <platform>` — grant refresh consent for the named platform.
-  Repeatable. One of `opencode`, `claude-code`, `codex`. Platform must
+  Repeatable. One of `opencode`, `claude-code`, `codex`, `kiro`. Platform must
   be a target of the installed agent.
 - `--revoke <platform>` — revoke refresh consent for the named platform.
   Repeatable. Same accepted values as `--grant`.
+- `--yes` — grant refresh hooks for every platform the agent is installed
+  for (non-interactive). Mutually exclusive with `--grant`/`--revoke`.
 
 **Exit codes:**
 
@@ -519,6 +527,36 @@ See also: [`smith agent register`](#smith-agent-register-path), [`smith agent un
 
 ---
 
+### `smith agent catalog rename <old> <new>`
+
+**Synopsis:** `smith agent catalog rename <old-label> <new-label>`
+
+**Description:** Rename an agent catalog's label in `registry.json`.
+Source: `src/cli/commands/agent/catalog-rename.ts`.
+
+**Arguments:**
+
+- `<old-label>` — current catalog label.
+- `<new-label>` — new catalog label.
+
+**Flags:** none.
+
+**Exit codes:**
+
+- `0` — renamed.
+- `1` — no catalog with `<old-label>` found (`not-found`).
+- `2` — `<new-label>` already in use (`already-exists`).
+
+**Examples:**
+
+```bash
+$ smith agent catalog rename team-agents acme-agents
+```
+
+**See also:** [Registries and catalogs](./08-registries-and-catalogs.md).
+
+---
+
 ### `smith agent sync [name]`
 
 **Synopsis:** `smith agent sync [--check] [--all] [name]`
@@ -650,10 +688,9 @@ raise `already-exists`. Source: `src/cli/commands/skill/register.ts`.
 **Exit codes:**
 
 - `0` — registered.
-- `1` — label collision (`already-exists`).
-- `2` — path missing, looks like an agent catalog, empty without
-  `--allow-empty`, reserved kind, not a git repo, or `--git-remote`
-  mismatch.
+- `2` — label collision (`already-exists`); path missing, looks like an
+  agent catalog, empty without `--allow-empty`, reserved kind, not a git
+  repo, or `--git-remote` mismatch.
 
 **Examples:**
 
@@ -825,6 +862,36 @@ team           [team-shared]      → /Users/you/skills/team
 
 ---
 
+### `smith skill catalog rename <old> <new>`
+
+**Synopsis:** `smith skill catalog rename <old-label> <new-label>`
+
+**Description:** Rename a skill catalog's label in `skill-catalogs.json`.
+Source: `src/cli/commands/skill/catalog-rename.ts`.
+
+**Arguments:**
+
+- `<old-label>` — current catalog label.
+- `<new-label>` — new catalog label.
+
+**Flags:** none.
+
+**Exit codes:**
+
+- `0` — renamed.
+- `1` — no catalog with `<old-label>` found (`not-found`).
+- `2` — `<new-label>` already in use (`already-exists`).
+
+**Examples:**
+
+```bash
+$ smith skill catalog rename team-skills acme-skills
+```
+
+**See also:** [Skills](./05-skills.md).
+
+---
+
 ## Skill installs
 
 ### `smith skill install [ref]`
@@ -843,7 +910,7 @@ team           [team-shared]      → /Users/you/skills/team
   catalog is registered (failing on label collision with a hint to use
   `--as`) before the install runs.
 - **Remote git URL:** `--from <url>` where `<url>` is `https://`,
-  `ssh://git@`, `git@host:`, or `file://`. The repo is cloned via the
+  `ssh://[user@]host/...`, `git@host:`, or `file://`. The repo is cloned via the
   shared `installFromUrl` orchestrator into
   `<stateHome>/remote/<host>/<owner>/<repo>`, registered as a
   remote-backed skill catalog, then the install proceeds through the
@@ -852,7 +919,7 @@ team           [team-shared]      → /Users/you/skills/team
   pass `[ref]`, `--skills`, or `--all` to select which skills to
   install (omitting all three in a TTY opens an interactive picker;
   in non-TTY it exits `2` with the list).
-  Refuses (exit 1, `already-exists`) when the URL is already registered
+  Refuses (exit 2, `already-exists`) when the URL is already registered
   under a different label in either registry — the error names the
   existing catalog and points at `smith {agent,skill} sync <label>`
   for updates (v1-task RC2-4). The same-URL idempotency case (re-run
@@ -893,8 +960,8 @@ Source: `src/cli/commands/skill/install-cmd.ts`.
 **Exit codes:**
 
 - `0` — installed.
-- `1` — ad-hoc catalog label collision (`already-exists`).
-- `2` — installer failed (`validation-failed`); unknown `--targets` value;
+- `2` — ad-hoc catalog label collision (`already-exists`); installer
+  failed (`validation-failed`); unknown `--targets` value;
   missing ref/`--from`; invalid ref format; invalid name; absolute-path
   ref intercepted; multi-skill remote without disambiguating ref;
   malformed URL or invalid scheme rejected by `deriveRemotePath`.
@@ -980,12 +1047,43 @@ $ smith skill uninstall my-skill
 
 ---
 
+### `smith skill validate <name>`
+
+**Synopsis:** `smith skill validate <name>`
+
+**Description:** Validate a single registered skill's frontmatter
+(SKILL.md YAML block). Resolves the skill by name across all registered
+catalogs. Source: `src/cli/commands/skill/validate.ts`.
+
+**Arguments:**
+
+- `<name>` — skill name.
+
+**Flags:** none.
+
+**Exit codes:**
+
+- `0` — valid.
+- `1` — skill not found in any registered catalog.
+- `2` — invalid frontmatter; or ambiguous (name appears in multiple
+  catalogs).
+
+**Examples:**
+
+```bash
+$ smith skill validate the-architect
+```
+
+**See also:** [Skills](./05-skills.md).
+
+---
+
 ### `smith skill bootstrap`
 
 **Synopsis:** `smith skill bootstrap [--dry-run] [--targets <list>]`
 
 **Description:** Install the bundled `the-architect` and `the-keymaker`
-skills to all four platforms (`opencode`, `claude-code`, `codex`, `kiro`).
+skills to all three platforms (`opencode`, `claude-code`, `codex`).
 Resolves the repo root from this command file's own location (so it
 works from a checked-out source tree). Honors
 `AGENT_SMITH_SKIP_POSTINSTALL=1` and `CI=true` when invoked from
@@ -1004,7 +1102,7 @@ postinstall context (skipped, not failed). Source: `scripts/bootstrap.ts`.
 
 - `--dry-run` — print what would happen without modifying anything.
 - `--targets <list>` — comma-separated subset of
-  `opencode,claude-code,codex,kiro`. Default: all four.
+  `opencode,claude-code,codex`. Default: all three.
 
 **Exit codes:**
 
@@ -1064,7 +1162,7 @@ $ smith agent validate the-architect
 
 ### `smith agent install <name>`
 
-**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--all] [--agents <list>] [--json] [--force] [--platform-conventions <scalar>] [--no-platform-conventions]`
+**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--all] [--agents <list>] [--json] [--force] [--allow-missing-mcp] [--platforms <list>] [--verbose] [--platform-conventions <scalar>] [--no-platform-conventions]`
 
 **Description:** Build and render an agent bundle to its targets. Build
 runs first; if any agent build fails, the entire install aborts before
@@ -1087,7 +1185,7 @@ Two acquisition modes:
   (omitting all three in a TTY opens an interactive picker; in non-TTY
   it exits `2` with the list).
   `--from` skips the local-catalog lookup entirely — local agents with
-  the same name are not consulted. Refuses (exit 1, `already-exists`)
+  the same name are not consulted. Refuses (exit 2, `already-exists`)
   when the URL is already registered under a different label in either
   registry — the error message names the existing catalog and points
   at `smith agent sync` (v1-task RC2-4). Re-running with the same URL
@@ -1128,7 +1226,7 @@ agents and a suggestion to run `smith agent install-all` (or
   [guide/04-knowledge.md § Consent and the refresh manifest](./04-knowledge.md#consent-and-the-refresh-manifest)
   for the full flow and the manifest shape.
 - `--from <url>` — clone-and-install branch. Accepts `https://`,
-  `ssh://git@`, `git@host:`, and `file://` URLs. URL normalization
+  `ssh://[user@]host/...`, `git@host:`, and `file://` URLs. URL normalization
   (`src/io/remote-path.ts:deriveRemotePath`) rejects plain `http://`,
   smart-transport schemes (`ext::`), URL segments starting with `-`
   (git option-injection guard), `..` segments, and host/owner/repo
@@ -1154,12 +1252,20 @@ agents and a suggestion to run `smith agent install-all` (or
   overwrite a rendered file at any target even when it isn't recorded in
   `installed-agents.json` or its on-disk hash differs from the manifest.
   Use after intentionally diverging a rendered file.
+- `--allow-missing-mcp` — demote missing-MCP-server errors to warnings.
+  Without this flag, install blocks when a declared MCP server cannot be
+  resolved.
+- `--platforms <list>` — comma-separated list of platforms to install to
+  (subset of the agent's declared targets). Restricts which platform
+  files are written.
+- `--verbose` — show info-level warnings (pattern fallbacks, platform
+  truisms) that are normally suppressed.
 - `--platform-conventions <scalar>` — answer the platform-conventions
-  prompt non-interactively. Accepts `accept-all`,
-  `accept=<id1,id2,...>`, `deny=<id1,...>`, or combinations
-  (`accept=foo;deny=bar`). See [06 — Permissions and platforms](./06-permissions-and-platforms.md#platform-conventions).
-- `--no-platform-conventions` — equivalent to `--platform-conventions deny=*`:
-  reject every requested convention. Useful in CI.
+  prompt non-interactively. Accepts `accept-all`, `reject-all`,
+  `use-defaults`, or `prompt`. See [06 — Permissions and platforms](./06-permissions-and-platforms.md#platform-conventions).
+- `--no-platform-conventions` — equivalent to
+  `--platform-conventions reject-all`: reject every requested
+  convention. Useful in CI.
 
 **Codex hooks.** Installing a codex-targeted bundle with `session` or
 `always` knowledge sources prompts for consent (unless
@@ -1255,7 +1361,7 @@ $ smith agent install-all --with-skills
 
 ### `smith agent uninstall <name>`
 
-**Synopsis:** `smith agent uninstall <name> [--dry-run] [--force]`
+**Synopsis:** `smith agent uninstall <name> [--dry-run] [--force] [--platforms <list>]`
 
 **Description:** Remove an installed agent from every target it was
 installed to. Output ordering is fixed: removed paths first, then
@@ -1273,6 +1379,8 @@ from the recorded manifest hash (reported under `refused[]`); pass
 - `--dry-run` — preview without removing files.
 - `--force` — bypass manifest hash-mismatch refusal: delete the file
   even when the on-disk hash differs from the manifest.
+- `--platforms <list>` — comma-separated list of platforms to uninstall
+  from (intersected with the agent's declared targets).
 
 **Exit codes:**
 
@@ -1293,7 +1401,7 @@ $ smith agent uninstall my-agent
 
 ### `smith agent uninstall-all`
 
-**Synopsis:** `smith agent uninstall-all [--dry-run] [--yes] [--force]`
+**Synopsis:** `smith agent uninstall-all [--dry-run] [--yes] [--force] [--platforms <list>]`
 
 **Description:** Remove every registered agent from every target.
 Without `--yes`, prompts `Continue? [y/N]` and aborts on anything other
@@ -1309,6 +1417,8 @@ hash-mismatch refusal applies the same as single-agent uninstall;
 - `--dry-run` — preview without removing files.
 - `--yes` — skip the confirmation prompt.
 - `--force` — bypass manifest hash-mismatch refusal across every agent.
+- `--platforms <list>` — comma-separated list of platforms to uninstall
+  from across every agent.
 
 **Exit codes:**
 
@@ -1558,7 +1668,7 @@ $ smith knowledge add my-agent "https://example.com/docs/intro"   # plain url fa
 
 ### `smith knowledge list <agent>`
 
-**Synopsis:** `smith knowledge list <agent>`
+**Synopsis:** `smith knowledge list [--json] <agent>`
 
 **Description:** Show the state of an agent's knowledge in one of four
 shapes:
@@ -1579,7 +1689,9 @@ Source: `src/cli/commands/knowledge/list.ts`.
 
 - `<agent>` — agent name.
 
-**Flags:** none.
+**Flags:**
+
+- `--json` — emit machine-readable JSON instead of human output.
 
 **Exit codes:**
 
@@ -1649,7 +1761,7 @@ materialized content. Source: `src/cli/commands/knowledge/refresh-session.ts`.
 - `--agent <name>` — restrict to one agent's sources only (used by Claude
   Code per-agent hooks).
 - `--platform <id>` — platform that invoked us (`claude-code`, `codex`,
-  or `opencode`). When set, refresh is scoped to agents that target
+  `kiro`, or `opencode`). When set, refresh is scoped to agents that target
   this platform. When `--platform codex` is given without `--agent`,
   smith sniffs the parent process command line for `--profile <name>`
   (codex's per-profile flag) and scopes refresh to that single agent;
@@ -1793,7 +1905,72 @@ $ smith knowledge validate my-agent
 
 ---
 
+### `smith knowledge remove <agent> <source-id>`
+
+**Synopsis:** `smith knowledge remove <agent> <source-id>`
+
+**Description:** Remove a knowledge source from an agent's
+`agent.config.json` by its `id` field. Does NOT auto-materialize — the
+installed knowledge files remain on disk until the next
+`smith agent install`. Source: `src/cli/commands/knowledge/remove.ts`.
+
+**Arguments:**
+
+- `<agent>` — agent name.
+- `<source-id>` — the `id` of the source to remove.
+
+**Flags:** none.
+
+**Exit codes:**
+
+- `0` — source removed from config.
+- `1` — agent not found; source id not found in the agent's knowledge
+  block (`not-found`).
+- `2` — `config-missing` (agent has no `agent.config.json`).
+
+**Examples:**
+
+```bash
+$ smith knowledge remove my-agent api-docs
+```
+
+**See also:** [Knowledge](./04-knowledge.md).
+
+---
+
 ## Maintenance
+
+### `smith gui`
+
+**Synopsis:** `smith gui [--port <n>] [--bind <addr>] [--no-open]`
+
+**Description:** Launch the smith browser GUI. Serves a local SPA that
+wraps every daily-workflow command. Auto-rebuilds `gui/web/dist/` when
+the source is newer than the bundle (skip with `SMITH_GUI_NO_AUTOBUILD=1`).
+A one-time auth token is generated and appended to the URL. Source:
+`src/cli/commands/gui.ts`.
+
+**Arguments:** none.
+
+**Flags:**
+
+- `--port <n>` — port to bind (default `7777`; auto-increments on conflict).
+- `--bind <addr>` — address to bind (default `127.0.0.1`).
+- `--no-open` — do not auto-open the browser.
+
+**Exit codes:**
+
+- `0` — server stopped cleanly (SIGINT).
+- `1` — GUI bundle rebuild failed; server startup error.
+
+**Examples:**
+
+```bash
+$ smith gui
+$ smith gui --port 9000 --no-open
+```
+
+---
 
 ### `smith doctor`
 
@@ -1945,8 +2122,8 @@ $ smith doctor --fix-knowledge-refresh
 **Synopsis:** `smith update [--dry-run]`
 
 **Description:** Pull the latest agent-smith from `origin/main`,
-install dependencies, refresh agent-smith's knowledge directory,
-and run `smith doctor` to verify. Refuses to
+install dependencies, rebuild the GUI bundle, refresh agent-smith's
+knowledge directory, and run `smith doctor` to verify. Refuses to
 run from a corrupt install (when `import.meta.url` does not resolve
 to a workspace — should not happen under the single-mode install
 where every clone lives at `~/.agent-smith/`) with a pointer to a
@@ -1971,12 +2148,13 @@ propagated verbatim, so post-update drift surfaces. Source:
   doctor reported drift (`1`).
 - `2` — doctor reported a network error or refused to run because no
   platform CLI was detected on `PATH` (both surface as doctor exit `2`).
-- `3` — partial failure. Sources: `git pull`, `git fetch`, or `bun
-  install` failed (pipeline aborted before doctor ran); or the
-  post-pull `smith agent install agent-smith` reinstall failed (knowledge
-  dir refresh) but doctor returned 0. The reinstall failure prints
-  `Re-run: smith agent install agent-smith`; doctor's non-zero exit always
-  takes precedence over a reinstall partial.
+- `3` — partial failure. Sources: `git pull`, `git fetch`, `bun
+  install`, or `bun run gui:build` failed (pipeline aborted before
+  doctor ran); or the post-pull `smith agent install agent-smith`
+  reinstall failed (knowledge dir refresh) but doctor returned 0; or
+  the GUI build failed but doctor returned 0. The reinstall failure
+  prints `Re-run: smith agent install agent-smith`; doctor's non-zero
+  exit always takes precedence over a reinstall partial.
 
 > **Migration note:** earlier versions returned `2` for `git pull` /
 > `bun install` failures. The `2` → `3` move aligns with the
@@ -1997,22 +2175,21 @@ $ smith update
 
 ## Configuration
 
-### `smith config get <key>`
+### `smith config get [key]`
 
-**Synopsis:** `smith config get <key>`
+**Synopsis:** `smith config get [key]`
 
-**Description:** Read a model-resolution config value from `~/.config/agent-smith/.env`. Prints the raw value to stdout. Exits `1` when the key exists in the schema but has no value set; exits `2` for unrecognized keys.
+**Description:** Read a model-resolution config value from `~/.config/agent-smith/.env`. When a key is given, prints the raw value to stdout (or `(unset)` if the key is valid but has no value). When no key is given, prints a full config overview (detected providers, preference order, per-tier overrides).
 
 **Args:**
 | Arg | Required | Description |
 |---|---|---|
-| `<key>` | yes | One of: `model.providers`, `model.tier.high`, `model.tier.balanced`, `model.tier.fast`. |
+| `[key]` | no | One of: `model.providers`, `model.tier.high`, `model.tier.balanced`, `model.tier.fast`. If omitted, prints the full overview. |
 
 **Exit codes:**
 
-- `0` — value printed.
-- `1` — key recognized but not set.
-- `2` — invalid key (`usage-error`).
+- `0` — value printed (including `(unset)` for valid-but-absent keys), or full overview printed.
+- `1` — invalid key.
 
 **Example:**
 ```bash
@@ -2037,7 +2214,7 @@ anthropic,github-copilot,openrouter
 **Exit codes:**
 
 - `0` — written.
-- `2` — invalid key or value (`usage-error`).
+- `1` — invalid key.
 
 **Examples:**
 ```bash
@@ -2062,7 +2239,7 @@ $ smith config set model.tier.balanced "github-copilot/claude-sonnet-4"
 **Exit codes:**
 
 - `0` — removed (or was already absent).
-- `2` — invalid key (`usage-error`).
+- `1` — invalid key.
 
 **Example:**
 ```bash

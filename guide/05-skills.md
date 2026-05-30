@@ -17,9 +17,11 @@ Code, Codex, Kiro) from a single source of truth.
 
 ## Mental model
 
-A **skill catalog** is a directory containing one or more skills. Each
-subdirectory of the catalog must be `SKILL.md`-rooted (i.e. contain a
-`SKILL.md` file at its top level). Nested skills aren't discovered. A typical
+A **skill catalog** is a directory containing one or more skills. Discovery
+is recursive: `discoverSkills` walks subdirectories depth-first, stops at any
+directory containing a `SKILL.md` (treating it as a skill boundary — it won't
+descend further), and skips `.git`/`node_modules`. This means nested layouts
+like `catalog/group/<skill>/SKILL.md` are discovered correctly. A typical
 catalog layout:
 
 ```
@@ -45,7 +47,8 @@ Smith keeps two state files for skills:
 The schema for each is at `src/io/skill-registry.ts:26-55`
 (`SkillCatalog` / `SkillRegistry`) and `src/io/installed-skills.ts:12-33`
 (`InstalledSkill` / `InstalledSkillsFile`). Both files are version-tagged
-(`version: 1`) and atomically rewritten on mutation
+(`schemaVersion: 2` for `skill-catalogs.json`; legacy `version: 1` accepted
+on read only) and atomically rewritten on mutation
 (stage-to-temp + `rename(2)` — see `src/io/skill-registry.ts:171-178`).
 
 `installed-skills.json` returns an empty document when missing
@@ -236,9 +239,15 @@ smith skill install the-architect --targets opencode,codex
 | Flag | Default | Effect |
 |---|---|---|
 | `[ref]` (positional) | — | `<name>` or `<catalog>/<name>`; mutually exclusive with `--from` |
-| `--from <pathOrUrl>` | — | install from a local path; auto-creates an ad-hoc catalog. Git URL acquisition is not yet implemented. |
+| `--from <pathOrUrl>` | — | install from a local path or a git URL (`https://`, `ssh://`, `git@`, `file://`); auto-creates an ad-hoc catalog. For git URLs, clones the repo, registers it, and discovers skills. |
 | `--as <name>` | derived | label for the auto-created ad-hoc catalog (only meaningful with `--from`) |
 | `--targets <list>` | all 4 platforms | comma-separated subset of `opencode,claude-code,codex,kiro` |
+| `--git-ref <ref>` | remote HEAD | Git branch/tag/SHA to clone when `--from` is a URL |
+| `--all` | off | install every skill discovered in `--from <url>` |
+| `--skills <list>` | — | comma-separated skill names to install from `--from <url>` |
+| `--json` | off | discover skills from `--from <url>`, print JSON, do not install |
+
+> **Note:** `--from <url>` registers the cloned catalog on install (register-on-install). Discovery alone (e.g. `--json`) does NOT register the catalog; only a successful install persists the registry entry.
 
 Path-traversal guards on the ref (`src/cli/commands/skill/install-cmd.ts:167-187`):
 
@@ -492,14 +501,13 @@ per missing entry. See [guide/10-doctor.md](./10-doctor.md#the-ten-sections).
   if you target Codex.
 - **Codex requires the SKILL.md directory shape.** Single-file skills
   (a bare `SKILL.md` not in its own directory) are rejected.
-- **`--from` only supports local paths today.** Git URL acquisition is
-  declared in the `--from` help text but not yet implemented (cheatsheet
-  ambiguity #12).
 - **Ad-hoc catalogs auto-register on `--from` install** and **auto-
   unregister when the last installed skill from them is removed.** Avoids
   registry crud after one-off installs.
-- **`SKILL.md` must be at the catalog/<skill>/SKILL.md root.** Nested
-  skills (e.g. `catalog/group/<skill>/SKILL.md`) aren't discovered.
+- **Discovery is recursive but stops at skill boundaries.** `discoverSkills`
+  recurses into non-skill subdirectories, stops at any directory containing
+  `SKILL.md`, and skips `.git`/`node_modules`. Nested layouts like
+  `catalog/group/<skill>/SKILL.md` are discovered correctly.
 - **Path-traversal guards run at three layers**: the CLI input check
   (`src/cli/commands/skill/install-cmd.ts:167-187`), the installer's
   `validateSkillName` (`src/io/skill-installer.ts:43-60`), and the

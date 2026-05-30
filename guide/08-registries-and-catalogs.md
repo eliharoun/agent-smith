@@ -44,7 +44,7 @@ The two registries even use **different kind vocabularies**, which is the most c
 
 The agent registry tracks every directory smith should scan for `agent.config.json` bundles. On a fresh install (after `smith init`), the persisted registry contains one entry: the user-global directory at `~/.config/agent-smith/agents`. At resolve time, `resolveAllSources` (`src/io/registry.ts:296`) appends a **synthetic self-source** pointing at the running CLI's bundled `agents/` directory, so `agent-smith` itself is always discoverable without manual `smith agent register`. See [The synthetic self-source](#the-synthetic-self-source) below.
 
-State file: `~/.config/agent-smith/registry.json`. Schema: `{ version: 1, sources: Source[] }` where `Source` is `{ kind, rootPath, label, gitRemote? }` (`src/io/registry.ts:13-16`, `src/core/types.ts:41-49`).
+State file: `~/.config/agent-smith/registry.json`. Schema: `{ schemaVersion: 2, sources: Source[] }` where `Source` is `{ kind, rootPath, label, gitRemote?, remote? }` (`src/io/registry.ts:13-16`, `src/core/types.ts:41-49`). Legacy `version: 1` is accepted on read only; the writer always emits `schemaVersion: 2`.
 
 The default seed is created in-memory by `defaultRegistry()` (`src/io/registry.ts:20-31`); the file is only written once you run an actual mutation (`smith agent register`, `smith init`, etc.).
 
@@ -188,7 +188,7 @@ Field layout per row: `- [<kind>] <rootPath> (<label>)[ [<flags>]]`. Flag annota
 
 ## What it is
 
-The skill registry tracks every directory smith should scan for `SKILL.md`-rooted skill bundles. State file: `~/.config/agent-smith/skill-catalogs.json`. Schema: `{ version: 1, catalogs: SkillCatalog[] }` (`src/io/skill-registry.ts:48-55`).
+The skill registry tracks every directory smith should scan for `SKILL.md`-rooted skill bundles. State file: `~/.config/agent-smith/skill-catalogs.json`. Schema: `{ schemaVersion: 2, catalogs: SkillCatalog[] }` (`src/io/skill-registry.ts:48-55`). Legacy `version: 1` is accepted on read only; the writer always emits `schemaVersion: 2`.
 
 A `SkillCatalog` carries:
 
@@ -200,6 +200,14 @@ A `SkillCatalog` carries:
   gitRemote?: string,
   adhoc?: boolean,      // auto-created by `smith skill install --from`
   protected?: boolean,  // smith depends on it; unregister rejects
+  remote?: {            // git provenance for catalogs cloned via `--from <url>`
+    url: string,
+    ref: string,
+    lastPulledSha?: string,
+    lastPulledAt?: string,
+    lastRemoteSha?: string,
+    lastCheckedAt?: string,
+  },
 }
 ```
 
@@ -354,9 +362,9 @@ Drift detection is informational only — it never affects the doctor exit code.
 ## Caveats and gotchas
 
 - **Two state files, two corruption modes.** A malformed `registry.json` raises `registry-corrupt-json` (`src/io/registry.ts:40-47`); a malformed `skill-catalogs.json` raises `Invalid skill registry at <path>: malformed JSON (...)` (`src/io/skill-registry.ts:153-157`). Both are fatal — most commands won't run until you fix or delete the file.
-- **Version mismatch is fatal.** Both registries pin `version: 1`. Loading a file with a different `version` throws `registry-version` / `skill-registry-version`. There is no auto-migration.
-- **Atomic write only on the skill side.** `saveSkillRegistry` stages to `<path>.tmp.<pid>` and renames (`src/io/skill-registry.ts:171-178`). `saveRegistry` writes directly with `Bun.write` (`src/io/registry.ts:118-120`). A crash mid-write of the agent registry can leave a half-written `registry.json`; for the skill registry, the rename is atomic on the same filesystem.
-- **Duplicate-detection asymmetry.** Adding the same `(kind, rootPath)` pair is a silent no-op in both registries (the existing entry is kept). The skill registry additionally rejects duplicate **labels** (`src/io/skill-registry.ts:220-228`); the agent registry has no label uniqueness constraint.
+- **Version mismatch is fatal.** Both registries pin `schemaVersion: 2` (current). Loading a file with an unrecognized version throws `registry-version` / `skill-registry-version`. Legacy `version: 1` is accepted on read and migrated in-memory; there is no other auto-migration.
+- **Atomic writes on both sides.** Both `saveRegistry` and `saveSkillRegistry` use `atomicWriteJson` (stage-to-temp + rename). A crash mid-write cannot leave a half-written registry file.
+- **Duplicate-detection symmetry.** Adding the same `(kind, rootPath)` pair is a silent no-op in both registries (the existing entry is kept). Both registries additionally reject duplicate **labels** — the skill registry via `addCatalog` (`src/io/skill-registry.ts:220-228`) and the agent registry via `addSource` (`src/io/registry.ts`) which throws `already-exists` on label collision.
 - **Path normalization for round-trips.** Both `register` and `unregister` call `path.resolve()` on user input. `register ./foo` followed by `unregister ./foo` works regardless of CWD changes. The skill side's path-vs-label heuristic also resolves paths but never resolves labels.
 - **Unregister leaves rendered output behind.** This applies to both halves: `smith agent unregister` doesn't delete agent install files, and `smith skill unregister` doesn't delete skill install files. Use the corresponding `agent uninstall` command first if you want a clean removal.
 - **The defensive bootstrap re-injection.** If you delete the `atlassian-skills` entry from `skill-catalogs.json` by hand, smith silently re-injects it on the next load (`src/io/skill-registry.ts:160-166`) but does not re-save until the next genuine mutation. This means `cat skill-catalogs.json` can disagree with `smith skill catalogs` until you run a `register`/`unregister`/`install` that triggers a write.

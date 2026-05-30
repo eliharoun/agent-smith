@@ -55,7 +55,8 @@ The directory `smith init` creates and `smith jack-out` removes wholesale. Every
 | `skill-catalogs.json` | first skill mutation | lazy | JSON `{schemaVersion:2, catalogs:[]}` | **yes** (temp + rename) |
 | `installed-skills.json` | first `smith skill install` | lazy | JSON `{schemaVersion:2, installed:[]}` | **yes** (temp + rename) |
 | `installed-agents.json` | first `smith agent install` | lazy | JSON `{schemaVersion:1, installed:[{name, target, path, sha256, ...}]}` | **yes** (temp + rename, under `withFileLock`) |
-| `conventions.json` | first GUI `/system/conventions` write or manual edit | lazy | JSON `{schemaVersion:1, platformConventions:{ <target>:{explicit?[],denied?[]} }}` | **yes** (temp + rename) |
+| `conventions.json` | first GUI `/system/conventions` write or manual edit | lazy | JSON `{schemaVersion:1, platformConventions:{ <target>:{default?, explicit?[]} }}` | **yes** (temp + rename) |
+| `gui-state.json` | GUI state persistence | lazy | JSON | **yes** (temp + rename) |
 | `.env` | you (manually) | optional | dotenv (`SMITH_*` keys) | n/a |
 | `agents/<name>/refresh-manifest.json` | `smith agent install <name>` (when knowledge sources opt into refresh) | per consenting agent | JSON `RefreshManifest` (`refresh_consent.platforms`, per-source policy) | **yes** (temp + rename) |
 
@@ -172,9 +173,11 @@ Heartbeat shape (`src/daemon/index.ts:116-121`):
 
 ```ts
 interface HeartbeatSnapshot {
+  schemaVersion: 1 | 2;
   pid: number;
-  startedAt: number;             // ms epoch
+  startedAt: number;             // ms epoch — when runDaemon completed initial install (stable across lifetime)
   lastBeatAt: number;            // ms epoch — staleness = now - lastBeatAt
+  status?: "installing" | "ready" | "degraded";
   sources: Record<string, SourceState>;   // per-source pull state
 }
 ```
@@ -215,6 +218,7 @@ Two distinct sub-trees live here. Both honor `XDG_CACHE_HOME` and both survive `
 | Path | Purpose | TTL | Bust with |
 |---|---|---|---|
 | `${XDG_CACHE_HOME:-~/.cache}/agent-smith/opencode-schema-cache.json` | Cached upstream OpenCode config schema | 24 h | `smith doctor --no-cache` |
+| `${XDG_CACHE_HOME:-~/.cache}/agent-smith/locks/<safe>.lock` | Per-source refresh lock (prevents concurrent refresh of the same source) | none (held during refresh) | `rm` the file |
 | `${XDG_CACHE_HOME:-~/.cache}/agent-smith/agents/<name>/sources/<source-id>.meta.json` | Per-source refresh bookkeeping: `last_refreshed_at`, `etag`/`last_modified` (for `url` sources). Shared by the daemon TTL tick, `smith knowledge refresh-session`, and `smith knowledge fetch`. | none (refreshed in-place) | `rm` the file (or the whole `agents/<name>/` subtree) |
 
 Note: this is **not** the legacy per-agent fetch cache. The byte-cache that backs `url`/`git` materialization lives next to the knowledge content at `~/.config/agent-smith/knowledge/<name>/.cache/` (see [Per-agent knowledge directories](#per-agent-knowledge-directories) below). The `~/.cache/agent-smith/agents/.../sources/*.meta.json` files are bookkeeping only — they record *when* a source was last refreshed and the conditional-GET headers to send next time, not the response body.
@@ -447,7 +451,7 @@ For exhaustive types, see the source file referenced in each row.
 | `installed-skills.json` | `{schemaVersion: 2, installed: InstalledSkill[]}` | `src/io/installed-skills.ts:30-33` |
 | `daemon.pid` | plain text PID, no trailing newline guarantee | `src/cli/commands/daemon.ts` |
 | `daemon.log` | append-only stdio (mixed stdout + stderr) | `src/cli/commands/daemon.ts` |
-| `daemon.heartbeat.json` | `HeartbeatSnapshot` | `src/daemon/index.ts:116-121` |
+| `daemon.heartbeat.json` | `HeartbeatSnapshot` (`schemaVersion`, `pid`, `startedAt`, `lastBeatAt`, `status?`, `sources`) | `src/daemon/index.ts:116-121` |
 | `opencode-schema-cache.json` | `SchemaCache = {fetchedAt: string, schema: object}` | `src/cli/commands/doctor.ts:38-54` |
 | `<knowledge-dir>/_manifest.json` | per-source manifest written at install time | `src/core/knowledge/manifest.ts` (see [04-knowledge.md](./04-knowledge.md)) |
 
