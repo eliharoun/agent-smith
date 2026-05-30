@@ -99,7 +99,10 @@ export function flattenChecks(r: DoctorResponse): FlatCheck[] {
   out.push({
     id: "atlassianAuth",
     label: "Atlassian credentials",
-    status: r.atlassianAuth.status === "configured" ? "ok" : "warn",
+    status:
+      r.atlassianAuth.status === "configured" || r.atlassianAuth.status === "not-applicable"
+        ? "ok"
+        : "warn",
     detail:
       r.atlassianAuth.status === "configured"
         ? `source: ${r.atlassianAuth.source}`

@@ -70,6 +70,7 @@ const AtlassianAuth = z.discriminatedUnion("status", [
     atlassianSkills: AtlassianSkillsRuntimeStatus.optional(),
   }),
   z.object({ status: z.literal("missing") }),
+  z.object({ status: z.literal("not-applicable") }),
 ]);
 
 /**
