@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_FOOTER_LINES,
+  formatAtlassianAuthSection,
   formatClaudeCodeSection,
   formatCodexSection,
   formatFailuresOnly,
@@ -805,4 +806,10 @@ describe("formatModelResolutionCompact", () => {
     );
     expect(out).toContain("See `smith doctor --verbose` for details.");
   });
+});
+
+test("formatAtlassianAuthSection renders a not-applicable branch", () => {
+  const out = formatAtlassianAuthSection({ status: "not-applicable" });
+  expect(out).toContain("Atlassian auth:");
+  expect(out.toLowerCase()).toContain("not used");
 });

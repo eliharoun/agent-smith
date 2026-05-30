@@ -988,3 +988,36 @@ describe("runDoctor exit code (fallback drift no longer bumps)", () => {
     expect(report.exitCode).toBe(0);
   });
 });
+
+import type { InstalledSkillsFile } from "../../../src/io/installed-skills";
+
+const emptySkills = { schemaVersion: 1, installed: [] } as unknown as InstalledSkillsFile;
+
+async function atlStatus(over: {
+  hasAtlassianKnowledgeSources?: boolean;
+}): Promise<string | undefined> {
+  const events: DoctorSectionDoneEvent[] = [];
+  await runDoctor({
+    vendoredSchema,
+    schemaMeta,
+    claudeMeta,
+    codexMeta,
+    deps: deps(),
+    resolveAtlassianAuth: () => null,
+    resolveAtlassianBaseUrl: () => null,
+    loadInstalledSkillsForAuth: async () => emptySkills,
+    ...over,
+    onSectionDone: (e) => events.push(e),
+  });
+  return events.find((e) => e.id === "atlassian-auth")?.status;
+}
+
+describe("Atlassian relevance gating", () => {
+  test("auth missing + no skills + no confluence/jira sources → skipped", async () => {
+    expect(await atlStatus({ hasAtlassianKnowledgeSources: false })).toBe("skipped");
+  });
+
+  test("auth missing + an agent has a confluence/jira source → warn", async () => {
+    expect(await atlStatus({ hasAtlassianKnowledgeSources: true })).toBe("warn");
+  });
+});

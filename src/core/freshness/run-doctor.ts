@@ -187,6 +187,12 @@ export interface RunDoctorInput {
    */
   resolveAtlassianAuth?: () => AtlassianAuth | null;
   /**
+   * v0.14: true when any registered agent declares a `confluence`/`jira`
+   * knowledge source. Combined with `atlassian-skills` installed, gates the
+   * Atlassian-auth section's relevance. Default false (back-compat).
+   */
+  hasAtlassianKnowledgeSources?: boolean;
+  /**
    * Optional override mirroring `resolveAtlassianAuth`. Defaults to the
    * production helper. Used by `checkAtlassianAuth` to detect the
    * "auth resolved but no workspace URL" incomplete state.
@@ -304,7 +310,7 @@ export interface RunDoctorInput {
 /**
  * Pure orchestrator for the freshness check. All I/O is injected via `deps`
  * (fetch, fs, clock). Returns a {@link DoctorReport} with a literal exit code:
- * 0 = no drift / offline-skipped, 1 = OpenCode drift detected, 2 = network error.
+ * 0 = no drift / offline-skipped, 1 = OpenCode drift or stale installed agent, 2 = network error.
  *
  * Optionally emits per-section start/done events via `onSectionStart` /
  * `onSectionDone` for streaming UIs (ora spinners). Sections still run
@@ -675,19 +681,20 @@ function workspaceSummary(ws: WorkspaceVersionStatus): string {
 async function checkAtlassianAuth(input: RunDoctorInput): Promise<AtlassianAuthReport> {
   const resolver = input.resolveAtlassianAuth ?? defaultResolveAtlassianAuth;
   const baseUrlResolver = input.resolveAtlassianBaseUrl ?? defaultResolveAtlassianBaseUrl;
-  const auth = resolver();
-  if (!auth) {
-    return { status: "missing" };
-  }
-  const baseUrl = baseUrlResolver();
 
-  // Detect atlassian-skills installation.
   const installedFile = input.loadInstalledSkillsForAuth
     ? await input.loadInstalledSkillsForAuth()
     : await defaultLoadInstalledSkills();
   const atlassianSkillsInstalled = installedFile.installed.some(
     (s) => s.sourceCatalogLabel === "atlassian-skills",
   );
+  const relevant = atlassianSkillsInstalled || input.hasAtlassianKnowledgeSources === true;
+
+  const auth = resolver();
+  if (!auth) {
+    return relevant ? { status: "missing" } : { status: "not-applicable" };
+  }
+  const baseUrl = baseUrlResolver();
 
   let atlassianSkills: AtlassianSkillsRuntimeStatus | undefined;
   if (atlassianSkillsInstalled) {
@@ -710,6 +717,7 @@ async function checkAtlassianAuth(input: RunDoctorInput): Promise<AtlassianAuthR
   }
 
   if (!baseUrl) {
+    if (!relevant) return { status: "not-applicable" };
     return atlassianSkills
       ? { status: "incomplete", source: auth.source, reason: "missing-base-url", atlassianSkills }
       : { status: "incomplete", source: auth.source, reason: "missing-base-url" };
@@ -729,7 +737,9 @@ function defaultReadEnvForBridge(): Record<string, string> {
 }
 
 function atlassianAuthEventStatus(auth: AtlassianAuthReport): DoctorSectionDoneEvent["status"] {
-  return auth.status === "configured" ? "ok" : "warn";
+  if (auth.status === "configured") return "ok";
+  if (auth.status === "not-applicable") return "skipped";
+  return "warn";
 }
 
 function atlassianAuthSummary(auth: AtlassianAuthReport): string {
@@ -738,6 +748,9 @@ function atlassianAuthSummary(auth: AtlassianAuthReport): string {
   }
   if (auth.status === "incomplete") {
     return `Atlassian auth incomplete: workspace URL missing (Confluence/Jira sources will fail)`;
+  }
+  if (auth.status === "not-applicable") {
+    return "Atlassian auth: not used (no Confluence/Jira sources)";
   }
   return "Atlassian auth not configured (Confluence/Jira sources will fail)";
 }

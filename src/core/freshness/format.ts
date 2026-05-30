@@ -477,6 +477,12 @@ export function formatWorkspaceSection(ws: WorkspaceVersionStatus): string {
 
 export function formatAtlassianAuthSection(auth: AtlassianAuthReport): string {
   const lines: string[] = ["Atlassian auth:"];
+  if (auth.status === "not-applicable") {
+    lines.push("  Status: not used (no Confluence/Jira knowledge sources; atlassian-skills not installed)");
+    lines.push("  To enable Confluence/Jira knowledge sources later,");
+    lines.push(`          create ${join(stateHome(), ".env")} with SMITH_ATLASSIAN_EMAIL / _API_TOKEN / _BASE_URL.`);
+    return lines.join("\n");
+  }
   if (auth.status === "configured") {
     lines.push(`  Status:  configured (source: ${auth.source})`);
     lines.push(`  Base URL: ${auth.baseUrl}`);

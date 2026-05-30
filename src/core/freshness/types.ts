@@ -87,7 +87,15 @@ export type AtlassianAuthReport =
       reason: "missing-base-url";
       atlassianSkills?: AtlassianSkillsRuntimeStatus;
     }
-  | { status: "missing" };
+  | { status: "missing" }
+  | {
+      /**
+       * Nothing depends on Atlassian — no `confluence`/`jira` knowledge
+       * source and `atlassian-skills` not installed. Surfaced as a one-line
+       * `ℹ` in the default view; full setup hint under `--verbose`.
+       */
+      status: "not-applicable";
+    };
 
 /**
  * Reported when atlassian-skills is detected as installed in any
