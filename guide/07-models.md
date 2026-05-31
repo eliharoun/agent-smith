@@ -467,6 +467,31 @@ Note that the env var only affects OpenCode resolution. Claude Code,
 Codex, and Kiro resolvers don't query a live model list, though they do
 perform auth detection (CLI presence and login status).
 
+## Missing platform CLI: `--allow-missing-cli`
+
+When a target platform's CLI is absent (e.g. `claude` not on `PATH`),
+the resolver throws `PlatformUnavailableError` and the orchestrator
+drops that target from the install. If *every* declared target is
+dropped, the orchestrator aborts with a "no targets resolvable" error.
+
+Passing `--allow-missing-cli` to `smith agent install` (or
+`install-all`) changes this behavior: instead of throwing, the resolver
+emits the **static tier literal** for the platform plus a warning, and
+the agent still installs. The static literals per platform:
+
+| Platform | `high` | `balanced` | `fast` |
+|---|---|---|---|
+| Claude Code | `opus` | `sonnet` | `haiku` |
+| Codex | `gpt-5-codex` | `gpt-5` | `gpt-5-mini` |
+| Kiro | `claude-opus-4.6` | `claude-sonnet-4.6` | `claude-haiku-4.5` |
+
+OpenCode is unaffected — its resolver uses a curated fallback when the
+CLI is absent and never throws `PlatformUnavailableError`.
+
+Use `--allow-missing-cli` when you want to pre-render agent files on a
+machine that doesn't have every target platform installed (e.g. CI, a
+shared dotfiles repo, or bootstrapping a new workstation).
+
 ## Doctor's model-resolution check
 
 `smith doctor` includes a `model-resolution` section **when `opencode`

@@ -117,6 +117,8 @@ export interface InstallCliOptions {
    * hint. CLI flag: `--allow-missing-mcp`.
    */
   allowMissingMcp?: boolean;
+  /** Forward to the CLI's `--allow-missing-cli` flag. */
+  allowMissingCli?: boolean;
   /**
    * Bypass the would-clobber refusal when a non-smith file occupies the
    * destination, OR re-claim a manifest entry whose recorded path no longer
@@ -293,6 +295,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.force ? { force: true } : {}),
         ...(o.verbose ? { verbose: true } : {}),
         ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
+        ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
         ...(o.platformConventions ? { platformConventions: o.platformConventions } : {}),
         print,
         printErr,
@@ -456,6 +459,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   const result = await build(bundles, paths, {
     withRefreshHooksFor,
     ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
+    ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
     ...(o.force === true ? { force: true } : {}),
     ...(o.platformConventions
       ? { platformConventions: o.platformConventions }

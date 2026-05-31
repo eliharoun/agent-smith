@@ -43,6 +43,16 @@ export async function resolveKiroModel(
   const auth = await detect();
 
   if (auth.status === "cli-not-installed") {
+    if (env.allowMissingCli) {
+      env.warnings.push({
+        target: "kiro",
+        message:
+          "kiro-cli not installed; rendering tier '" + tier + "' as '" +
+          TIER_TO_KIRO[tier] + "' (install the CLI or set SMITH_KIRO_TIER_" +
+          tier.toUpperCase() + " to override).",
+      });
+      return TIER_TO_KIRO[tier];
+    }
     throw new PlatformUnavailableError("kiro", "kiro-cli is not installed");
   }
   if (auth.status === "unauthenticated") {

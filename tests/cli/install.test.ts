@@ -170,6 +170,41 @@ describe("cli/install", () => {
     expect((receivedOptions as { allowMissingMcp?: boolean }).allowMissingMcp).toBeUndefined();
   });
 
+  test("forwards allowMissingCli into buildAndInstall", async () => {
+    let receivedOptions: unknown;
+    await install({
+      name: "foo",
+      paths,
+      loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+      loadAllBundles: async () => ({ bundles: [fakeBundle("foo")], failures: [] }),
+      buildAndInstall: async (_bundles, _paths, options) => {
+        receivedOptions = options;
+        return emptyResult;
+      },
+      print: () => {},
+      printErr: () => {},
+      allowMissingCli: true,
+    });
+    expect((receivedOptions as { allowMissingCli?: boolean }).allowMissingCli).toBe(true);
+  });
+
+  test("omits allowMissingCli when not set", async () => {
+    let receivedOptions: unknown;
+    await install({
+      name: "foo",
+      paths,
+      loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+      loadAllBundles: async () => ({ bundles: [fakeBundle("foo")], failures: [] }),
+      buildAndInstall: async (_bundles, _paths, options) => {
+        receivedOptions = options;
+        return emptyResult;
+      },
+      print: () => {},
+      printErr: () => {},
+    });
+    expect((receivedOptions as { allowMissingCli?: boolean }).allowMissingCli).toBeUndefined();
+  });
+
   test("throws partial-failure when target bundle failed to load", async () => {
     let caught: unknown;
     try {

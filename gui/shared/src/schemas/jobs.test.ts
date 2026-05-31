@@ -24,6 +24,17 @@ describe("JobRequest", () => {
     ).toThrow();
   });
 
+  it("accepts agent.install with allowMissingCli", () => {
+    const parsed = JobRequest.parse({
+      command: "agent.install",
+      name: "demo",
+      platforms: ["claude-code"],
+      allowMissingCli: true,
+    });
+    expect(parsed.command).toBe("agent.install");
+    expect((parsed as any).allowMissingCli).toBe(true);
+  });
+
   it("rejects agent install missing platforms", () => {
     expect(() =>
       JobRequest.parse({ command: "agent.install", name: "x", platforms: [] }),

@@ -100,6 +100,19 @@ describe("resolveKiroModel", () => {
     expect(warnings.warnings).toEqual([]);
   });
 
+  test("renders the tier literal + warning when CLI missing and allowMissingCli set", async () => {
+    const warnings = makeWarningCollector();
+    const result = await resolveKiroModel(fixture({ modelTier: "high", targets: ["kiro"] }), {
+      getOpenCodeModels: async () => undefined,
+      warnings,
+      allowMissingCli: true,
+      detectKiroAuth: async () => ({ platform: "kiro", cliInstalled: false, status: "cli-not-installed" }),
+    });
+    expect(result).toBe("claude-opus-4.6");
+    expect(warnings.warnings.length).toBe(1);
+    expect(warnings.warnings[0]?.message).toMatch(/not installed/i);
+  });
+
   test("returns undefined and warns when unauthenticated", async () => {
     const warnings = makeWarningCollector();
     const result = await resolveKiroModel(fixture({ modelTier: "high" }), {

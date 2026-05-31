@@ -13,6 +13,8 @@ interface Req {
   ref?: string | undefined;
   /** Task 1.5: forward to the CLI's `--force` flag. */
   force?: boolean | undefined;
+  /** Task 4: forward to the CLI's `--allow-missing-cli` flag. */
+  allowMissingCli?: boolean | undefined;
   // Task 7: multi-select install from external repo
   agents?: string[] | undefined;
   all?: boolean | undefined;
@@ -51,6 +53,7 @@ export function buildAgentInstall(req: Req): BuiltArgv {
     }
   }
   if (req.force) argv.push("--force");
+  if (req.allowMissingCli) argv.push("--allow-missing-cli");
   if (req.json) argv.push("--json");
   if (req.all) argv.push("--all");
   if (req.agents && req.agents.length > 0) {

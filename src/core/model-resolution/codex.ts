@@ -52,13 +52,17 @@ export async function resolveCodexModel(
   const auth = await detect();
 
   if (auth.status === "cli-not-installed") {
-    // Throw — the orchestrator catches PlatformUnavailableError and skips
-    // the target silently (the user simply doesn't use this platform). No
-    // warning is emitted; doctor still reports the platform's absence.
-    throw new PlatformUnavailableError(
-      "codex",
-      "codex CLI is not installed",
-    );
+    if (env.allowMissingCli) {
+      env.warnings.push({
+        target: "codex",
+        message:
+          "codex CLI not installed; rendering tier '" + tier + "' as '" +
+          TIER_TO_CODEX[tier] + "' (install the CLI or set SMITH_CODEX_TIER_" +
+          tier.toUpperCase() + " to override).",
+      });
+      return TIER_TO_CODEX[tier];
+    }
+    throw new PlatformUnavailableError("codex", "codex CLI is not installed");
   }
   if (auth.status === "unauthenticated") {
     env.warnings.push({

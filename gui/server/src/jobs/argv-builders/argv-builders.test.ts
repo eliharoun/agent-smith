@@ -1,7 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
+import { buildAgentInstall } from "./agent-install";
+import { buildAgentInstallAll } from "./agent-install-all";
 import { buildArgv } from "./index";
 import { buildSkillInstall } from "./skill-install";
-import { buildAgentInstall } from "./agent-install";
 
 describe("argv builders", () => {
   it("init", () => {
@@ -766,23 +767,69 @@ describe("argv builders", () => {
 
 // ─── Task 7: multi-select install flags + per-name validation ─────────────
 test("buildSkillInstall emits --skills and --targets", () => {
-  const { argv } = buildSkillInstall({ from: "https://x/y", skills: ["a", "b"], targets: ["kiro"] });
-  expect(argv).toEqual(["skill", "install", "--from", "https://x/y", "--skills", "a,b", "--targets", "kiro"]);
+  const { argv } = buildSkillInstall({
+    from: "https://x/y",
+    skills: ["a", "b"],
+    targets: ["kiro"],
+  });
+  expect(argv).toEqual([
+    "skill",
+    "install",
+    "--from",
+    "https://x/y",
+    "--skills",
+    "a,b",
+    "--targets",
+    "kiro",
+  ]);
 });
 test("buildSkillInstall emits --json", () => {
   const { argv } = buildSkillInstall({ from: "https://x/y", targets: [], json: true });
   expect(argv).toContain("--json");
 });
 test("buildSkillInstall rejects an unsafe skill name", () => {
-  expect(() => buildSkillInstall({ from: "https://x/y", skills: ["../evil"], targets: [] })).toThrow();
+  expect(() =>
+    buildSkillInstall({ from: "https://x/y", skills: ["../evil"], targets: [] }),
+  ).toThrow();
 });
 test("buildSkillInstall locks per skill", () => {
   const { lockKeys } = buildSkillInstall({ from: "https://x/y", skills: ["a", "b"], targets: [] });
   expect(lockKeys).toEqual(["global:skills", "skill:a", "skill:b"]);
 });
 test("buildAgentInstall emits --agents and --json", () => {
-  const a = buildAgentInstall({ from: "https://x/y", agents: ["a"], platforms: [], withSkills: false });
+  const a = buildAgentInstall({
+    from: "https://x/y",
+    agents: ["a"],
+    platforms: [],
+    withSkills: false,
+  });
   expect(a.argv).toContain("--agents");
-  const b = buildAgentInstall({ from: "https://x/y", platforms: [], withSkills: false, json: true });
+  const b = buildAgentInstall({
+    from: "https://x/y",
+    platforms: [],
+    withSkills: false,
+    json: true,
+  });
   expect(b.argv).toContain("--json");
+});
+test("agent.install forwards allowMissingCli as --allow-missing-cli", () => {
+  const r = buildAgentInstall({
+    name: "demo",
+    platforms: ["claude-code"],
+    withSkills: false,
+    allowMissingCli: true,
+  });
+  expect(r.argv).toContain("--allow-missing-cli");
+});
+test("agent.install omits the flag when allowMissingCli is unset", () => {
+  const r = buildAgentInstall({ name: "demo", platforms: ["claude-code"], withSkills: false });
+  expect(r.argv).not.toContain("--allow-missing-cli");
+});
+test("agent.install-all forwards allowMissingCli as --allow-missing-cli", () => {
+  const r = buildAgentInstallAll({
+    platforms: ["claude-code"],
+    withSkills: false,
+    allowMissingCli: true,
+  });
+  expect(r.argv).toContain("--allow-missing-cli");
 });

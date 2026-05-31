@@ -1162,7 +1162,7 @@ $ smith agent validate the-architect
 
 ### `smith agent install <name>`
 
-**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--all] [--agents <list>] [--json] [--force] [--allow-missing-mcp] [--platforms <list>] [--verbose] [--platform-conventions <scalar>] [--no-platform-conventions]`
+**Synopsis:** `smith agent install [name] [--yes] [--with-skills | --no-skills] [--no-refresh-hooks] [--refresh-consent <yn>] [--from <url> [--ref <ref>]] [--all] [--agents <list>] [--json] [--force] [--allow-missing-mcp] [--allow-missing-cli] [--platforms <list>] [--verbose] [--platform-conventions <scalar>] [--no-platform-conventions]`
 
 **Description:** Build and render an agent bundle to its targets. Build
 runs first; if any agent build fails, the entire install aborts before
@@ -1255,6 +1255,13 @@ agents and a suggestion to run `smith agent install-all` (or
 - `--allow-missing-mcp` — demote missing-MCP-server errors to warnings.
   Without this flag, install blocks when a declared MCP server cannot be
   resolved.
+- `--allow-missing-cli` — demote missing-platform-CLI errors to warnings.
+  Without this flag, a target whose platform CLI is absent throws
+  `PlatformUnavailableError` and the orchestrator drops that target. With
+  the flag, the resolver emits the static tier literal (e.g. `opus` for
+  Claude Code high, `gpt-5-codex` for Codex high) plus a warning, and
+  the agent still installs. OpenCode is unaffected (it uses a curated
+  fallback). See [07-models.md § Missing platform CLI](./07-models.md#missing-platform-cli-allow-missing-cli).
 - `--platforms <list>` — comma-separated list of platforms to install to
   (subset of the agent's declared targets). Restricts which platform
   files are written.
@@ -1331,7 +1338,7 @@ $ smith agent install code-reviewer \
 
 ### `smith agent install-all`
 
-**Synopsis:** `smith agent install-all [--yes] [--with-skills | --no-skills] [--force] [--platform-conventions <scalar>] [--no-platform-conventions]`
+**Synopsis:** `smith agent install-all [--yes] [--with-skills | --no-skills] [--force] [--allow-missing-mcp] [--allow-missing-cli] [--platforms <list>] [--platform-conventions <scalar>] [--no-platform-conventions]`
 
 **Description:** Build and render every known agent. Iterates by
 delegating each agent to `install()` (so `requires.skills` resolution

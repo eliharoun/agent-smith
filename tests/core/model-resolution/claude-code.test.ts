@@ -152,6 +152,19 @@ describe("resolveClaudeCodeModel", () => {
     expect(warnings.warnings[0]?.message).toMatch(/unauthenticated|claude auth login/i);
   });
 
+  it("renders the tier literal + warning when CLI missing and allowMissingCli set", async () => {
+    const warnings = makeWarningCollector();
+    const result = await resolveClaudeCodeModel(cfg({ modelTier: "high" }), {
+      getOpenCodeModels: async () => undefined,
+      warnings,
+      allowMissingCli: true,
+      detectClaudeCodeAuth: async () => ({ platform: "claude-code", cliInstalled: false, status: "cli-not-installed" }),
+    });
+    expect(result).toBe("opus");
+    expect(warnings.warnings.length).toBe(1);
+    expect(warnings.warnings[0]?.message).toMatch(/not installed/i);
+  });
+
   it("uses opencode-style canonical.model override before tier resolution", async () => {
     const warnings = makeWarningCollector();
     const result = await resolveClaudeCodeModel(

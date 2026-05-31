@@ -172,6 +172,12 @@ export interface BuildAndInstallOptions {
    * contract says "if the bundle declares it, it's required."
    */
   allowMissingMcp?: boolean;
+  /**
+   * Set to true (e.g. via `smith agent install --allow-missing-cli`) to render
+   * a target whose platform CLI is absent — the resolver emits the static tier
+   * literal + a warning instead of throwing. Default false (drop the target).
+   */
+  allowMissingCli?: boolean;
 }
 
 /**
@@ -223,6 +229,7 @@ export async function buildAndInstall(
       },
       detectAuthenticatedProviders: async () => detectAuthenticatedProviders(),
       env: process.env,
+      allowMissingCli: options.allowMissingCli ?? false,
     };
     const skillResult = await checkSkillAvailability(bundle.config, resolvedSkillPaths);
     warnings.push(...skillResult.warnings.map((w) => `[${bundle.config.name}] ${w}`));
@@ -399,7 +406,7 @@ export async function buildAndInstall(
         errors.push({
           agent: bundle.config.name,
           messages: [
-            `no targets resolvable: every declared target (${bundle.config.targets.join(", ")}) failed model resolution. Authenticate at least one platform.`,
+            `no targets resolvable: every declared target (${bundle.config.targets.join(", ")}) is unavailable (platform CLI not installed or model resolution failed). Install a target platform's CLI, set SMITH_<PLATFORM>_TIER_<TIER>, add a "model" to the bundle, or re-run with --allow-missing-cli to render anyway.`,
           ],
         });
         continue;
