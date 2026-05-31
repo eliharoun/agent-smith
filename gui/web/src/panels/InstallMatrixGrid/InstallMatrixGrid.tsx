@@ -25,6 +25,7 @@ export function InstallMatrixGrid() {
   const statuses = useInstalledStatuses();
   const start = useStartJob();
   const [desired, setDesired] = useState<Desired>({});
+  const [allowMissingCli, setAllowMissingCli] = useState(false);
   const [consent, setConsent] = useState<Pending | null>(null);
 
   function checkedFor(name: string, p: Platform): boolean {
@@ -93,7 +94,15 @@ export function InstallMatrixGrid() {
           ))}
         </tbody>
       </table>
-      <div className="mt-4 flex justify-end">
+      <div className="mt-4 flex items-center justify-end gap-4">
+        <label className="flex items-center gap-2 text-xs text-matrix-body font-mono">
+          <input
+            type="checkbox"
+            checked={allowMissingCli}
+            onChange={(e) => setAllowMissingCli(e.target.checked)}
+          />
+          Render even if the target platform CLI isn't installed
+        </label>
         <Button
           onClick={() => {
             const next = computeQueue();
@@ -117,6 +126,7 @@ export function InstallMatrixGrid() {
                   name: consent.agent,
                   platforms: consent.installs,
                   withSkills: false,
+                  ...(allowMissingCli ? { allowMissingCli: true } : {}),
                   refreshConsent,
                 });
               }

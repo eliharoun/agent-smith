@@ -18,6 +18,7 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
   const [url, setUrl] = useState(initialUrl ?? "");
   const [ref, setRef] = useState("");
   const [autoInstallSkills, setAutoInstallSkills] = useState(true);
+  const [allowMissingCli, setAllowMissingCli] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
   const start = useStartJob();
@@ -93,6 +94,7 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
         agents: names,
         platforms: platformList,
         withSkills: autoInstallSkills,
+        ...(allowMissingCli ? { allowMissingCli: true } : {}),
         ref: trimmedRef,
       };
     } else {
@@ -189,6 +191,18 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
                   onChange={(e) => setAutoInstallSkills(e.target.checked)}
                 />
                 auto-install required skills
+              </label>
+            )}
+
+            {/* Allow missing CLI toggle */}
+            {kind === "agent" && (
+              <label className="flex items-center gap-2 text-xs text-matrix-body mt-1 font-mono">
+                <input
+                  type="checkbox"
+                  checked={allowMissingCli}
+                  onChange={(e) => setAllowMissingCli(e.target.checked)}
+                />
+                Render even if the target platform CLI isn't installed
               </label>
             )}
 

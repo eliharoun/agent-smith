@@ -117,6 +117,19 @@ describe("InstallFromUrlModal", () => {
     expect(screen.getByLabelText(/git url/i)).toHaveValue("https://github.com/x/y");
   });
 
+  it("includes allowMissingCli in agent.install request when checkbox is checked", async () => {
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/git url/i), {
+      target: { value: "https://github.com/o/r.git" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /discover/i }));
+    await waitFor(() => screen.getByText("my-agent"));
+    fireEvent.click(screen.getByLabelText(/render even if the target platform cli isn't installed/i));
+    fireEvent.click(screen.getByLabelText("my-agent"));
+    fireEvent.click(screen.getByRole("button", { name: /install selected/i }));
+    expect(mutate.mock.calls[0]![0].allowMissingCli).toBe(true);
+  });
+
   it("shows error when discovery fails", async () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(async () => ({
       ok: false,

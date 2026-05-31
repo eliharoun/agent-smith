@@ -104,6 +104,27 @@ describe("InstallMatrixGrid (refactored)", () => {
     await waitFor(() => expect(applyButton).not.toBeDisabled());
   });
 
+  it("includes allowMissingCli in agent.install request when checkbox is checked", async () => {
+    const postSpy = vi.fn();
+    server.use(
+      http.post("/api/jobs", async ({ request }) => {
+        postSpy(await request.json());
+        return HttpResponse.json({ jobId: "j3", argv: [], preview: "" });
+      }),
+    );
+    renderMatrix();
+    await waitFor(() => screen.getByText("alpha"));
+    const codexToggle = screen.getByLabelText(/alpha · codex/i);
+    fireEvent.click(codexToggle);
+    fireEvent.click(screen.getByLabelText(/render even if the target platform cli isn't installed/i));
+    fireEvent.click(screen.getByText(/Apply changes/i));
+    const consentButton = await screen.findByRole("button", { name: /^install$/i });
+    fireEvent.click(consentButton);
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+    const installCall = postSpy.mock.calls.flat().find((c: { command?: string }) => c.command === "agent.install");
+    expect(installCall.allowMissingCli).toBe(true);
+  });
+
   it("does not reset desired toggles when agents query refetches mid-edit", async () => {
     renderMatrix();
     await waitFor(() => screen.getByText("alpha"));
