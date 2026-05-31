@@ -406,7 +406,7 @@ export async function buildAndInstall(
         errors.push({
           agent: bundle.config.name,
           messages: [
-            `no targets resolvable: every declared target (${bundle.config.targets.join(", ")}) is unavailable (platform CLI not installed or unauthenticated). Install a target platform's CLI, set SMITH_<PLATFORM>_TIER_<TIER>, add a "model" to the bundle, or re-run with --allow-missing-cli to render anyway.`,
+            `no targets resolvable: every declared target (${bundle.config.targets.join(", ")}) is unavailable (platform CLI not installed or model resolution failed). Install a target platform's CLI, set SMITH_<PLATFORM>_TIER_<TIER>, add a "model" to the bundle, or re-run with --allow-missing-cli to render anyway.`,
           ],
         });
         continue;
