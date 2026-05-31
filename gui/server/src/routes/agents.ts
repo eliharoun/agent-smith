@@ -52,6 +52,16 @@ function findAgentMatches(reg: Registry, name: string): Array<{ catalog: string;
   return matches;
 }
 
+// Defense-in-depth guard for the `:name` path param. Rejects path-traversal
+// and other unexpected characters before any registry lookup or filesystem
+// access. Mirrors the inline checks in refresh-manifest.ts and knowledge.ts.
+const AGENT_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+function assertValidAgentName(name: string): void {
+  if (!AGENT_NAME_PATTERN.test(name)) {
+    throw new HttpError(400, "INVALID_NAME", `invalid agent name: ${name}`);
+  }
+}
+
 export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   const run = deps.runSmith ?? defaultRunSmith;
   app.post("/api/agents/discover-from-url", async (c) => {
@@ -98,6 +108,7 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
 
   app.get("/api/agents/:name", async (c) => {
     const name = c.req.param("name");
+    assertValidAgentName(name);
     const [reg, remotes] = await Promise.all([
       parseRegistry(deps.registryPath),
       loadAgentRemotes(deps.registryPath),
@@ -130,6 +141,7 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
 
   app.get("/api/agents/:name/installed-status", async (c) => {
     const name = c.req.param("name");
+    assertValidAgentName(name);
     const reg = await parseRegistry(deps.registryPath);
     const exists = Object.values(reg.catalogs).some((info) => info.agents.includes(name));
     if (!exists) {
@@ -145,6 +157,7 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   // agent is unknown), and writes <bundle>/<FILE>.md via temp+rename.
   app.put("/api/agents/:name/persona/:file", async (c) => {
     const name = c.req.param("name");
+    assertValidAgentName(name);
     const fileParam = c.req.param("file");
     const fileParsed = PersonaFile.safeParse(fileParam);
     if (!fileParsed.success) {
@@ -175,6 +188,7 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   // config, and writes via temp+rename.
   app.put("/api/agents/:name/config", async (c) => {
     const name = c.req.param("name");
+    assertValidAgentName(name);
     const body = await c.req.json().catch(() => null);
     const parsed = AgentConfigPatch.safeParse(body);
     if (!parsed.success) {

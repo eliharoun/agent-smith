@@ -42,6 +42,7 @@ exports[`v1 surface — REST inventory of registered routes is stable 1`] = `
   "POST    /api/jobs/:id/respond",
   "POST    /api/knowledge/parse-url",
   "POST    /api/skills/discover-from-url",
+  "PUT     /api/agents/:name/config",
   "PUT     /api/agents/:name/persona/:file",
   "PUT     /api/atlassian-env",
   "PUT     /api/conventions",

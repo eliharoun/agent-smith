@@ -536,3 +536,56 @@ describe("PUT /api/agents/:name/config", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("agent-name validation guard (:name routes)", () => {
+  function appWith() {
+    const jm = new JobManager({ spawner: fakeSpawner });
+    return createApp({
+      token: "t",
+      jobs: jm,
+      registryPath,
+      installPathsFor: () => ({ opencode: "/x", "claude-code": "/y", codex: "/z", kiro: "/k" }),
+    });
+  }
+  const TRAVERSAL = "%2E%2E%2Fother"; // decodes to ../other
+
+  it("rejects an invalid name on GET /api/agents/:name with 400", async () => {
+    const res = await appWith().request("/api/agents/foo%20bar", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects path traversal on GET /api/agents/:name/installed-status with 400", async () => {
+    const res = await appWith().request(`/api/agents/${TRAVERSAL}/installed-status`, {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects path traversal on PUT /api/agents/:name/persona/:file with 400", async () => {
+    const res = await appWith().request(`/api/agents/${TRAVERSAL}/persona/IDENTITY`, {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer t",
+        "content-type": "application/json",
+        origin: "http://localhost.test",
+      },
+      body: JSON.stringify({ content: "x" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects path traversal on PUT /api/agents/:name/config with 400 (before any fs access)", async () => {
+    const res = await appWith().request(`/api/agents/${TRAVERSAL}/config`, {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer t",
+        "content-type": "application/json",
+        origin: "http://localhost.test",
+      },
+      body: JSON.stringify({ modelTier: "fast" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
