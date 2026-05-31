@@ -786,3 +786,11 @@ test("buildAgentInstall emits --agents and --json", () => {
   const b = buildAgentInstall({ from: "https://x/y", platforms: [], withSkills: false, json: true });
   expect(b.argv).toContain("--json");
 });
+test("agent.install forwards allowMissingCli as --allow-missing-cli", () => {
+  const r = buildAgentInstall({ name: "demo", platforms: ["claude-code"], withSkills: false, allowMissingCli: true });
+  expect(r.argv).toContain("--allow-missing-cli");
+});
+test("agent.install omits the flag when allowMissingCli is unset", () => {
+  const r = buildAgentInstall({ name: "demo", platforms: ["claude-code"], withSkills: false });
+  expect(r.argv).not.toContain("--allow-missing-cli");
+});

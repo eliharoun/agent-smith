@@ -54,6 +54,8 @@ const AgentInstall = z
     // the destination. Threaded through to `installRendered` via the CLI's
     // `--force` flag.
     force: z.boolean().optional(),
+    // Task 4: allow install even when a target platform CLI is missing
+    allowMissingCli: z.boolean().optional(),
     // Task 6: multi-select install from external repo
     agents: z.array(z.string().min(1)).optional(),
     all: z.boolean().optional(),
@@ -74,6 +76,7 @@ const AgentInstallAll = z
     platforms: z.array(Platform).min(1),
     withSkills: z.boolean().default(false),
     force: z.boolean().optional(),
+    allowMissingCli: z.boolean().optional(),
   })
   .strict();
 const AgentUninstall = z.object({
