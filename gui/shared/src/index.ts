@@ -1,5 +1,6 @@
 export * from "./git-url";
 export * from "./install-errors";
+export * from "./schemas/agent-config";
 export * from "./schemas/agents";
 export * from "./schemas/atlassian";
 export * from "./schemas/catalogs";

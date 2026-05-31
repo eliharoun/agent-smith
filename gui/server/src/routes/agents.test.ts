@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
@@ -475,5 +475,64 @@ describe("agents routes", () => {
     const res = await app.request("/api/agents", { headers: { authorization: "Bearer t" } });
     const body = (await res.json()) as Array<{ name: string; remote?: unknown }>;
     expect(body.find((b) => b.name === "foo")?.remote).toBeUndefined();
+  });
+});
+
+describe("PUT /api/agents/:name/config", () => {
+  function appWith() {
+    const jm = new JobManager({ spawner: fakeSpawner });
+    return createApp({
+      token: "t",
+      jobs: jm,
+      registryPath,
+      installPathsFor: () => ({ opencode: "/x", "claude-code": "/y", codex: "/z", kiro: "/k" }),
+    });
+  }
+  function put(app: ReturnType<typeof createApp>, name: string, body: unknown) {
+    return app.request(`/api/agents/${name}/config`, {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer t",
+        "content-type": "application/json",
+        origin: "http://localhost.test",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("updates targets and modelTier and preserves other keys", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", { targets: ["opencode", "kiro"], modelTier: "high" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const written = JSON.parse(await readFile(join(bundlePath, "agent.config.json"), "utf8"));
+    expect(written.targets).toEqual(["opencode", "kiro"]);
+    expect(written.modelTier).toBe("high");
+    expect(written.name).toBe("foo");
+    expect(written.description).toBe("test");
+  });
+
+  it("rejects an empty targets array with 400", async () => {
+    await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", { targets: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown agent", async () => {
+    await writeFile(registryPath, JSON.stringify({ catalogs: {} }));
+    const res = await put(appWith(), "ghost", { modelTier: "fast" });
+    expect(res.status).toBe(404);
   });
 });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PersonaFile } from "gui-shared";
+import type { AgentConfigPatch, PersonaFile } from "gui-shared";
 import { agentsApi } from "@/api/agents";
 
 export const agentsKey = ["agents"] as const;
@@ -33,6 +33,16 @@ export function useSavePersona(name: string, file: PersonaFile) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (content: string) => agentsApi.savePersona(name, file, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [...agentsKey, name] });
+    },
+  });
+}
+
+export function useSaveAgentConfig(name: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: AgentConfigPatch) => agentsApi.saveConfig(name, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...agentsKey, name] });
     },

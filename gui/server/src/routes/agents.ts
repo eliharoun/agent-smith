@@ -1,5 +1,12 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type AgentSummary, PersonaContent, PersonaFile, type Platform } from "gui-shared";
+import {
+  AgentConfigPatch,
+  type AgentSummary,
+  PersonaContent,
+  PersonaFile,
+  type Platform,
+} from "gui-shared";
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { atomicWriteText } from "../io/atomic-write";
@@ -7,8 +14,8 @@ import { HttpError } from "../middleware/error";
 import { agentWithRemote } from "../projections/agent-with-remote";
 import { computeInstalledStatus } from "../services/installed-status";
 import { loadAgentRemotes } from "../services/load-remotes";
-import { runSmith as defaultRunSmith, type SmithRun } from "../services/run-smith";
 import { parseRegistry, type Registry } from "../services/parse-registry";
+import { runSmith as defaultRunSmith, type SmithRun } from "../services/run-smith";
 import { scanBundle } from "../services/scan-bundle";
 import { discoverFromUrlHandler } from "./skills";
 
@@ -48,7 +55,11 @@ function findAgentMatches(reg: Registry, name: string): Array<{ catalog: string;
 export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   const run = deps.runSmith ?? defaultRunSmith;
   app.post("/api/agents/discover-from-url", async (c) => {
-    const { status, json } = await discoverFromUrlHandler("agent", await c.req.json().catch(() => null), run);
+    const { status, json } = await discoverFromUrlHandler(
+      "agent",
+      await c.req.json().catch(() => null),
+      run,
+    );
     return c.json(json as object, status as ContentfulStatusCode);
   });
 
@@ -153,6 +164,40 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
     const target = join(first.path, `${fileParsed.data}.md`);
     try {
       await atomicWriteText(target, bodyParsed.data.content);
+    } catch (err) {
+      throw new HttpError(500, "WRITE_FAILED", (err as Error).message);
+    }
+    return c.json({ ok: true });
+  });
+
+  // Atomic config patch: update `targets` and/or `modelTier` in the bundle's
+  // agent.config.json. Validates the patch shape, merges into the existing
+  // config, and writes via temp+rename.
+  app.put("/api/agents/:name/config", async (c) => {
+    const name = c.req.param("name");
+    const body = await c.req.json().catch(() => null);
+    const parsed = AgentConfigPatch.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpError(400, "BAD_REQUEST", parsed.error.message);
+    }
+    const reg = await parseRegistry(deps.registryPath);
+    const matches = findAgentMatches(reg, name);
+    const first = matches[0];
+    if (!first) {
+      throw new HttpError(404, "NOT_FOUND", `agent ${name} not in registry`);
+    }
+    const configPath = join(first.path, "agent.config.json");
+    let current: Record<string, unknown>;
+    try {
+      current = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    } catch (err) {
+      throw new HttpError(500, "BUNDLE_READ_ERROR", (err as Error).message);
+    }
+    const next = { ...current };
+    if (parsed.data.targets !== undefined) next.targets = parsed.data.targets;
+    if (parsed.data.modelTier !== undefined) next.modelTier = parsed.data.modelTier;
+    try {
+      await atomicWriteText(configPath, `${JSON.stringify(next, null, 2)}\n`);
     } catch (err) {
       throw new HttpError(500, "WRITE_FAILED", (err as Error).message);
     }

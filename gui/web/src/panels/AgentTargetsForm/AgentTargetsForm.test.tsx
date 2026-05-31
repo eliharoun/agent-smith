@@ -1,95 +1,127 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import type { InstalledStatusBulk } from "gui-shared";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { AgentDetail } from "gui-shared";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentTargetsForm } from "./AgentTargetsForm";
 
-const server = setupServer();
+const baseAgent: AgentDetail = {
+  name: "foo",
+  description: "test agent",
+  catalog: "default",
+  path: "/x/foo",
+  model: "balanced",
+  targets: ["opencode", "claude-code"],
+  identity: "i",
+  expertise: "e",
+  soul: "s",
+  user: "u",
+  config: {
+    name: "foo",
+    description: "test agent",
+    targets: ["opencode", "claude-code"],
+    modelTier: "balanced",
+  },
+};
+
+const server = setupServer(
+  http.get("*/api/knowledge/foo", () => HttpResponse.json({ sources: [], consent: null })),
+  http.get("*/api/agents/foo/refresh-manifest", () =>
+    HttpResponse.json({ agent: "foo", platforms: [] }),
+  ),
+  http.get("*/api/agents/installed-statuses", () =>
+    HttpResponse.json({
+      foo: { agent: "foo", installed: { opencode: true, "claude-code": true } },
+    }),
+  ),
+  http.put("*/api/agents/foo/config", () => HttpResponse.json({ ok: true })),
+  http.post("*/api/jobs", () => HttpResponse.json({ jobId: "j1", preview: "" })),
+);
 
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
+beforeEach(() => sessionStorage.setItem("smith.gui.token", "t"));
 
-function mockInstalled(name: string, installed: Record<string, boolean>) {
-  const body: InstalledStatusBulk = {
-    [name]: { agent: name, installed },
-  };
-  server.use(http.get("*/api/agents/installed-statuses", () => HttpResponse.json(body)));
-}
-
-function renderForm(targets: ("opencode" | "claude-code" | "codex")[]) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderForm(agent: AgentDetail = baseAgent) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <QueryClientProvider client={qc}>
-      <AgentTargetsForm
-        agent={{
-          name: "foo",
-          description: "",
-          catalog: "default",
-          path: "/x",
-          targets,
-          model: "sonnet",
-          identity: "",
-          expertise: "",
-          soul: "",
-          user: "",
-          config: {},
-        }}
-      />
+      <AgentTargetsForm agent={agent} />
     </QueryClientProvider>,
   );
 }
 
 describe("AgentTargetsForm", () => {
-  it("renders targets and model", () => {
-    mockInstalled("foo", { opencode: true, "claude-code": true });
-    renderForm(["opencode", "claude-code"]);
-    expect(screen.getByText("opencode")).toBeInTheDocument();
-    expect(screen.getByText(/sonnet/)).toBeInTheDocument();
+  it("saving an added target PUTs a config patch including the new target", async () => {
+    const putSpy = vi.fn();
+    server.use(
+      http.put("*/api/agents/foo/config", async ({ request }) => {
+        putSpy(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderForm();
+    fireEvent.click(screen.getByLabelText("kiro"));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(putSpy).toHaveBeenCalled());
+    expect(putSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: expect.arrayContaining(["opencode", "claude-code", "kiro"]),
+      }),
+    );
   });
 
-  it("disables Reconfigure button when agent installed on no platforms", async () => {
-    mockInstalled("foo", { opencode: false, "claude-code": false });
-    renderForm(["opencode", "claude-code"]);
-    const btn = (await screen.findByRole("button", {
-      name: /reconfigure/i,
-    })) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(true));
+  it("disables Save and warns when no targets are selected", async () => {
+    renderForm();
+    fireEvent.click(screen.getByLabelText("opencode"));
+    fireEvent.click(screen.getByLabelText("claude-code"));
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+    expect(screen.getByText(/at least one target required/i)).toBeInTheDocument();
   });
 
-  it("enables Reconfigure when at least one declared target is installed", async () => {
-    mockInstalled("foo", { opencode: true, "claude-code": false });
-    renderForm(["opencode", "claude-code"]);
-    const btn = (await screen.findByRole("button", {
-      name: /reconfigure/i,
-    })) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(false));
+  it("after saving an added target, offers to install it and dispatches agent.install", async () => {
+    const postSpy = vi.fn();
+    server.use(
+      http.post("*/api/jobs", async ({ request }) => {
+        postSpy(await request.json());
+        return HttpResponse.json({ jobId: "j2", preview: "" });
+      }),
+    );
+    renderForm();
+    fireEvent.click(screen.getByLabelText("kiro"));
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    const installBtn = await screen.findByRole("button", { name: /install on kiro now/i });
+    fireEvent.click(installBtn);
+    await waitFor(() => expect(postSpy).toHaveBeenCalled());
+    expect(postSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "agent.install", name: "foo", platforms: ["kiro"] }),
+    );
   });
 
-  it("shows visible help text when no platform is installed", async () => {
-    mockInstalled("foo", { opencode: false, "claude-code": false, codex: false });
-    renderForm(["opencode"]);
-    expect(
-      await screen.findByText(/install on at least one platform to manage refresh consent/i),
-    ).toBeInTheDocument();
+  it("explains (no toggles) when the agent has no refreshable sources", async () => {
+    renderForm();
+    expect(await screen.findByText(/no auto-refreshing knowledge sources/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("refresh opencode")).not.toBeInTheDocument();
   });
 
-  it("does not render the help text when at least one platform is installed", async () => {
-    mockInstalled("foo", { opencode: true, "claude-code": false, codex: false });
-    renderForm(["opencode"]);
-    // Wait for query to resolve, then assert text absent.
-    const btn = (await screen.findByRole("button", {
-      name: /reconfigure/i,
-    })) as HTMLButtonElement;
-    await waitFor(() => expect(btn.disabled).toBe(false));
-    expect(screen.queryByText(/install on at least one platform/i)).toBeNull();
+  it("shows refresh-hook toggles when a refreshable source exists", async () => {
+    server.use(
+      http.get("*/api/knowledge/foo", () =>
+        HttpResponse.json({ sources: [{ source: { id: "u", type: "url" } }], consent: null }),
+      ),
+    );
+    renderForm();
+    expect(await screen.findByLabelText("refresh opencode")).toBeInTheDocument();
   });
 
-  it("shows a loading hint while installed statuses are pending", () => {
-    // No handler registered for installed-statuses → query stays pending.
-    renderForm(["opencode"]);
-    expect(screen.getByText(/loading install status/i)).toBeInTheDocument();
+  it("shows re-install nudge after changing model tier and saving", async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText("model tier"), { target: { value: "high" } });
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    expect(await screen.findByText(/re-install now/i)).toBeInTheDocument();
   });
 });

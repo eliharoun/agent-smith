@@ -1,4 +1,10 @@
-import type { AgentDetail, AgentSummary, InstalledStatus, PersonaFile } from "gui-shared";
+import type {
+  AgentConfigPatch,
+  AgentDetail,
+  AgentSummary,
+  InstalledStatus,
+  PersonaFile,
+} from "gui-shared";
 import { apiFetch } from "./client";
 
 export const agentsApi = {
@@ -14,4 +20,9 @@ export const agentsApi = {
         body: JSON.stringify({ content }),
       },
     ),
+  saveConfig: (name: string, patch: AgentConfigPatch) =>
+    apiFetch<{ ok: true }>(`/api/agents/${encodeURIComponent(name)}/config`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
 };
