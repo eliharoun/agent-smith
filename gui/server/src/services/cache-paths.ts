@@ -69,3 +69,21 @@ function safeFsName(s: string): string {
   // `cache-paths.test.ts` pin the contract.
   return s.replace(/[^A-Za-z0-9._-]/g, "-");
 }
+
+export interface GuiJobsPaths {
+  jsonlPath: string;
+  outputDir: string;
+}
+
+/**
+ * Canonical on-disk locations for GUI job history, derived from the state
+ * root. Single source of truth shared by the server entry point
+ * (`startGuiServer` -> JobManager history writer) and `createApp` (history
+ * route + startup sweep) so the writer and reader can never drift.
+ */
+export function defaultGuiJobsPaths(stateRoot: string = defaultStateRoot()): GuiJobsPaths {
+  return {
+    jsonlPath: join(stateRoot, "gui-jobs.jsonl"),
+    outputDir: join(stateRoot, "gui-jobs-output"),
+  };
+}

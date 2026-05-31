@@ -29,7 +29,7 @@ import { registerSkillsRoute } from "./routes/skills";
 import { registerStatusRoute } from "./routes/status";
 import { registerUpdateRoute } from "./routes/update";
 import { registerUserMdRoute } from "./routes/user-md";
-import { defaultStateRoot } from "./services/cache-paths";
+import { defaultGuiJobsPaths, defaultStateRoot } from "./services/cache-paths";
 import { defaultInstallPaths } from "./services/installed-status";
 import { smithBinaryPath } from "./services/smith-binary";
 import { mountStatic } from "./static";
@@ -95,24 +95,23 @@ export function createApp(deps: AppDeps) {
   const daemonHeartbeatPath = deps.daemonHeartbeatPath ?? join(stateDir, "daemon.heartbeat.json");
   const daemonLogPath = deps.daemonLogPath ?? join(stateDir, "daemon.log");
   const smithEnvPath = deps.smithEnvPath ?? join(agentSmithHome, ".env");
-  const guiJobsJsonlPath = deps.guiJobsJsonlPath ?? join(stateDir, "gui-jobs.jsonl");
-  const guiJobsOutputDir = deps.guiJobsOutputDir ?? join(stateDir, "gui-jobs-output");
+  const defaultJobs = defaultGuiJobsPaths(stateDir);
+  const guiJobsJsonlPath = deps.guiJobsJsonlPath ?? defaultJobs.jsonlPath;
+  const guiJobsOutputDir = deps.guiJobsOutputDir ?? defaultJobs.outputDir;
 
   // Best-effort sweep of stale history entries on startup. Never throws.
   void sweepOldEntries({ jsonlPath: guiJobsJsonlPath }).catch((err) =>
     console.warn("[app] history sweep failed:", err),
   );
 
-  const historyWriter = createJobHistoryWriter({
-    jsonlPath: guiJobsJsonlPath,
-    outputDir: guiJobsOutputDir,
-  });
-
+  // Production passes `deps.jobs` (already history-wired via createGuiJobManager).
+  // Only the test/standalone path constructs its own manager here, so the
+  // history writer is built lazily inside this branch — never orphaned.
   const jobs =
     deps.jobs ??
     new JobManager({
       spawner: createBunSpawner({ binary: smithBinaryPath() }),
-      history: historyWriter,
+      history: createJobHistoryWriter({ jsonlPath: guiJobsJsonlPath, outputDir: guiJobsOutputDir }),
     });
 
   const app = new Hono();

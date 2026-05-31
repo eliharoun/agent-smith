@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   defaultAgentSmithHome,
   defaultCacheRoot,
+  defaultGuiJobsPaths,
   defaultStateRoot,
   knowledgeManifestPathFor,
   refreshCacheDirFor,
@@ -64,5 +65,22 @@ describe("cache-paths", () => {
   it("manifest paths apply the same strict sanitizer", () => {
     expect(refreshManifestPathFor("a/b", "/s")).toBe("/s/agents/a-b/refresh-manifest.json");
     expect(knowledgeManifestPathFor("a/b", "/s")).toBe("/s/knowledge/a-b/_manifest.json");
+  });
+});
+
+describe("defaultGuiJobsPaths", () => {
+  it("derives both paths from an explicit state root", () => {
+    expect(defaultGuiJobsPaths("/s/agent-smith")).toEqual({
+      jsonlPath: "/s/agent-smith/gui-jobs.jsonl",
+      outputDir: "/s/agent-smith/gui-jobs-output",
+    });
+  });
+
+  it("falls back to XDG_STATE_HOME when no root is passed", () => {
+    process.env.XDG_STATE_HOME = "/s";
+    expect(defaultGuiJobsPaths()).toEqual({
+      jsonlPath: "/s/agent-smith/gui-jobs.jsonl",
+      outputDir: "/s/agent-smith/gui-jobs-output",
+    });
   });
 });

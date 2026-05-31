@@ -16,6 +16,7 @@ export default defineConfig({
     timeout: 30_000,
     env: {
       XDG_CONFIG_HOME: join(process.cwd(), ".e2e-config"),
+      XDG_STATE_HOME: join(process.cwd(), ".e2e-state"),
       SMITH_FAKE_TOOLS: "opencode",
       SMITH_GUI_DEV_TOKEN: "e2e-token",
     },

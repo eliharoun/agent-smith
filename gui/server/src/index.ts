@@ -2,7 +2,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app";
 import { createBunSpawner } from "./jobs/bun-spawner";
-import { JobManager } from "./jobs/job-manager";
+import { createJobHistoryWriter } from "./jobs/job-history";
+import { JobManager, type Spawner } from "./jobs/job-manager";
+import { defaultGuiJobsPaths } from "./services/cache-paths";
 import { smithBinaryPath } from "./services/smith-binary";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,12 +37,28 @@ export function displayHost(bind: string): string {
   return bind;
 }
 
+/**
+ * Construct the production JobManager with on-disk history wired in. Exposed
+ * (spawner + stateRoot injectable) so tests can assert completed jobs persist
+ * without binding a port. `startGuiServer` MUST use this — wiring the history
+ * writer here is what populates the GUI History page.
+ */
+export function createGuiJobManager(
+  opts: { spawner?: Spawner; stateRoot?: string } = {},
+): JobManager {
+  const { jsonlPath, outputDir } = defaultGuiJobsPaths(opts.stateRoot);
+  return new JobManager({
+    spawner: opts.spawner ?? createBunSpawner({ binary: smithBinaryPath() }),
+    history: createJobHistoryWriter({ jsonlPath, outputDir }),
+  });
+}
+
 export async function startGuiServer(opts: StartGuiOptions): Promise<StartedGui> {
   // Construct the JobManager once at the production entry point so the
   // singleton invariant is enforced here rather than relying on createApp
   // being called only once. createApp still falls back to constructing its
   // own JobManager when `jobs` is omitted (used by app tests).
-  const jobs = new JobManager({ spawner: createBunSpawner({ binary: smithBinaryPath() }) });
+  const jobs = createGuiJobManager();
   // C4.3.2: derive the same-origin allow value from the URL the user will
   // actually navigate to. Thunk form defers reading server.port until after
   // Bun.serve() returns (ephemeral port=0 case).

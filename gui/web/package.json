@@ -8,7 +8,7 @@
     "build": "../../scripts/run-with-node.sh node_modules/typescript/bin/tsc --noEmit && ../../scripts/run-with-node.sh node_modules/vite/bin/vite.js build",
     "preview": "../../scripts/run-with-node.sh node_modules/vite/bin/vite.js preview",
     "test": "../../scripts/run-with-node.sh node_modules/vitest/vitest.mjs run",
-    "e2e": "rm -rf .e2e-config && playwright test",
+    "e2e": "rm -rf .e2e-config .e2e-state && playwright test",
     "storybook": "storybook dev -p 6006"
   },
   "dependencies": {
