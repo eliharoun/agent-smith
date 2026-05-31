@@ -68,6 +68,9 @@ export function ModelConfigPage() {
 
   const data = config.data!;
   const providers = order ?? data.preferenceOrder.map((p) => p.provider);
+  const visiblePlatforms = PLATFORMS.filter(
+    (p) => data.platforms?.[p]?.status !== "cli-not-installed",
+  );
 
   function moveUp(i: number) {
     if (i === 0) return;
@@ -168,42 +171,44 @@ export function ModelConfigPage() {
       </Card>
 
       {/* Card 2: OpenCode provider preference (advanced; only meaningful for OpenCode) */}
-      <Card>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
-          // opencode: which provider is tried first
-        </div>
-        <div className="font-mono text-xs text-matrix-body mb-3 leading-relaxed">
-          OpenCode aggregates models from multiple providers (anthropic, github-copilot,
-          openrouter, amazon-bedrock, google-vertex-ai, openai). When you ask for a model
-          tier (high/balanced/fast) without pinning an exact model, smith walks this list
-          top-to-bottom and picks the first provider whose model list contains a match.
-          Reorder to prefer one provider over another.
-          <br />
-          <br />
-          Other platforms aren't affected by this list — Claude Code, Codex, and Kiro each
-          resolve tiers via their own runtime, not through a provider table.
-        </div>
-        <ul className="space-y-1 mb-3">
-          {providers.map((p, i) => (
-            <li
-              key={p}
-              className="flex items-center gap-2 font-mono text-sm text-matrix-green"
-            >
-              <Button variant="ghost" disabled={i === 0} onClick={() => moveUp(i)}>
-                ↑
-              </Button>
-              <Button
-                variant="ghost"
-                disabled={i === providers.length - 1}
-                onClick={() => moveDown(i)}
+      {visiblePlatforms.includes("opencode") && (
+        <Card>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
+            // opencode: which provider is tried first
+          </div>
+          <div className="font-mono text-xs text-matrix-body mb-3 leading-relaxed">
+            OpenCode aggregates models from multiple providers (anthropic, github-copilot,
+            openrouter, amazon-bedrock, google-vertex-ai, openai). When you ask for a model
+            tier (high/balanced/fast) without pinning an exact model, smith walks this list
+            top-to-bottom and picks the first provider whose model list contains a match.
+            Reorder to prefer one provider over another.
+            <br />
+            <br />
+            Other platforms aren't affected by this list — Claude Code, Codex, and Kiro each
+            resolve tiers via their own runtime, not through a provider table.
+          </div>
+          <ul className="space-y-1 mb-3">
+            {providers.map((p, i) => (
+              <li
+                key={p}
+                className="flex items-center gap-2 font-mono text-sm text-matrix-green"
               >
-                ↓
-              </Button>
-              <span>{p}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+                <Button variant="ghost" disabled={i === 0} onClick={() => moveUp(i)}>
+                  ↑
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={i === providers.length - 1}
+                  onClick={() => moveDown(i)}
+                >
+                  ↓
+                </Button>
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* Card 3: Tier resolution matrix */}
       <Card>
@@ -218,7 +223,7 @@ export function ModelConfigPage() {
           <thead>
             <tr>
               <th className="text-left text-matrix-green-muted py-1">tier</th>
-              {PLATFORMS.map((p) => (
+              {visiblePlatforms.map((p) => (
                 <th key={p} className="text-left text-matrix-green-muted py-1 px-2">
                   {PLATFORM_LABELS[p]}
                 </th>
@@ -229,7 +234,7 @@ export function ModelConfigPage() {
             {TIERS.map((tier) => (
               <tr key={tier}>
                 <td className="text-matrix-green py-1">{tier}</td>
-                {PLATFORMS.map((p) => {
+                {visiblePlatforms.map((p) => {
                   const v = tierLookup[tier][p];
                   return (
                     <td
@@ -260,7 +265,7 @@ export function ModelConfigPage() {
           SMITH_&lt;PLATFORM&gt;_TIER_&lt;TIER&gt; (others). Leave blank to clear.
         </div>
         <div className="space-y-4">
-          {PLATFORMS.map((platform) => (
+          {visiblePlatforms.map((platform) => (
             <div key={platform}>
               <div className="font-mono text-xs text-matrix-green mb-1.5">
                 {PLATFORM_LABELS[platform]}

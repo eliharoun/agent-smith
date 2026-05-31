@@ -150,4 +150,98 @@ describe("ModelConfigPage", () => {
       expect(body.preferenceOrder[1]).toBe("github-copilot");
     });
   });
+
+  it("hides Card 2 (OpenCode provider preference) when opencode CLI is not installed", async () => {
+    const calls: Call[] = [];
+    const config = {
+      ...defaultConfig,
+      platforms: {
+        ...defaultConfig.platforms,
+        opencode: { cliInstalled: false, status: "cli-not-installed" },
+      },
+    };
+    globalThis.fetch = mockFetch({ config }, calls) as typeof fetch;
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/platforms.*installed and authenticated/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/which provider is tried first/i)).not.toBeInTheDocument();
+  });
+
+  it("removes a platform's column from the tier matrix when its CLI is not installed", async () => {
+    const calls: Call[] = [];
+    const config = {
+      ...defaultConfig,
+      platforms: {
+        ...defaultConfig.platforms,
+        kiro: { cliInstalled: false, status: "cli-not-installed" },
+      },
+    };
+    globalThis.fetch = mockFetch({ config }, calls) as typeof fetch;
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/tier resolution preview/i)).toBeInTheDocument(),
+    );
+    const previewHeading = screen.getByText(/tier resolution preview/i);
+    const card = previewHeading.closest("div")!.parentElement!;
+    const headers = card.querySelectorAll("thead th");
+    const headerLabels = Array.from(headers).map((th) => th.textContent);
+    expect(headerLabels).not.toContain("Kiro");
+    expect(headerLabels).toContain("OpenCode");
+    expect(headerLabels).toContain("Claude Code");
+    // Codex was already cli-not-installed in defaultConfig — should also be absent.
+    expect(headerLabels).not.toContain("Codex");
+  });
+
+  it("removes a platform's section from Card 4 (per-platform overrides) when its CLI is not installed", async () => {
+    const calls: Call[] = [];
+    const config = {
+      ...defaultConfig,
+      platforms: {
+        ...defaultConfig.platforms,
+        codex: { cliInstalled: false, status: "cli-not-installed" },
+      },
+    };
+    globalThis.fetch = mockFetch({ config }, calls) as typeof fetch;
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/pin a specific model/i)).toBeInTheDocument(),
+    );
+    const overridesHeading = screen.getByText(/pin a specific model/i);
+    const card = overridesHeading.closest("div")!.parentElement!;
+    const labels = Array.from(card.querySelectorAll("div.text-matrix-green")).map(
+      (el) => el.textContent,
+    );
+    expect(labels).not.toContain("Codex");
+    expect(labels).toContain("OpenCode");
+    expect(labels).toContain("Claude Code");
+    expect(labels).toContain("Kiro");
+  });
+
+  it("save handler submits overrides for all four platforms even when some are hidden", async () => {
+    const calls: Call[] = [];
+    const config = {
+      ...defaultConfig,
+      platforms: {
+        ...defaultConfig.platforms,
+        kiro: { cliInstalled: false, status: "cli-not-installed" },
+      },
+    };
+    globalThis.fetch = mockFetch({ config }, calls) as typeof fetch;
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/which provider is tried first/i)).toBeInTheDocument(),
+    );
+    const downButtons = screen.getAllByRole("button", { name: /↓/i });
+    fireEvent.click(downButtons[0]!);
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => {
+      const put = calls.find((c) => c.init?.method === "PUT");
+      expect(put).toBeDefined();
+      const body = JSON.parse(String(put?.init?.body ?? "{}"));
+      expect(Object.keys(body.perPlatformTierOverrides)).toEqual(
+        expect.arrayContaining(["opencode", "claude-code", "codex", "kiro"]),
+      );
+    });
+  });
 });
