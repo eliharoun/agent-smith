@@ -22,6 +22,13 @@ export function useDiscoverFromUrl(kind: "skill" | "agent") {
   const [error, setError] = useState<string | null>(null);
 
   const discover = useCallback(async (url: string, ref?: string) => {
+    // file:// is rejected server-side (a browser GUI must not make the server
+    // clone arbitrary local paths); pre-check here to fail fast without a round-trip.
+    if (url.startsWith("file://")) {
+      setError("file:// URLs aren't allowed from the GUI");
+      setStatus("error");
+      return;
+    }
     setStatus("discovering");
     setError(null);
     try {

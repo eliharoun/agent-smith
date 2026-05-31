@@ -57,4 +57,17 @@ describe("useDiscoverFromUrl", () => {
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(result.current.error).toBe("auth required");
   });
+
+  test("rejects file:// URLs client-side without hitting the network", async () => {
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useDiscoverFromUrl("agent"));
+    await act(async () => {
+      await result.current.discover("file:///tmp/bare.git");
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.error).toMatch(/file:\/\//);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
