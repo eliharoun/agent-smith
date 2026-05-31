@@ -238,6 +238,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
       "Demote missing-MCP-server errors to warnings (v1: install blocks by default)",
     )
     .option(
+      "--allow-missing-cli",
+      "Render targets whose platform CLI is absent (emit tier literal + warning) instead of failing",
+    )
+    .option(
       "--from <url>",
       "Clone an external git repo containing the bundle, register it, then install. Skips local lookup. (v1-task C3.9)",
     )
@@ -274,6 +278,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             refreshConsent?: string;
             platforms?: string;
             allowMissingMcp?: boolean;
+            allowMissingCli?: boolean;
             from?: string;
             ref?: string;
             all?: boolean;
@@ -328,6 +333,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(refreshConsent !== undefined ? { refreshConsent } : {}),
             ...(platformFilter ? { platformFilter } : {}),
             ...(opts.allowMissingMcp ? { allowMissingMcp: true } : {}),
+            ...(opts.allowMissingCli ? { allowMissingCli: true } : {}),
             ...(opts.from ? { from: opts.from } : {}),
             ...(opts.ref ? { ref: opts.ref } : {}),
             ...(opts.all ? { all: true } : {}),
@@ -354,6 +360,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
       "Demote missing-MCP-server errors to warnings (v1: install blocks by default)",
     )
     .option(
+      "--allow-missing-cli",
+      "Render targets whose platform CLI is absent (emit tier literal + warning) instead of failing",
+    )
+    .option(
       "--force",
       "Overwrite pre-existing destination files that smith doesn't recognize as its own",
     )
@@ -375,6 +385,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
           refreshConsent?: string;
           platforms?: string;
           allowMissingMcp?: boolean;
+          allowMissingCli?: boolean;
           force?: boolean;
           platformConventions?: string | false;
         }) => {
@@ -405,6 +416,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(refreshConsent !== undefined ? { refreshConsent } : {}),
             ...(platformFilter ? { platformFilter } : {}),
             ...(opts.allowMissingMcp ? { allowMissingMcp: true } : {}),
+            ...(opts.allowMissingCli ? { allowMissingCli: true } : {}),
             ...(opts.force ? { force: true } : {}),
             ...(conventionsStrategy
               ? { platformConventions: conventionsStrategy }

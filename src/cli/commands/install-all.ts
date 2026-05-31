@@ -36,6 +36,8 @@ export interface InstallAllCliOptions {
   platformFilter?: PlatformId[];
   /** Forwarded per-agent to `install()`. See InstallCliOptions for v1-task B7. */
   allowMissingMcp?: boolean;
+  /** Forwarded per-agent to `install()`. See InstallCliOptions. */
+  allowMissingCli?: boolean;
   /** v1-task B1: forwarded per-agent to `install()`. When set, the
    *  refresh-hook consent prompt is pre-answered uniformly. Resolved
    *  from `--refresh-consent` or the `--yes` cascade in the action
@@ -101,6 +103,7 @@ export async function installAll(opts: InstallAllCliOptions = {}): Promise<numbe
       ...(opts.skillMode ? { skillMode: opts.skillMode } : {}),
       ...(opts.platformFilter ? { platformFilter: opts.platformFilter } : {}),
       ...(opts.allowMissingMcp ? { allowMissingMcp: true } : {}),
+      ...(opts.allowMissingCli ? { allowMissingCli: true } : {}),
       ...(opts.refreshConsent ? { refreshConsent: opts.refreshConsent } : {}),
       ...(opts.force ? { force: true } : {}),
       ...(opts.platformConventions
