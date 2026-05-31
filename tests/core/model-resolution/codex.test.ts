@@ -102,6 +102,19 @@ describe("resolveCodexModel", () => {
     expect(warnings.warnings).toEqual([]);
   });
 
+  it("renders the tier literal + warning when CLI missing and allowMissingCli set", async () => {
+    const warnings = makeWarningCollector();
+    const result = await resolveCodexModel(cfg({ modelTier: "high", targets: ["codex"] }), {
+      getOpenCodeModels: async () => undefined,
+      warnings,
+      allowMissingCli: true,
+      detectCodexAuth: async () => ({ platform: "codex", cliInstalled: false, status: "cli-not-installed" }),
+    });
+    expect(result).toBe("gpt-5-codex");
+    expect(warnings.warnings.length).toBe(1);
+    expect(warnings.warnings[0]?.message).toMatch(/not installed/i);
+  });
+
   it("returns undefined and warns when unauthenticated", async () => {
     const warnings = makeWarningCollector();
     const result = await resolveCodexModel(cfg({ modelTier: "high" }), {

@@ -67,6 +67,16 @@ export async function resolveClaudeCodeModel(
   const auth = await detect();
 
   if (auth.status === "cli-not-installed") {
+    if (env.allowMissingCli) {
+      env.warnings.push({
+        target: "claude-code",
+        message:
+          "claude CLI not installed; rendering tier '" + tier + "' as '" +
+          LEGACY_TIER_NAMES[tier] + "' (install the CLI or set SMITH_CLAUDE_TIER_" +
+          tier.toUpperCase() + " to override).",
+      });
+      return LEGACY_TIER_NAMES[tier];
+    }
     throw new PlatformUnavailableError("claude-code", "claude CLI is not installed");
   }
   if (auth.status === "unauthenticated") {

@@ -51,6 +51,12 @@ export interface ModelResolutionEnv {
   detectClaudeCodeAuth?: () => Promise<PlatformAuth>;
   detectCodexAuth?: () => Promise<PlatformAuth>;
   detectKiroAuth?: () => Promise<PlatformAuth>;
+  /**
+   * When true, a resolver whose platform CLI is absent returns the static
+   * tier literal + a warning instead of throwing PlatformUnavailableError.
+   * Wired from `smith agent install --allow-missing-cli`. Default: throw.
+   */
+  allowMissingCli?: boolean;
   /** Optional: read process env. Test seam. Defaults to process.env. */
   env?: NodeJS.ProcessEnv;
 }
