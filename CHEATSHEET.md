@@ -295,6 +295,7 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--ref <ref>` | git ref | remote HEAD | Git branch, tag, or SHA to check out after cloning with `--from`. Ignored without `--from`. |
 | `--force` | bool | `false` | Bypass smith's would-clobber refusal: write the rendered file even if the destination exists and isn't claimed by smith's `installed-agents.json` manifest. Also re-claims a manifest entry whose recorded path no longer matches the new render's relativePath (rename / translator change). |
 | `--allow-missing-mcp` | bool | `false` | Demote missing-MCP-server errors to warnings (install blocks by default). |
+| `--allow-missing-cli` | bool | `false` | Demote missing-platform-CLI errors to warnings; resolver emits the static tier literal instead of dropping the target. |
 | `--platforms <list>` | comma-list of `opencode\|claude-code\|codex\|kiro` | all declared targets | Restrict install to specific platforms (subset of the agent's declared targets). |
 | `--all` | bool | `false` | Install every agent discovered in `--from <url>`. |
 | `--agents <list>` | comma-list | — | Comma-separated agent names to install from `--from <url>`. |
@@ -319,9 +320,9 @@ smith agent install code-reviewer --with-skills
 
 #### `smith agent install-all`
 
-Install every bundle in every registered catalog. Same flag set as `agent install` (including `--force`, `--platform-conventions`, `--no-platform-conventions`, `--platforms`, `--allow-missing-mcp`, `--refresh-consent`).
+Install every bundle in every registered catalog. Same flag set as `agent install` (including `--force`, `--platform-conventions`, `--no-platform-conventions`, `--platforms`, `--allow-missing-mcp`, `--allow-missing-cli`, `--refresh-consent`).
 
-**Synopsis:** `smith agent install-all [--yes] [--with-skills] [--no-skills] [--force] [--platform-conventions <strategy>] [--no-platform-conventions] [--platforms <list>] [--allow-missing-mcp] [--refresh-consent <yn>]`
+**Synopsis:** `smith agent install-all [--yes] [--with-skills] [--no-skills] [--force] [--platform-conventions <strategy>] [--no-platform-conventions] [--platforms <list>] [--allow-missing-mcp] [--allow-missing-cli] [--refresh-consent <yn>]`
 
 #### `smith agent uninstall <name>`
 

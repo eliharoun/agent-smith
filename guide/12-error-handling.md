@@ -228,6 +228,22 @@ The layered model resolver exhausted all providers for the requested tier. Throw
 - **Body:** names the agent, tier, preferences tried, and authenticated providers available.
 - **Remediation:** a hint string from the resolver (e.g. "Set OPENCODE_MODEL_* or configure a provider").
 
+Note: when a platform CLI is absent, the resolver throws
+`PlatformUnavailableError` instead. The orchestrator catches this and
+drops the target. If *every* declared target is dropped, the
+orchestrator emits a "no targets resolvable" error:
+
+```
+no targets resolvable: every declared target (<targets>) is unavailable
+(platform CLI not installed or model resolution failed). Install a target
+platform's CLI, set SMITH_<PLATFORM>_TIER_<TIER>, add a "model" to the
+bundle, or re-run with --allow-missing-cli to render anyway.
+```
+
+Pass `--allow-missing-cli` to demote missing-CLI errors to warnings and
+use the static tier literal for each platform. See
+[07-models.md § Missing platform CLI](./07-models.md#missing-platform-cli-allow-missing-cli).
+
 ### Quick reference table
 
 | Variant code | Exit | Headline form | Where thrown (representative) |
