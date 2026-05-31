@@ -290,4 +290,47 @@ describe("io/orchestrator", () => {
       await releaseRefreshLock(lock!);
     }
   });
+
+  test("allowMissingCli renders a claude-code-only bundle when the CLI is absent", async () => {
+    const paths = {
+      opencode: join(root, "opencode/agents"),
+      "claude-code": join(root, "claude/agents"),
+      codex: join(root, "agents/skills"),
+      kiro: join(root, "kiro/agents"),
+    };
+    const bundle = fakeBundle("demo", { kind: "user-global" });
+    bundle.config.targets = ["claude-code"];
+    const result = await buildAndInstall([bundle], paths, {
+      modelResolutionEnv: {
+        getOpenCodeModels: async () => undefined,
+        warnings: { push() {} },
+        allowMissingCli: true,
+        detectClaudeCodeAuth: async () => ({ platform: "claude-code", cliInstalled: false, status: "cli-not-installed" }),
+      },
+      homeDir: root,
+    });
+    expect(result.errors).toHaveLength(0);
+    expect(result.installed.map((i) => i.target)).toContain("claude-code");
+  });
+
+  test("without allowMissingCli, all-missing-CLI fails with an actionable message", async () => {
+    const paths = {
+      opencode: join(root, "opencode/agents"),
+      "claude-code": join(root, "claude/agents"),
+      codex: join(root, "agents/skills"),
+      kiro: join(root, "kiro/agents"),
+    };
+    const bundle = fakeBundle("demo", { kind: "user-global" });
+    bundle.config.targets = ["claude-code"];
+    const result = await buildAndInstall([bundle], paths, {
+      modelResolutionEnv: {
+        getOpenCodeModels: async () => undefined,
+        warnings: { push() {} },
+        detectClaudeCodeAuth: async () => ({ platform: "claude-code", cliInstalled: false, status: "cli-not-installed" }),
+      },
+      homeDir: root,
+    });
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.messages.join("\n")).toContain("--allow-missing-cli");
+  });
 });
