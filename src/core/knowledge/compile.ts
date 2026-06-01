@@ -31,8 +31,23 @@ interface CompileEnv {
   rootDir: string;
 }
 
-const TOC_PREAMBLE =
-  "Compiled knowledge index. Each entry points to a file under your knowledge root; read it on demand. When a (searchable: ...) hint is shown, prefer the matching MCP tool over scanning files.";
+function tocPreamble(rootDir: string): string {
+  return (
+    `Your knowledge root is \`${rootDir}/\`. The bullet paths below are RELATIVE ` +
+    `to that root — when calling Read, prepend the root to the bullet's path. ` +
+    `Each entry points at a file (single-file sources) or a directory (\`dir\`/\`glob\`/\`git\`/\`confluence\`/\`jira\` sources, which expand to many files under \`<root>/sources/<id>/\`). ` +
+    `When a (searchable: ...) hint is shown, prefer the matching MCP tool over scanning files. ` +
+    `Never reconstruct paths from memory; the bullets below are the only authoritative listing.`
+  );
+}
+
+const MULTI_FILE_TYPES = new Set([
+  "dir",
+  "glob",
+  "git",
+  "confluence",
+  "jira",
+]);
 
 function summaryFor(s: MaterializedSource): string {
   if (s.description && s.description.length > 0) return s.description;
@@ -40,9 +55,19 @@ function summaryFor(s: MaterializedSource): string {
 }
 
 function tocLineFor(s: MaterializedSource, summary: string): string {
-  const head = s.files[0]?.relPath ?? null;
   const summaryPart = summary ? ` — ${summary}` : "";
-  const targetPart = head ? ` → \`${head}\`` : "";
+  // For multi-file sources (dir/glob/git/confluence/jira), point at the
+  // source directory `sources/<id>/` so the agent doesn't anchor on the
+  // first file's path. For single-file sources (file/url/npm), point at
+  // the materialized file directly.
+  let target: string | null;
+  if (MULTI_FILE_TYPES.has(s.type)) {
+    const fileCount = s.files.length;
+    target = `sources/${s.id}/ (${fileCount} file${fileCount === 1 ? "" : "s"})`;
+  } else {
+    target = s.files[0]?.relPath ?? null;
+  }
+  const targetPart = target ? ` → \`${target}\`` : "";
   const retrievalPart =
     s.retrieval?.mode && s.retrieval.mode !== "off"
       ? ` (searchable: ${s.retrieval.mode})`
@@ -86,10 +111,11 @@ export function compile(
   }
 
   const lines = kept.map((e) => e.tocLine).filter((s): s is string => s !== null);
+  const preamble = tocPreamble(env.rootDir);
   const tocStanza =
     lines.length === 0
-      ? `## Knowledge\n\n${TOC_PREAMBLE}\n\n_(no compiled knowledge sources)_`
-      : `## Knowledge\n\n${TOC_PREAMBLE}\n\n${lines.join("\n")}`;
+      ? `## Knowledge\n\n${preamble}\n\n_(no compiled knowledge sources)_`
+      : `## Knowledge\n\n${preamble}\n\n${lines.join("\n")}`;
 
   const manifestSources = all.map((e) => ({
     id: e.source.id,
