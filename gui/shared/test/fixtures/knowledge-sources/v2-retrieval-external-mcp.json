@@ -1,0 +1,10 @@
+{
+  "id": "v2-external-mcp",
+  "type": "url",
+  "delivery": "file",
+  "url": "https://example.com/big-doc.html",
+  "retrieval": {
+    "mode": "external-mcp",
+    "mcpUrl": "http://127.0.0.1:9000"
+  }
+}

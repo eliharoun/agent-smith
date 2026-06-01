@@ -39,6 +39,17 @@ const ConfluencePageRef = z.union([
   z.object({ id: z.number().int().positive() }).strict(),
 ]);
 
+// v2.0+ knowledge-compiler fields. Mirror src/core/knowledge/schema.ts
+// `RetrievalSpec` and the per-source `summary`/`toc`/`retrieval` additions on
+// `BaseFields`. Permissive parity (no superRefine here) — the CLI's strict
+// validator is the source of truth.
+const RetrievalSpec = z
+  .object({
+    mode: z.enum(["off", "bm25", "external-mcp"]),
+    mcpUrl: z.string().url().optional(),
+  })
+  .strict();
+
 const SourceBase = z.object({
   id: z.string().min(1),
   delivery: z.enum(["inline", "file", "auto"]).optional(),
@@ -48,6 +59,10 @@ const SourceBase = z.object({
   materialize: Materializer.optional(),
   extractor: Extractor.optional(),
   refresh: Refresh.optional(),
+  // v2.0+ compile-stage fields.
+  summary: z.string().min(1).max(280).optional(),
+  toc: z.boolean().optional(),
+  retrieval: RetrievalSpec.optional(),
 });
 
 const FileSrc = SourceBase.extend({

@@ -1,0 +1,12 @@
+{
+  "id": "v2-compile-fields",
+  "type": "dir",
+  "delivery": "file",
+  "path": "../../guide",
+  "description": "Exercises every v2.0+ knowledge-compiler field on one source.",
+  "summary": "v2 knowledge-compiler smoke source: compile TOC + retrieval + opt-out",
+  "toc": true,
+  "retrieval": {
+    "mode": "bm25"
+  }
+}
