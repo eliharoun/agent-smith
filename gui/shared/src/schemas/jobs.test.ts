@@ -399,6 +399,14 @@ describe("Phase 3 job variants", () => {
     const r = JobRequest.parse({ command: "doctor" });
     expect(r).toMatchObject({ fixKnowledgeRefresh: false });
   });
+  it("doctor accepts fixMcpCommands", () => {
+    const r = JobRequest.parse({ command: "doctor", fixMcpCommands: true });
+    expect(r).toMatchObject({ command: "doctor", fixMcpCommands: true });
+  });
+  it("doctor defaults fixMcpCommands false", () => {
+    const r = JobRequest.parse({ command: "doctor" });
+    expect(r).toMatchObject({ fixMcpCommands: false });
+  });
 });
 
 describe("AgentInstall with --from (C4.2.1)", () => {

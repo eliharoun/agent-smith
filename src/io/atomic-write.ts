@@ -43,3 +43,25 @@ export async function atomicWriteJson(path: string, data: unknown): Promise<void
     throw err;
   }
 }
+
+/**
+ * Write `content` to a per-call temp file in the destination's parent dir,
+ * then `rename` over the destination. Unlike {@link atomicWriteJson} the
+ * payload is written verbatim (no trailing newline / no JSON encoding) —
+ * the caller is responsible for shaping the bytes (TOML, YAML, etc.).
+ *
+ * Mirrors the GUI server's `atomicWriteText` helper; duplicated rather than
+ * shared because the GUI workspace can't import from the CLI tree (same
+ * precedent the GUI's mcp-config.ts established).
+ */
+export async function atomicWriteText(path: string, content: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp.${process.pid}.${++staging}`;
+  await Bun.write(tmp, content);
+  try {
+    await rename(tmp, path);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
+  }
+}

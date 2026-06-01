@@ -1,7 +1,9 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import ora, { type Ora } from "ora";
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { atomicWriteText } from "../../io/atomic-write";
 import claudeCodeData from "../../../data/claude-code-tool-map.json" with { type: "json" };
 import codexData from "../../../data/codex-tool-map.json" with { type: "json" };
 import kiroData from "../../../data/kiro-tool-map.json" with { type: "json" };
@@ -62,6 +64,49 @@ export const NO_PLATFORM_REFUSAL_MESSAGE = [
   "",
   "Then re-run `smith doctor`.",
 ].join("\n");
+
+/**
+ * Resolve the absolute realpath of the running smith binary once and
+ * return a cached lookup the synchronous `resolveSmithPath` seam can
+ * call per finding. The mcp-spawn-commands detector and the
+ * --fix-mcp-commands repair share this resolver so detection and
+ * rewrite agree on the path that gets persisted to disk.
+ *
+ * `process.argv[1]` is the JS entry the user invoked. realpath() walks
+ * `bun-bin → ../bin/smith` shim symlinks so GUIs launched from
+ * Spotlight/dock get the canonical absolute path even when the CLI
+ * was invoked through a wrapper.
+ */
+async function buildSmithPathResolver(): Promise<() => string | null> {
+  const entry = process.argv[1];
+  if (!entry || typeof entry !== "string" || entry.length === 0) {
+    return () => null;
+  }
+  let resolved: string;
+  try {
+    resolved = await realpath(entry);
+  } catch {
+    resolved = entry;
+  }
+  return () => resolved;
+}
+
+/**
+ * Default per-platform MCP config paths. Mirrors the four readers the
+ * mcp-spawn-commands check walks: opencode JSON, claude-code JSON, codex
+ * TOML, and kiro JSON. Kept here (rather than in the check module) so the
+ * CLI is the single source for filesystem layout and the check stays a
+ * pure orchestration target.
+ */
+export function defaultMcpSpawnPaths(): import("../../core/freshness/check-mcp-spawn").McpSpawnPaths {
+  const home = homedir();
+  return {
+    opencodeConfig: join(home, ".config", "opencode", "opencode.json"),
+    claudeMcpConfig: join(home, ".claude.json"),
+    codexConfig: join(home, ".codex", "config.toml"),
+    kiroMcpConfig: join(home, ".kiro", "settings", "mcp.json"),
+  };
+}
 
 /**
  * Production cache path. Honors `XDG_CACHE_HOME` (treats unset and empty as
@@ -175,6 +220,30 @@ export interface DoctorCliOptions {
      * the registry via `loadAllBundles`.
      */
     loadAllBundles: () => Promise<import("../../core/types").AgentBundle[]>;
+  };
+  /**
+   * v2.1.x: when true, after running the mcp-spawn-commands detection
+   * section, iterate `report.mcpSpawnCommands.findings` and rewrite each
+   * finding's platform config so the `command` field is the absolute path
+   * computed during detection. Findings with `resolvedAbsolute === null`
+   * are skipped with a warning ("can't auto-fix; install <name> first").
+   * Per-finding errors print but do NOT abort the repair pass.
+   */
+  fixMcpCommands?: boolean;
+  /**
+   * Override for tests: paths consumed by the mcp-spawn-commands detection
+   * section AND the auto-fix repair. When omitted the production wiring
+   * uses the canonical home-relative paths defined here. Tests inject a
+   * tmpdir set so the section runs hermetically against fixtures.
+   *
+   * The optional `which` and `resolveSmithPath` seams thread into the
+   * detector and are reused by the auto-fix path so a single set of
+   * fixtures determines both detection findings and the repair targets.
+   */
+  mcpSpawn?: {
+    paths: import("../../core/freshness/check-mcp-spawn").McpSpawnPaths;
+    which?: (command: string) => string | null;
+    resolveSmithPath?: () => string | null;
   };
 }
 
@@ -423,6 +492,15 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
     },
     knowledgeCompile: { candidates: knowledgeCompileCandidates },
+    mcpSpawnCommands: {
+      paths: opts.mcpSpawn?.paths ?? defaultMcpSpawnPaths(),
+      ...(opts.mcpSpawn?.which ? { which: opts.mcpSpawn.which } : {}),
+      // Resolve `smith`'s realpath up-front so the synchronous resolver
+      // seam can return it without doing FS work per-finding. The async
+      // realpath() is a one-shot probe at startup; tests bypass this via
+      // the explicit seam.
+      resolveSmithPath: opts.mcpSpawn?.resolveSmithPath ?? (await buildSmithPathResolver()),
+    },
   });
 
   // --- --fix-knowledge-refresh auto-repair ----------------------------------
@@ -535,6 +613,32 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     }
   }
 
+  // --- --fix-mcp-commands auto-repair ---------------------------------------
+  // Runs AFTER detection. For each fragile-spawn finding with a non-null
+  // `resolvedAbsolute`, rewrite the platform's config so the `command`
+  // field is the absolute path. Per-platform writers preserve the rest of
+  // the file verbatim (other entries, unrelated top-level keys). Findings
+  // with a null `resolvedAbsolute` print a "can't auto-fix" warning and
+  // are skipped — installing the missing binary is the user's next step.
+  if (
+    opts.fixMcpCommands &&
+    report.mcpSpawnCommands &&
+    report.mcpSpawnCommands.findings.length > 0
+  ) {
+    for (const f of report.mcpSpawnCommands.findings) {
+      if (f.resolvedAbsolute === null) {
+        print(`  ! can't auto-fix '${f.command}' (${f.platform}/${f.serverName}): install ${f.command} first`);
+        continue;
+      }
+      try {
+        await rewriteMcpCommand(f.platform, f.configPath, f.serverName, f.resolvedAbsolute);
+        print(`  ✓ rewrote ${f.platform}/${f.serverName} command → ${f.resolvedAbsolute}`);
+      } catch (err) {
+        print(`  ✗ rewrite failed for ${f.platform}/${f.serverName}: ${toMessage(err)}`);
+      }
+    }
+  }
+
   if (opts.json) {
     // JSON contract is unchanged regardless of --verbose / --quiet.
     print(JSON.stringify(report, null, 2));
@@ -563,4 +667,117 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     print(formatReportCompact(report, captured));
   }
   return report.exitCode;
+}
+
+// ---------------------------------------------------------------------------
+// MCP-command rewriters — one per platform. Each preserves all unrelated
+// content (other entries, unrelated top-level keys) and only mutates the
+// `command` field of the named server. Atomic-write semantics match the
+// GUI's mcp-config.ts so the file is never half-written.
+//
+// Why these live in the CLI rather than in `core/freshness/check-mcp-spawn.ts`:
+// the detector is read-only by design (mirrors check-knowledge-compile and
+// check-refresh-hooks). Repair is a CLI concern threaded through `--fix-*`
+// flags. Co-locating the writers with the existing repair loops also keeps
+// the imports of `smol-toml` confined to one file.
+// ---------------------------------------------------------------------------
+
+async function rewriteMcpCommand(
+  platform: "opencode" | "claude-code" | "codex" | "kiro",
+  configPath: string,
+  serverName: string,
+  newCommand: string,
+): Promise<void> {
+  switch (platform) {
+    case "opencode":
+      await rewriteJsonCommand(configPath, "mcp", serverName, newCommand);
+      return;
+    case "claude-code":
+      await rewriteClaudeCommand(configPath, serverName, newCommand);
+      return;
+    case "codex":
+      await rewriteCodexTomlCommand(configPath, serverName, newCommand);
+      return;
+    case "kiro":
+      await rewriteJsonCommand(configPath, "mcpServers", serverName, newCommand);
+      return;
+  }
+}
+
+async function rewriteJsonCommand(
+  path: string,
+  key: string,
+  serverName: string,
+  newCommand: string,
+): Promise<void> {
+  const text = await readFile(path, "utf8");
+  const data = JSON.parse(text) as Record<string, unknown>;
+  const block = data[key];
+  if (!block || typeof block !== "object" || Array.isArray(block)) return;
+  const rec = block as Record<string, unknown>;
+  const entry = rec[serverName];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+  (entry as Record<string, unknown>).command = newCommand;
+  await atomicWriteText(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+/** Claude Code splits servers between `mcpServers` (user) and
+ *  `projects.<dir>.mcpServers` (local). Walk both; rewrite the first match
+ *  by name. Per-finding granularity keeps rewrite scope minimal. */
+async function rewriteClaudeCommand(
+  path: string,
+  serverName: string,
+  newCommand: string,
+): Promise<void> {
+  const text = await readFile(path, "utf8");
+  const data = JSON.parse(text) as Record<string, unknown>;
+  if (rewriteCommandIn(data.mcpServers, serverName, newCommand)) {
+    await atomicWriteText(path, `${JSON.stringify(data, null, 2)}\n`);
+    return;
+  }
+  const projects = data.projects;
+  if (projects && typeof projects === "object" && !Array.isArray(projects)) {
+    for (const project of Object.values(projects as Record<string, unknown>)) {
+      if (!project || typeof project !== "object" || Array.isArray(project)) continue;
+      if (
+        rewriteCommandIn(
+          (project as Record<string, unknown>).mcpServers,
+          serverName,
+          newCommand,
+        )
+      ) {
+        await atomicWriteText(path, `${JSON.stringify(data, null, 2)}\n`);
+        return;
+      }
+    }
+  }
+}
+
+function rewriteCommandIn(
+  block: unknown,
+  serverName: string,
+  newCommand: string,
+): boolean {
+  if (!block || typeof block !== "object" || Array.isArray(block)) return false;
+  const rec = block as Record<string, unknown>;
+  const entry = rec[serverName];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+  (entry as Record<string, unknown>).command = newCommand;
+  return true;
+}
+
+async function rewriteCodexTomlCommand(
+  path: string,
+  serverName: string,
+  newCommand: string,
+): Promise<void> {
+  const text = await readFile(path, "utf8");
+  const data = parseToml(text) as Record<string, unknown>;
+  const block = data.mcp_servers;
+  if (!block || typeof block !== "object" || Array.isArray(block)) return;
+  const rec = block as Record<string, unknown>;
+  const entry = rec[serverName];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return;
+  (entry as Record<string, unknown>).command = newCommand;
+  await atomicWriteText(path, stringifyToml(data));
 }

@@ -53,6 +53,56 @@ describe("DoctorFixButton", () => {
       command: "doctor",
       fixKnowledgeRefresh: true,
       fixKnowledgeCompile: false,
+      fixMcpCommands: false,
+    });
+  });
+
+  it("shows when only mcp-spawn-commands findings exist", () => {
+    data = {
+      exitCode: 0,
+      mcpSpawnCommands: {
+        status: "fragile-spawn",
+        findings: [{ platform: "kiro", serverName: "x", command: "smith" }],
+      },
+    };
+    render(<DoctorFixButton />);
+    expect(screen.getByRole("button", { name: /MCP spawn commands/ })).toBeInTheDocument();
+  });
+
+  it("dispatches doctor job with fixMcpCommands: true when only mcp findings exist", () => {
+    data = {
+      exitCode: 0,
+      mcpSpawnCommands: {
+        status: "fragile-spawn",
+        findings: [{ platform: "kiro", serverName: "x", command: "smith" }],
+      },
+    };
+    render(<DoctorFixButton />);
+    fireEvent.click(screen.getByRole("button", { name: /MCP spawn commands/ }));
+    expect(mutate).toHaveBeenCalledWith({
+      command: "doctor",
+      fixKnowledgeRefresh: false,
+      fixKnowledgeCompile: false,
+      fixMcpCommands: true,
+    });
+  });
+
+  it("dispatches both flags when both fixable categories exist", () => {
+    data = {
+      exitCode: 1,
+      knowledgeRefresh: { findings: [{ kind: "missing-hook" }] },
+      mcpSpawnCommands: {
+        status: "fragile-spawn",
+        findings: [{ platform: "kiro", serverName: "x", command: "smith" }],
+      },
+    };
+    render(<DoctorFixButton />);
+    fireEvent.click(screen.getByRole("button", { name: /auto-repair/ }));
+    expect(mutate).toHaveBeenCalledWith({
+      command: "doctor",
+      fixKnowledgeRefresh: true,
+      fixKnowledgeCompile: false,
+      fixMcpCommands: true,
     });
   });
 });

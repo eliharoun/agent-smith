@@ -5,6 +5,7 @@ interface Req {
   json?: boolean | undefined;
   fixKnowledgeRefresh?: boolean | undefined;
   fixKnowledgeCompile?: boolean | undefined;
+  fixMcpCommands?: boolean | undefined;
 }
 
 export function buildDoctor(req: Req): BuiltArgv {
@@ -12,5 +13,6 @@ export function buildDoctor(req: Req): BuiltArgv {
   if (req.json) argv.push("--json");
   if (req.fixKnowledgeRefresh) argv.push("--fix-knowledge-refresh");
   if (req.fixKnowledgeCompile) argv.push("--fix-knowledge-compile");
+  if (req.fixMcpCommands) argv.push("--fix-mcp-commands");
   return { argv, lockKeys: [], preview: previewOf(argv) };
 }
