@@ -137,6 +137,15 @@ export interface ClaudeCodeTargetOptions {
    * otherwise. Set to `false` to opt out of the auto-defer.
    */
   deferToAgentsMd?: boolean;
+  /**
+   * Controls the `mcpServers:` frontmatter scoping for claude-code.
+   * Claude defaults to inheriting ALL global MCP servers; emitting this
+   * list RESTRICTS the agent to the named subset. Default: `true` when
+   * the bundle declares a non-empty `mcpServers`, otherwise no emission.
+   * Set to `false` to keep claude's default inherit-all behavior even
+   * when the bundle declares servers.
+   */
+  scopeMcpServers?: boolean;
 }
 
 /**
@@ -185,7 +194,21 @@ export interface CanonicalConfig {
    * `read-edit`, `full`) and the `expandPreset` helper.
    */
   permission?: PermissionConfig;
-  /** Names of MCP servers this agent expects to be available. Documentation + validator hint only — not emitted to any platform's frontmatter. */
+  /**
+   * Names of MCP servers this agent expects to be available. Translators
+   * emit per-platform per-agent MCP declarations from this list:
+   *  - opencode: no emission (default inherit-all).
+   *  - claude-code: `mcpServers:` frontmatter as list of name-strings,
+   *    RESTRICTING the agent to the named subset. Opt out per-bundle via
+   *    `targetOptions.claudeCode.scopeMcpServers: false`.
+   *  - codex: no emission this iteration (sidecar emission is a follow-up).
+   *  - kiro: `mcpServers: {}` + `includeMcpJson: true` +
+   *    `@<server>` entries appended to `tools[]` and `allowedTools[]`.
+   *    Required for the agent to see the server at all under kiro.
+   *
+   * Spawn configs (transport, command, env) live in the user's global
+   * per-platform MCP config files; smith never writes those.
+   */
   mcpServers?: string[];
   /** Names of skills this agent should default to using. Surfaced via a `## Default Skills` section appended to the assembled body. */
   skills?: string[];

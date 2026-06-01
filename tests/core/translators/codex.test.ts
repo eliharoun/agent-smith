@@ -159,3 +159,22 @@ describe("translators/codex: permission → allowed_tools", () => {
     expect(out.warnings ?? []).toEqual([]);
   });
 });
+
+describe("translators/codex: per-agent MCP emission (deferred)", () => {
+  test("non-empty mcpServers does NOT add any mcp-related frontmatter field this iteration", () => {
+    // Codex's idiomatic per-skill hint is a sidecar `agents/openai.yaml`
+    // file, which requires extending RenderedAgent + installer. Skipped
+    // for this iteration; tracked as a follow-up. Codex defaults to
+    // inheriting all global MCP servers from `~/.codex/config.toml` so
+    // runtime visibility is unaffected.
+    const out = tcx(
+      { ...baseConfig, mcpServers: ["foo", "bar"] },
+      "B",
+      { resolvedModel: undefined },
+    );
+    expect("mcpServers" in out.frontmatter).toBe(false);
+    expect("mcp" in out.frontmatter).toBe(false);
+    // Single-file render shape unchanged.
+    expect(out.relativePath).toBe("code-reviewer/SKILL.md");
+  });
+});

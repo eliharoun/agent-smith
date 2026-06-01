@@ -153,4 +153,24 @@ describe("translators/opencode", () => {
     });
     expect(out.frontmatter.permission).toEqual(permission);
   });
+
+  // --- per-agent MCP: opencode emits NOTHING (default inherit-all) ---
+
+  test("non-empty mcpServers does NOT add any mcp-related field to frontmatter", () => {
+    // OpenCode inherits all global MCP servers by default; per-agent
+    // restriction would require permission-block synthesis (separate
+    // concern). The bundle's mcpServers is a validator/UX hint only.
+    const out = toc(
+      { ...baseConfig, mcpServers: ["foo", "bar"] },
+      "B",
+      { resolvedModel: undefined },
+    );
+    expect("mcpServers" in out.frontmatter).toBe(false);
+    expect("mcp" in out.frontmatter).toBe(false);
+    // Should look identical to the no-mcp render aside from input fields.
+    const baseline = toc(baseConfig, "B", { resolvedModel: undefined });
+    expect(Object.keys(out.frontmatter).sort()).toEqual(
+      Object.keys(baseline.frontmatter).sort(),
+    );
+  });
 });

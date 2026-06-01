@@ -21,6 +21,16 @@ import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../ty
  * Codex's tool vocabulary isn't finalized upstream (see v0.2.0 spec §9
  * risk register / data/codex-tool-map.json _meta.notes), so groups outside
  * the map are silently skipped by `expandPermissionToToolList`.
+ *
+ * Per-agent MCP emission: NOT emitted in this iteration. Codex defaults
+ * to inheriting all global MCP servers from `~/.codex/config.toml` (so
+ * runtime visibility matches user intent), but the idiomatic per-skill
+ * "hint" is a sidecar `<name>/agents/openai.yaml` with `dependencies.tools`
+ * — used by the install-prompt UX to ask the user about missing servers.
+ * That UX is currently feature-flagged + first-party-only, and emitting
+ * a SECOND file per render requires extending the `RenderedAgent` shape,
+ * the installer manifest, and the uninstaller cleanup pass. The cost is
+ * high for limited near-term value; tracked as a follow-up.
  */
 export function translateCodex(
   config: CanonicalConfig,

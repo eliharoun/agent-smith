@@ -263,4 +263,39 @@ describe("translators/claude-code", () => {
     const out = tcc(baseConfig, "FULL BODY CONTENT", { resolvedModel: undefined });
     expect(out.body).toBe("FULL BODY CONTENT");
   });
+
+  // --- per-agent MCP scoping (mcpServers frontmatter) ---
+
+  test("non-empty mcpServers → frontmatter mcpServers is the sorted name-string list (default-on)", () => {
+    const out = tcc(
+      { ...baseConfig, mcpServers: ["foo", "bar"] },
+      "B",
+      { resolvedModel: undefined },
+    );
+    expect(out.frontmatter.mcpServers).toEqual(["bar", "foo"]);
+  });
+
+  test("empty/absent mcpServers → no frontmatter mcpServers field", () => {
+    const out1 = tcc(baseConfig, "B", { resolvedModel: undefined });
+    expect("mcpServers" in out1.frontmatter).toBe(false);
+    const out2 = tcc(
+      { ...baseConfig, mcpServers: [] },
+      "B",
+      { resolvedModel: undefined },
+    );
+    expect("mcpServers" in out2.frontmatter).toBe(false);
+  });
+
+  test("scopeMcpServers=false opts out even when bundle declares servers", () => {
+    const out = tcc(
+      {
+        ...baseConfig,
+        mcpServers: ["foo"],
+        targetOptions: { claudeCode: { scopeMcpServers: false } },
+      },
+      "B",
+      { resolvedModel: undefined },
+    );
+    expect("mcpServers" in out.frontmatter).toBe(false);
+  });
 });

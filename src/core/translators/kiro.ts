@@ -16,14 +16,21 @@
  *     schema (see data/kiro.agent-v1.schema.meta.json knownDivergences).
  *
  * Strict-allowlist field policy: the canonical schema has
- * `additionalProperties: false`. Smith emits ONLY documented fields —
- * never `includeMcpJson`, `useLegacyMcpJson`, `mcpServers`, `keyboardShortcut`,
- * `welcomeMessage`, `toolAliases`, `toolsSettings` (per design Q4 reversal).
+ * `additionalProperties: false`. Smith emits ONLY documented fields, with
+ * one targeted exception: `mcpServers` (empty {}) and `includeMcpJson` are
+ * BOTH documented at https://kiro.dev/docs/cli/custom-agents/configuration-reference/
+ * but are absent from the upstream q-chat schema we vendor. They are
+ * essential for per-agent MCP visibility (see AWS's own SageMaker
+ * reference agent pattern: empty mcpServers + includeMcpJson:true +
+ * curated tools/allowedTools). The strict-policy suppression of
+ * `useLegacyMcpJson`, `keyboardShortcut`, `welcomeMessage`, `toolAliases`,
+ * and `toolsSettings` (per design Q4 reversal) remains.
  */
 
 import { KIRO_TOOL_MAP, expandPermissionToToolList } from "../permission-mapping";
 import { parseRefresh } from "../knowledge/refresh-spec";
 import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../types";
+import { declaredMcpServers } from "./mcp-helpers";
 
 const SCHEMA_URL =
   "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json";
@@ -127,6 +134,35 @@ export function translateKiro(
 
   if (resources.length > 0) {
     data.resources = resources.slice().sort();
+  }
+
+  // Per-agent MCP visibility. Unlike opencode/claude/codex (which inherit
+  // all global MCP servers by default), kiro's per-agent JSON is a closed
+  // world: an agent that doesn't explicitly include a server cannot see it.
+  // We emit AWS's SageMaker reference pattern when the bundle declares
+  // mcpServers:
+  //   mcpServers: {} (don't override the user's global ~/.kiro/settings/mcp.json)
+  //   includeMcpJson: true (consume the global config)
+  //   tools/allowedTools: append "@<server>" so the runtime sees them.
+  //
+  // The empty `mcpServers` + `includeMcpJson:true` combo is documented at
+  // kiro.dev/docs/cli/custom-agents/configuration-reference but absent
+  // from the upstream q-chat schema — see the strict-allowlist comment
+  // at the top of the file.
+  const declaredMcp = declaredMcpServers(config);
+  if (declaredMcp.length > 0) {
+    data.mcpServers = {};
+    data.includeMcpJson = true;
+    const mcpEntries = declaredMcp.map((s) => `@${s}`);
+    const existingTools = (data.tools as string[] | undefined) ?? [];
+    const existingAllowed = (data.allowedTools as string[] | undefined) ?? [];
+    // Use Sets to avoid double-adding if a permission group somehow already
+    // produced an `@<server>` entry (defensive — the current tool maps
+    // don't, but appending blindly would still be a future-proofing hazard).
+    data.tools = Array.from(new Set([...existingTools, ...mcpEntries])).sort();
+    data.allowedTools = Array.from(
+      new Set([...existingAllowed, ...mcpEntries]),
+    ).sort();
   }
 
   // Refresh hook gating mirrors claude-code.ts: emit only when the install

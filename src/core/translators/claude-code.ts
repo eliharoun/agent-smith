@@ -1,6 +1,7 @@
 import { CLAUDE_CODE_TOOL_MAP, expandPermissionToToolList } from "../permission-mapping";
 import { parseRefresh } from "../knowledge/refresh-spec";
 import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../types";
+import { declaredMcpServers } from "./mcp-helpers";
 
 /** Returns true if any knowledge source on the agent has refresh mode
  *  session or always — the two modes that require a per-session hook. */
@@ -71,6 +72,18 @@ export function translateClaudeCode(
     if (result.allow.length > 0) {
       frontmatter["allowed-tools"] = result.allow.join(", ");
     }
+  }
+
+  // Per-agent MCP scoping. Claude Code defaults to inheriting ALL global
+  // MCP servers; emitting `mcpServers:` frontmatter RESTRICTS the agent to
+  // the named subset. Opt-in is implicit (default `true` when the bundle
+  // declares non-empty `mcpServers`); opt out per-bundle via
+  // `targetOptions.claudeCode.scopeMcpServers: false`.
+  const declaredMcp = declaredMcpServers(config);
+  const scopeMcp =
+    config.targetOptions?.claudeCode?.scopeMcpServers ?? declaredMcp.length > 0;
+  if (scopeMcp && declaredMcp.length > 0) {
+    frontmatter.mcpServers = declaredMcp;
   }
 
   // Gate on explicit opt-in via ctx.withRefreshHooks. The translator

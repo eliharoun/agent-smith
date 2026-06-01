@@ -96,7 +96,13 @@ export const CanonicalConfigSchema = z.object({
   targetOptions: z
     .object({
       agentsMd: z.object({ path: z.string().min(1).optional() }).strict().optional(),
-      claudeCode: z.object({ deferToAgentsMd: z.boolean().optional() }).strict().optional(),
+      claudeCode: z
+        .object({
+          deferToAgentsMd: z.boolean().optional(),
+          scopeMcpServers: z.boolean().optional(),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
     .optional(),

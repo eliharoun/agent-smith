@@ -1,5 +1,5 @@
 {
-  "lastVerifiedDate": "2026-05-28",
+  "lastVerifiedDate": "2026-06-01",
   "verifiedAgainstVersion": "kiro-cli 2.4.2",
   "sourceUrl": "https://raw.githubusercontent.com/aws/amazon-q-developer-cli/refs/heads/main/schemas/agent-v1.json",
   "knownDivergences": [
@@ -8,7 +8,19 @@
       "schema": "items.pattern = '^(file://)'",
       "runtime": "accepts skill:// URIs (per https://kiro.dev/docs/cli/custom-agents/creating)",
       "smithBehavior": "emit skill:// URIs; contract test uses shape assertions instead of full schema validation; doctor's `kiro-cli agent validate` shell-out is the runtime ground truth"
+    },
+    {
+      "field": "mcpServers",
+      "schema": "absent (additionalProperties: false rejects it)",
+      "runtime": "accepts an object value per https://kiro.dev/docs/cli/custom-agents/configuration-reference/",
+      "smithBehavior": "emit empty object {} when the bundle declares mcpServers; combined with includeMcpJson:true to consume the user's global ~/.kiro/settings/mcp.json. Required so the agent can actually USE its declared MCP servers — without this pair, kiro's per-agent JSON sees zero servers."
+    },
+    {
+      "field": "includeMcpJson",
+      "schema": "absent (additionalProperties: false rejects it)",
+      "runtime": "accepts boolean per https://kiro.dev/docs/cli/custom-agents/configuration-reference/",
+      "smithBehavior": "emit true alongside mcpServers:{} when the bundle declares mcpServers. Mirrors AWS's SageMaker reference agent pattern."
     }
   ],
-  "notes": "Schema additionalProperties: false at the top level rejects fields the runtime accepts (e.g. includeMcpJson). Smith's kiro translator emits only schema-documented fields plus skill:// URIs. The drift check in scripts/check-drift.ts filters knownDivergences to avoid false positives."
+  "notes": "Schema additionalProperties: false at the top level rejects fields the runtime accepts (mcpServers, includeMcpJson, useLegacyMcpJson, keyboardShortcut, welcomeMessage, toolAliases, toolsSettings). Smith's kiro translator emits only schema-documented fields plus skill:// URIs, with one targeted exception: mcpServers (empty object) and includeMcpJson (true) are emitted together when a bundle declares mcpServers — see the divergence entries above. The drift check in scripts/check-drift.ts filters knownDivergences to avoid false positives."
 }

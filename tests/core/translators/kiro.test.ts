@@ -42,20 +42,15 @@ describe("translateKiro: shape", () => {
     expect(out.data.prompt).toBe("the-body");
   });
 
-  test("does NOT emit includeMcpJson, useLegacyMcpJson, mcpServers, keyboardShortcut, welcomeMessage, toolAliases, toolsSettings", () => {
-    // Even when the canonical config carries mcpServers (validator-only field),
-    // smith MUST NOT emit it to kiro — the canonical schema is strict
-    // (additionalProperties: false) and per-agent MCP spec emission is
-    // future work (design §12).
+  test("does NOT emit useLegacyMcpJson, keyboardShortcut, welcomeMessage, toolAliases, toolsSettings (strict-allowlist policy)", () => {
+    // Strict policy still suppresses these. mcpServers and includeMcpJson
+    // are now intentionally emitted when the bundle declares mcpServers
+    // — see the dedicated MCP-emission tests below.
     const out = js(
-      translateKiro(fixture({ mcpServers: ["builder-mcp"] }), "body", {
-        resolvedModel: undefined,
-      }),
+      translateKiro(fixture(), "body", { resolvedModel: undefined }),
     );
     for (const forbidden of [
-      "includeMcpJson",
       "useLegacyMcpJson",
-      "mcpServers",
       "keyboardShortcut",
       "welcomeMessage",
       "toolAliases",
@@ -63,6 +58,24 @@ describe("translateKiro: shape", () => {
     ]) {
       expect(out.data[forbidden]).toBeUndefined();
     }
+  });
+
+  test("emits no mcpServers/includeMcpJson when the bundle has no mcpServers", () => {
+    const out = js(
+      translateKiro(fixture(), "body", { resolvedModel: undefined }),
+    );
+    expect(out.data.mcpServers).toBeUndefined();
+    expect(out.data.includeMcpJson).toBeUndefined();
+  });
+
+  test("emits no mcpServers/includeMcpJson when the bundle has empty mcpServers", () => {
+    const out = js(
+      translateKiro(fixture({ mcpServers: [] }), "body", {
+        resolvedModel: undefined,
+      }),
+    );
+    expect(out.data.mcpServers).toBeUndefined();
+    expect(out.data.includeMcpJson).toBeUndefined();
   });
 });
 
@@ -254,5 +267,66 @@ describe("translateKiro: knowledge dir injection (via injectKnowledgeIntoRender)
     expect(resources).toContain("file:///tmp/k/**");
     // Sorted: skill:// comes after file:// alphabetically
     expect(resources).toEqual([...resources].sort());
+  });
+});
+
+describe("translateKiro: per-agent MCP emission", () => {
+  test("non-empty mcpServers → emits mcpServers:{} + includeMcpJson:true + @<server> entries", () => {
+    const out = js(
+      translateKiro(fixture({ mcpServers: ["foo", "bar"] }), "body", {
+        resolvedModel: undefined,
+      }),
+    );
+    // AWS SageMaker reference pattern: empty object value, not the names list.
+    expect(out.data.mcpServers).toEqual({});
+    expect(out.data.includeMcpJson).toBe(true);
+    const tools = out.data.tools as string[];
+    const allowed = out.data.allowedTools as string[];
+    expect(tools).toContain("@foo");
+    expect(tools).toContain("@bar");
+    expect(allowed).toContain("@foo");
+    expect(allowed).toContain("@bar");
+  });
+
+  test("@<server> entries are alphabetized in tools and allowedTools", () => {
+    const out = js(
+      translateKiro(fixture({ mcpServers: ["zeta", "alpha", "mu"] }), "body", {
+        resolvedModel: undefined,
+      }),
+    );
+    const tools = out.data.tools as string[];
+    expect(tools).toEqual([...tools].sort());
+    const allowed = out.data.allowedTools as string[];
+    expect(allowed).toEqual([...allowed].sort());
+  });
+
+  test("MCP entries coexist with permission-derived tools (existing built-ins preserved)", () => {
+    // read-only preset → tools includes "read"; mcpServers add "@svc".
+    const out = js(
+      translateKiro(
+        fixture({
+          mcpServers: ["svc"],
+          permission: expandPreset("read-only"),
+        }),
+        "body",
+        { resolvedModel: undefined },
+      ),
+    );
+    const tools = out.data.tools as string[];
+    const allowed = out.data.allowedTools as string[];
+    expect(tools).toContain("read");
+    expect(tools).toContain("@svc");
+    expect(allowed).toContain("read");
+    expect(allowed).toContain("@svc");
+  });
+
+  test("dedup of mcpServers prevents double-add into tools", () => {
+    const out = js(
+      translateKiro(fixture({ mcpServers: ["dup", "dup"] }), "body", {
+        resolvedModel: undefined,
+      }),
+    );
+    const tools = out.data.tools as string[];
+    expect(tools.filter((t) => t === "@dup").length).toBe(1);
   });
 });
