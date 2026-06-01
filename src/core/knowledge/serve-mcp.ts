@@ -69,7 +69,15 @@ export async function handleRpc(
   } catch {
     return undefined;
   }
-  const id = req.id ?? null;
+
+  // JSON-RPC notifications have no `id` field. They MUST NOT receive a
+  // response — replying breaks strict clients (Kiro CLI in particular
+  // treats an error reply to `notifications/initialized` as a protocol
+  // violation and stops issuing tools/list). The MCP standard handshake
+  // includes `notifications/initialized` from the client after the server
+  // responds to `initialize`; silently accept it here.
+  if (req.id === undefined) return undefined;
+  const id = req.id;
 
   if (req.method === "initialize") {
     return {

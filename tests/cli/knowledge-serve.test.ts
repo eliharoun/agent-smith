@@ -131,4 +131,28 @@ describe("knowledge serve MCP handlers", () => {
     );
     expect(res?.error?.code).toBe(-32601);
   });
+
+  it("returns undefined for notifications (no `id`) — must not reply", async () => {
+    // JSON-RPC notifications never get a response. The MCP standard
+    // handshake includes `notifications/initialized` from the client
+    // after the server's initialize-response; replying to it (even with
+    // an error) breaks strict clients (Kiro CLI in particular treats it
+    // as a protocol violation and skips tools/list).
+    const res = await handleRpc(
+      JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      ctx,
+    );
+    expect(res).toBeUndefined();
+  });
+
+  it("treats any id-less request as a notification, regardless of method", async () => {
+    // Notification semantic is determined by the absence of `id`, not by
+    // the method name. A notification with an unknown method must still
+    // produce no reply.
+    const res = await handleRpc(
+      JSON.stringify({ jsonrpc: "2.0", method: "made_up_notification" }),
+      ctx,
+    );
+    expect(res).toBeUndefined();
+  });
 });
