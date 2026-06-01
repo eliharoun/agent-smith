@@ -633,6 +633,10 @@ program
     "--fix-knowledge-compile",
     "Auto-repair knowledge-compile drift findings (re-run `smith knowledge compile <agent>` for each missing-manifest or drift finding)",
   )
+  .option(
+    "--fix-mcp-commands",
+    "Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. \"smith\") to absolute paths so GUI launches from Spotlight/dock spawn correctly",
+  )
   .action(
     wrap(
       "doctor",
@@ -645,6 +649,7 @@ program
         quiet?: boolean;
         fixKnowledgeRefresh?: boolean;
         fixKnowledgeCompile?: boolean;
+        fixMcpCommands?: boolean;
       }) => {
         const { runDoctorCli } = await import("./cli/commands/doctor");
         // commander inverts --no-cache → opts.cache: false, so we negate.
@@ -657,6 +662,7 @@ program
           quiet: opts.quiet ?? false,
           fixKnowledgeRefresh: opts.fixKnowledgeRefresh ?? false,
           fixKnowledgeCompile: opts.fixKnowledgeCompile ?? false,
+          fixMcpCommands: opts.fixMcpCommands ?? false,
         });
       },
     ),

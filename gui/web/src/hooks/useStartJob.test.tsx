@@ -72,6 +72,7 @@ describe("useStartJob", () => {
         command: "doctor",
         fixKnowledgeRefresh: false,
         fixKnowledgeCompile: false,
+        fixMcpCommands: false,
       });
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

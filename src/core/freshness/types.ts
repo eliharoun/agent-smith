@@ -263,6 +263,15 @@ export interface DoctorReport {
    */
   knowledgeCompile?: import("./check-knowledge-compile").KnowledgeCompileReport;
   /**
+   * Optional mcp-spawn-commands audit report. Walks each platform's MCP
+   * config and flags any `command` field that isn't an absolute path.
+   * The legacy v2.1 GUI toggle wrote bare names like "smith" that fail
+   * to spawn under Spotlight/dock-launched GUIs (no shell PATH inherit).
+   * Repair is wired by the CLI's `--fix-mcp-commands` flag.
+   * Informational only — never affects {@link DoctorReport.exitCode}.
+   */
+  mcpSpawnCommands?: import("./check-mcp-spawn").McpSpawnSection;
+  /**
    * Optional duplicate-catalogs check (v1-task RC2-10). Walks both
    * registries and groups entries by normalized git URL; reports
    * clusters of size >= 2 so the user can clean up accidental

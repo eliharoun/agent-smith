@@ -6,6 +6,7 @@ import type {
   Finding as KnowledgeCompileFinding,
   KnowledgeCompileReport,
 } from "./check-knowledge-compile";
+import type { McpSpawnFinding, McpSpawnSection } from "./check-mcp-spawn";
 import type { Finding as RefreshFinding, RefreshHooksReport } from "./check-refresh-hooks";
 import type { DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { RemoteCatalogsReport } from "./remote-catalogs";
@@ -163,6 +164,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatKnowledgeCompileSection(report.knowledgeCompile));
     blocks.push("");
   }
+  if (report.mcpSpawnCommands) {
+    blocks.push(formatMcpSpawnSection(report.mcpSpawnCommands));
+    blocks.push("");
+  }
   if (report.knowledgeConsistency) {
     blocks.push(formatKnowledgeConsistencySection(report.knowledgeConsistency));
     blocks.push("");
@@ -307,6 +312,8 @@ function renderSectionDetail(
       return report.knowledgeCompile
         ? formatKnowledgeCompileSection(report.knowledgeCompile)
         : null;
+    case "mcp-spawn-commands":
+      return report.mcpSpawnCommands ? formatMcpSpawnSection(report.mcpSpawnCommands) : null;
     case "knowledge-prompt-disk-consistency":
       return report.knowledgeConsistency
         ? formatKnowledgeConsistencySection(report.knowledgeConsistency)
@@ -808,6 +815,30 @@ function formatKnowledgeCompileFinding(f: KnowledgeCompileFinding): string {
     case "drift":
       return `[drift]            ${f.agent} — recorded ${f.recordedHash.slice(0, 8)} != fresh ${f.currentHash.slice(0, 8)}`;
   }
+}
+
+/**
+ * Render the mcp-spawn-commands audit section. Read-only: lists each
+ * fragile entry with the platform, server name, and the absolute path
+ * the auto-fix would substitute (or `(unresolvable)` when neither
+ * `process.argv[1]` realpath nor `which <command>` could resolve it,
+ * in which case the user is told to install the binary first).
+ */
+export function formatMcpSpawnSection(r: McpSpawnSection): string {
+  const lines: string[] = ["MCP spawn commands:"];
+  if (r.findings.length === 0) {
+    lines.push("  Status: ok");
+    return lines.join("\n");
+  }
+  lines.push(`  Status: ${r.findings.length} fragile entr${r.findings.length === 1 ? "y" : "ies"}`);
+  for (const f of r.findings) lines.push(`  ${formatMcpSpawnFinding(f)}`);
+  lines.push("  Fix:    smith doctor --fix-mcp-commands");
+  return lines.join("\n");
+}
+
+function formatMcpSpawnFinding(f: McpSpawnFinding): string {
+  const fix = f.resolvedAbsolute ?? "(unresolvable)";
+  return `[fragile-spawn] ${f.platform} / ${f.serverName} — command="${f.command}" → ${fix}`;
 }
 
 /**

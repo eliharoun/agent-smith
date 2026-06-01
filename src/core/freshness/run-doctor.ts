@@ -59,6 +59,11 @@ import {
   checkKnowledgeCompile,
   type KnowledgeCompileReport,
 } from "./check-knowledge-compile";
+import {
+  checkMcpSpawnCommands,
+  type CheckMcpSpawnInput,
+  type McpSpawnSection,
+} from "./check-mcp-spawn";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { InstalledModelsPaths } from "./installed-models";
@@ -107,6 +112,7 @@ export type DoctorSectionId =
   | "duplicate-catalogs"
   | "knowledge-refresh"
   | "knowledge-compile"
+  | "mcp-spawn-commands"
   | "knowledge-prompt-disk-consistency";
 
 export interface DoctorSectionStartEvent {
@@ -335,6 +341,14 @@ export interface RunDoctorInput {
    */
   knowledgeCompile?: CheckKnowledgeCompileInput;
   /**
+   * Optional mcp-spawn-commands audit. When provided, walks each platform's
+   * MCP config and flags non-absolute `command` fields (the v2.1 GUI toggle
+   * legacy state — bare `"smith"` that fails to spawn under
+   * Spotlight/dock-launched GUIs). Detection is read-only; repair is wired
+   * by the CLI's `--fix-mcp-commands` flag.
+   */
+  mcpSpawnCommands?: CheckMcpSpawnInput;
+  /**
    * Optional knowledge-prompt-disk-consistency check. When provided, verifies
    * that Knowledge Index bullets in rendered prompts resolve to existing files,
    * repos/ symlinks are valid, and manifest entries match disk.
@@ -550,6 +564,18 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let mcpSpawnCommands: McpSpawnSection | undefined;
+  if (input.mcpSpawnCommands) {
+    emitStart(input, "mcp-spawn-commands", "MCP spawn commands");
+    mcpSpawnCommands = await checkMcpSpawnCommands(input.mcpSpawnCommands);
+    emitDone(
+      input,
+      "mcp-spawn-commands",
+      mcpSpawnEventStatus(mcpSpawnCommands),
+      mcpSpawnSummary(mcpSpawnCommands),
+    );
+  }
+
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
   if (input.knowledgeConsistency) {
     emitStart(input, "knowledge-prompt-disk-consistency", "Knowledge prompt-disk consistency");
@@ -594,6 +620,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(duplicateCatalogs ? { duplicateCatalogs } : {}),
     ...(knowledgeRefresh ? { knowledgeRefresh } : {}),
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
+    ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
     ...(knowledgeConsistency ? { knowledgeConsistency } : {}),
   };
 }
@@ -1420,6 +1447,16 @@ function duplicateCatalogsSummary(r: DuplicateCatalogsReport): string {
   if (r.clusters.length === 0) return "Duplicate catalogs: ok";
   const totalDupes = r.clusters.reduce((sum, c) => sum + c.members.length, 0);
   return `Duplicate catalogs: ${r.clusters.length} cluster${r.clusters.length === 1 ? "" : "s"} (${totalDupes} entries)`;
+}
+
+function mcpSpawnEventStatus(r: McpSpawnSection): DoctorSectionDoneEvent["status"] {
+  return r.status === "fragile-spawn" ? "warn" : "ok";
+}
+
+function mcpSpawnSummary(r: McpSpawnSection): string {
+  if (r.findings.length === 0) return "MCP spawn commands: ok";
+  const n = r.findings.length;
+  return `MCP spawn commands: ${n} fragile entr${n === 1 ? "y" : "ies"}`;
 }
 
 function knowledgeConsistencyEventStatus(

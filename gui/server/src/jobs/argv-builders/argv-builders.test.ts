@@ -632,6 +632,28 @@ describe("argv builders", () => {
     expect(r.argv).toEqual(["doctor", "--json", "--fix-knowledge-refresh"]);
   });
 
+  it("builds doctor --fix-mcp-commands", () => {
+    const r = buildArgv({ command: "doctor", fixMcpCommands: true });
+    expect(r.argv).toEqual(["doctor", "--fix-mcp-commands"]);
+  });
+
+  it("builds doctor with all three fix flags", () => {
+    const r = buildArgv({
+      command: "doctor",
+      json: true,
+      fixKnowledgeRefresh: true,
+      fixKnowledgeCompile: true,
+      fixMcpCommands: true,
+    });
+    expect(r.argv).toEqual([
+      "doctor",
+      "--json",
+      "--fix-knowledge-refresh",
+      "--fix-knowledge-compile",
+      "--fix-mcp-commands",
+    ]);
+  });
+
   // ---- Phase 3, Task 14: jack-out ----
 
   it("builds jack-out --yes with all three locks", () => {
