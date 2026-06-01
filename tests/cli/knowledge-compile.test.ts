@@ -11,12 +11,20 @@ import type { AgentBundle } from "../../src/core/types";
  * Build an in-memory AgentBundle pointing at an on-disk bundle dir + a single
  * knowledge file source. Returns the bundle and the bundle dir so the caller
  * can clean up.
+ *
+ * `withCompile: true` adds an explicit `compile.progressive` opt-in.
+ * `withCompile: false` produces a knowledge block with sources but no
+ * `compile` opt-in — `smith knowledge compile` should still force a compile.
+ * `withKnowledge: false` produces a bundle with NO `knowledge` block at all,
+ * which is the only case `smith knowledge compile` rejects with exit 2.
  */
 async function makeBundle(
   agentSmithHome: string,
   name: string,
-  opts: { withCompile: boolean },
+  opts: { withCompile?: boolean; withKnowledge?: boolean } = {},
 ): Promise<AgentBundle> {
+  const withCompile = opts.withCompile ?? false;
+  const withKnowledge = opts.withKnowledge ?? true;
   const bundleDir = join(agentSmithHome, "bundles", name);
   await mkdir(bundleDir, { recursive: true });
   const docPath = join(bundleDir, "doc.md");
@@ -26,20 +34,24 @@ async function makeBundle(
     description: `Use to test ${name}.`,
     targets: ["opencode"],
     modelTier: "balanced",
-    knowledge: {
-      sources: [
-        {
-          id: "doc",
-          type: "file",
-          path: "./doc.md",
-          delivery: "file",
-          description: `Doc for ${name}`,
-        },
-      ],
-      ...(opts.withCompile
-        ? { compile: { progressive: true, tocMaxLines: 100, emitAgentsMd: false } }
-        : {}),
-    },
+    ...(withKnowledge
+      ? {
+          knowledge: {
+            sources: [
+              {
+                id: "doc",
+                type: "file",
+                path: "./doc.md",
+                delivery: "file",
+                description: `Doc for ${name}`,
+              },
+            ],
+            ...(withCompile
+              ? { compile: { progressive: true, tocMaxLines: 100, emitAgentsMd: false } }
+              : {}),
+          },
+        }
+      : {}),
   };
   const parsed = parseConfig(configRaw);
   if (!parsed.success) {
@@ -86,62 +98,85 @@ describe("smith knowledge compile", () => {
     expect(raw.contentHash.length).toBeGreaterThan(0);
   });
 
-  it("exits 2 when the agent has no compile block and prints a hint to add one", async () => {
+  it("forces compile when bundle has knowledge sources but no compile.progressive opt-in", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    const errLog = spyOn(console, "error").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
     spies.push(warn as unknown as ReturnType<typeof spyOn>);
-    spies.push(errLog as unknown as ReturnType<typeof spyOn>);
+    // Bundle has a knowledge block + sources but no compile block. v2.1
+    // policy: `smith knowledge compile` is a forced compile, not conditional
+    // on opt-in or smart-default. The user explicitly asked for it.
     const bundle = await makeBundle(agentSmithHome, "beta", { withCompile: false });
     const code = await runKnowledgeCompile({
       name: "beta",
       paths: { agentSmithHome },
       loadBundle: async (n) => (n === "beta" ? bundle : null),
     });
-    expect(code).toBe(2);
-    const allOut = [
-      ...log.mock.calls.flat(),
-      ...warn.mock.calls.flat(),
-      ...errLog.mock.calls.flat(),
-    ]
-      .map(String)
-      .join("\n");
-    expect(allOut).toMatch(/compile\.progressive/);
-    // Manifest must NOT be created when compile is absent.
+    expect(code).toBe(0);
     const manifestPath = compileManifestPath(join(agentSmithHome, "knowledge", "beta"));
+    const s = await stat(manifestPath);
+    expect(s.isFile()).toBe(true);
+    const raw = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(typeof raw.contentHash).toBe("string");
+    expect(raw.contentHash.length).toBeGreaterThan(0);
+  });
+
+  it("exits 2 when the bundle has no knowledge block at all", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const errLog = spyOn(console, "error").mockImplementation(() => {});
+    spies.push(log as unknown as ReturnType<typeof spyOn>);
+    spies.push(warn as unknown as ReturnType<typeof spyOn>);
+    spies.push(errLog as unknown as ReturnType<typeof spyOn>);
+    const bundle = await makeBundle(agentSmithHome, "gamma", {
+      withKnowledge: false,
+    });
+    const code = await runKnowledgeCompile({
+      name: "gamma",
+      paths: { agentSmithHome },
+      loadBundle: async (n) => (n === "gamma" ? bundle : null),
+    });
+    expect(code).toBe(2);
+    const allErr = errLog.mock.calls.flat().map(String).join("\n");
+    expect(allErr).toMatch(/no knowledge sources/i);
+    // Manifest must NOT be created when there are no sources.
+    const manifestPath = compileManifestPath(join(agentSmithHome, "knowledge", "gamma"));
     await expect(stat(manifestPath)).rejects.toThrow();
   });
 
-  it("--all walks every registered bundle and exits 0 when at least one had a compile block", async () => {
+  it("--all compiles every bundle that has knowledge sources, regardless of compile opt-in", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
     spies.push(warn as unknown as ReturnType<typeof spyOn>);
-    const enabled = await makeBundle(agentSmithHome, "yes-compile", { withCompile: true });
-    const skipped = await makeBundle(agentSmithHome, "no-compile", { withCompile: false });
+    const explicit = await makeBundle(agentSmithHome, "yes-compile", { withCompile: true });
+    const implicit = await makeBundle(agentSmithHome, "no-compile", { withCompile: false });
+    const noSources = await makeBundle(agentSmithHome, "no-knowledge", {
+      withKnowledge: false,
+    });
     const code = await runKnowledgeCompile({
       all: true,
       paths: { agentSmithHome },
-      listAllBundles: async () => [enabled, skipped],
+      listAllBundles: async () => [explicit, implicit, noSources],
       loadBundle: async (n) => {
-        if (n === enabled.config.name) return enabled;
-        if (n === skipped.config.name) return skipped;
+        if (n === explicit.config.name) return explicit;
+        if (n === implicit.config.name) return implicit;
+        if (n === noSources.config.name) return noSources;
         return null;
       },
     });
-    // Per the plan: --all exits 0 when at least one had a compile block,
-    // skipping the others with a warn.
+    // At least one bundle had sources → exit 0. Bundles without a knowledge
+    // block are skipped with a one-line warn.
     expect(code).toBe(0);
-    // The compile-enabled agent gets its manifest.
-    const enabledManifest = compileManifestPath(
-      join(agentSmithHome, "knowledge", "yes-compile"),
-    );
-    const s = await stat(enabledManifest);
-    expect(s.isFile()).toBe(true);
-    // The non-compile agent did not get one.
+    // Both bundles with sources get a manifest.
+    for (const name of ["yes-compile", "no-compile"]) {
+      const manifest = compileManifestPath(join(agentSmithHome, "knowledge", name));
+      const s = await stat(manifest);
+      expect(s.isFile()).toBe(true);
+    }
+    // The bundle without knowledge did not get one.
     const skippedManifest = compileManifestPath(
-      join(agentSmithHome, "knowledge", "no-compile"),
+      join(agentSmithHome, "knowledge", "no-knowledge"),
     );
     await expect(stat(skippedManifest)).rejects.toThrow();
   });

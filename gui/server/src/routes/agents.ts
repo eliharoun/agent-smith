@@ -210,6 +210,42 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
     const next = { ...current };
     if (parsed.data.targets !== undefined) next.targets = parsed.data.targets;
     if (parsed.data.modelTier !== undefined) next.modelTier = parsed.data.modelTier;
+    if (parsed.data.knowledge !== undefined) {
+      // Defense in depth: the GUI-shared `AgentConfigPatch` is permissive
+      // (`z.record(z.unknown())`) so it accepts loose round-trips; the
+      // canonical `KnowledgeBlockSchema` lives in src/core (CLI's source of
+      // truth) and validates the full v1+v2 surface. Loaded dynamically to
+      // cross the gui-server → src/ rootDir boundary, mirroring the
+      // refresh-manifest writer in routes/knowledge.ts.
+      const modulePath = "../../../../src/core/knowledge/schema";
+      const mod = (await import(modulePath)) as {
+        KnowledgeBlockSchema: { safeParse: (v: unknown) => { success: boolean; error?: Error } };
+      };
+      const knowledgeParsed = mod.KnowledgeBlockSchema.safeParse(parsed.data.knowledge);
+      if (!knowledgeParsed.success) {
+        throw new HttpError(
+          400,
+          "BAD_KNOWLEDGE",
+          knowledgeParsed.error?.message ?? "invalid knowledge block",
+        );
+      }
+      // Replace the entire `knowledge` block — the GUI round-trips the full
+      // block when editing a single source, so a partial merge would drop
+      // intentional removals.
+      next.knowledge = parsed.data.knowledge;
+    }
+    if (parsed.data.mcpServers !== undefined) {
+      // Replace the entire `mcpServers` array (Task v2.1-D). It is a list of
+      // server *names* (string[]) per the canonical schema — the spawn
+      // config lives in the user's AI-client global MCP config, not in the
+      // bundle. The GUI sends the full deduplicated array computed
+      // client-side from the toggle outcome; a partial merge here would
+      // drop intentional removals (toggle-OFF dropping the
+      // agent-smith-knowledge entry). No re-validation needed: the patch
+      // schema already enforces `array(string().min(1))`, which matches
+      // `CanonicalConfigSchema.mcpServers`.
+      next.mcpServers = parsed.data.mcpServers;
+    }
     try {
       await atomicWriteText(configPath, `${JSON.stringify(next, null, 2)}\n`);
     } catch (err) {

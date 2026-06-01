@@ -9,6 +9,7 @@ interface Props {
   refreshCache?: RefreshCacheEntry | undefined;
   onRefresh: () => void;
   onRemove: () => void;
+  onEdit: () => void;
 }
 
 /**
@@ -16,7 +17,7 @@ interface Props {
  * chip + status lamp + actions. The summary string is type-specific
  * (path/url/space/jql/…) so users can identify sources without expanding.
  */
-export function KnowledgeSourceRow({ source, refreshCache, onRefresh, onRemove }: Props) {
+export function KnowledgeSourceRow({ source, refreshCache, onRefresh, onRemove, onEdit }: Props) {
   const lastRefreshLabel = relativeTime(refreshCache?.last_refreshed_at);
   const status = refreshCache?.last_error
     ? ("error" as const)
@@ -44,6 +45,9 @@ export function KnowledgeSourceRow({ source, refreshCache, onRefresh, onRemove }
         {status === "ok" ? "ok" : status === "error" ? "err" : "—"}
       </Chip>
       <div className="flex gap-1">
+        <Button variant="ghost" onClick={onEdit}>
+          edit
+        </Button>
         <Button variant="ghost" onClick={onRefresh}>
           refresh
         </Button>

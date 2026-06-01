@@ -11,7 +11,11 @@ interface View {
   consent?: { granted_at: string; platforms: string[]; sources: string[] };
 }
 
-function mockFetch(viewProvider: () => View, calls: Call[]) {
+function mockFetch(
+  viewProvider: () => View,
+  calls: Call[],
+  agentDetailProvider?: () => Record<string, unknown>,
+) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
@@ -22,6 +26,29 @@ function mockFetch(viewProvider: () => View, calls: Call[]) {
     }
     if (url.includes("/api/knowledge/") && (init?.method ?? "GET") === "GET") {
       return new Response(JSON.stringify(viewProvider()), { status: 200 });
+    }
+    if (
+      url.includes("/api/agents/") &&
+      !url.includes("/installed-status") &&
+      !url.includes("/config") &&
+      (init?.method ?? "GET") === "GET"
+    ) {
+      const detail = agentDetailProvider?.() ?? {
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: { name: "testing-agent", description: "", targets: ["opencode"] },
+      };
+      return new Response(JSON.stringify(detail), { status: 200 });
+    }
+    if (url.includes("/api/agents/") && url.endsWith("/config") && init?.method === "PUT") {
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
     if (url.includes("/api/atlassian-env")) {
       return new Response(
@@ -83,9 +110,7 @@ describe("KnowledgeSources", () => {
     // the previous bug had the banner persist indefinitely because the
     // CLI's interactive consent prompt doesn't fire under spawn.
     await waitFor(() => {
-      const put = calls.find(
-        (c) => c.url.endsWith("/consent") && c.init?.method === "PUT",
-      );
+      const put = calls.find((c) => c.url.endsWith("/consent") && c.init?.method === "PUT");
       expect(put).toBeDefined();
       const post = calls.find((c) => c.url.includes("/api/jobs") && c.init?.method === "POST");
       expect(post).toBeDefined();
@@ -181,9 +206,7 @@ describe("KnowledgeSources", () => {
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
-        sources: [
-          { source: { id: "docs", type: "url", url: "https://x.test/" } },
-        ],
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
         consent: { granted_at: "x", platforms: [], sources: [] },
       }),
       calls,
@@ -197,8 +220,7 @@ describe("KnowledgeSources", () => {
         (c) =>
           c.url.includes("/api/jobs") &&
           c.init?.method === "POST" &&
-          ((JSON.parse((c.init?.body as string) ?? "{}").command as string) ===
-            "knowledge.compile"),
+          (JSON.parse((c.init?.body as string) ?? "{}").command as string) === "knowledge.compile",
       );
       expect(post).toBeDefined();
       const body = JSON.parse((post!.init!.body as string) ?? "{}");
@@ -206,33 +228,243 @@ describe("KnowledgeSources", () => {
     });
   });
 
-  it("serve button dispatches knowledge.serve with name", async () => {
+  // ─── v2.1-D: MCP wiring toggle (replaces the fire-and-forget serve btn) ─
+
+  it("MCP toggle ON: PUTs mcpServers patch with the canonical name appended to the array", async () => {
+    // Start with an empty mcpServers array in agent detail. Toggle is OFF.
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
-        sources: [
-          { source: { id: "docs", type: "url", url: "https://x.test/" } },
-        ],
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "testing-agent",
+          description: "",
+          targets: ["opencode"],
+          mcpServers: [],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+
+    const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse((put!.init!.body as string) ?? "{}");
+      expect(body).toEqual({ mcpServers: ["agent-smith-knowledge"] });
+    });
+    // ON banner appears after a successful save with the two-step copy.
+    await waitFor(() =>
+      expect(screen.getByText(/two steps to finish wiring/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/smith agent install testing-agent/i)).toBeInTheDocument();
+    expect(screen.getByText(/knowledge serve testing-agent --stdio/i)).toBeInTheDocument();
+  });
+
+  it("MCP toggle ON: preserves any pre-existing names in the array (dedupes the canonical name)", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "testing-agent",
+          description: "",
+          targets: ["opencode"],
+          mcpServers: ["github-mcp"],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+
+    const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse((put!.init!.body as string) ?? "{}");
+      expect(body).toEqual({ mcpServers: ["github-mcp", "agent-smith-knowledge"] });
+    });
+  });
+
+  it("MCP toggle OFF: removes the canonical name but preserves other entries in the array", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "testing-agent",
+          description: "",
+          targets: ["opencode"],
+          mcpServers: ["agent-smith-knowledge", "github-mcp"],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+
+    const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse((put!.init!.body as string) ?? "{}");
+      // Sibling preserved; agent-smith-knowledge removed.
+      expect(body).toEqual({ mcpServers: ["github-mcp"] });
+    });
+    // OFF banner is the simpler one-liner.
+    await waitFor(() =>
+      expect(screen.getByText(/knowledge mcp server disabled\. run/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("MCP toggle OFF with no other entries sends an empty array", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "testing-agent",
+          description: "",
+          targets: ["opencode"],
+          mcpServers: ["agent-smith-knowledge"],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+    const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse((put!.init!.body as string) ?? "{}");
+      expect(body).toEqual({ mcpServers: [] });
+    });
+  });
+
+  it("does not render the legacy debug serve button", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
         consent: { granted_at: "x", platforms: [], sources: [] },
       }),
       calls,
     ) as unknown as typeof fetch;
     renderPanel();
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /^serve$/i })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /^serve$/i }));
-    await waitFor(() => {
-      const post = calls.find(
-        (c) =>
-          c.url.includes("/api/jobs") &&
-          c.init?.method === "POST" &&
-          ((JSON.parse((c.init?.body as string) ?? "{}").command as string) ===
-            "knowledge.serve"),
-      );
-      expect(post).toBeDefined();
-      const body = JSON.parse((post!.init!.body as string) ?? "{}");
-      expect(body).toMatchObject({ command: "knowledge.serve", name: "testing-agent" });
-    });
+  it("per-row edit button opens the EditKnowledgeSourceModal pinned to that source", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [
+          { source: { id: "docs", type: "url", url: "https://x.test/", delivery: "auto" } },
+        ],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "testing-agent",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "testing-agent",
+          description: "",
+          targets: ["opencode"],
+          knowledge: {
+            sources: [{ id: "docs", type: "url", url: "https://x.test/", delivery: "auto" }],
+          },
+        },
+      }),
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    // Modal header includes id + type.
+    await waitFor(() =>
+      expect(screen.getByText(/edit source · docs \(url\)/i)).toBeInTheDocument(),
+    );
+    // The url field is pre-populated with the existing value.
+    expect(screen.getByLabelText(/^\/\/ url$/i)).toHaveValue("https://x.test/");
   });
 
   it("opens AddKnowledgeSourceModal with 8 source types", async () => {

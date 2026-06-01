@@ -36,7 +36,11 @@ export interface PipelineResult {
   section: KnowledgeSection;
   warnings: string[];
   errors: string[];
-  /** v2.0: present when `block.compile?.progressive === true`. */
+  /**
+   * v2.1: present when `block.compile?.progressive === true` OR when the
+   * materialized corpus exceeds the inline budget (smart default). Set
+   * `compile.progressive: false` to pin the v1 path regardless of size.
+   */
   compiled?: CompiledKnowledge;
 }
 
@@ -49,6 +53,40 @@ export interface RunKnowledgeStageOpts {
 }
 
 const DEFAULT_INLINE_BUDGET = 8000;
+
+/**
+ * Smart default for compile mode (v2.1): compile when the materialized corpus
+ * exceeds the inline budget. Bundles whose entire knowledge fits inline are
+ * better off with v1 inline-and-grants delivery — paying a tool round-trip for
+ * content that's small and constantly relevant is wasteful. Once the corpus
+ * overflows the budget, v1's silent inline truncation kicks in and progressive
+ * disclosure wins.
+ *
+ * Threshold is `block.inlineBudget.totalTokens` (default 8000), reusing the v1
+ * inline-budget knob exactly so there's no new tunable.
+ *
+ * Signal is `manifest.totals.bytes / 4` (a 4-bytes-per-token heuristic). We
+ * deliberately don't use `manifest.totals.tokensInline`: that field only counts
+ * sources actually inlined, so a corpus delivered entirely as `file` would read
+ * as 0 tokens and never auto-compile. Bytes/4 is the cheapest unbiased proxy
+ * for the full corpus and avoids re-reading source content here.
+ */
+function shouldAutoCompile(
+  manifest: KnowledgeManifest,
+  block: KnowledgeBlock | undefined,
+): boolean {
+  // Respect explicit author intent: any source declared `delivery: "inline"` is
+  // the user saying "keep this in working memory regardless." Defer to v1 mode
+  // for the whole bundle in that case — the validator's hard-limit check is
+  // the right place to surface overflow when the user explicitly asks for it.
+  const hasExplicitInline = (block?.sources ?? []).some(
+    (s) => s.delivery === "inline",
+  );
+  if (hasExplicitInline) return false;
+  const budget = block?.inlineBudget?.totalTokens ?? DEFAULT_INLINE_BUDGET;
+  const estimatedTotalTokens = Math.ceil(manifest.totals.bytes / 4);
+  return estimatedTotalTokens > budget;
+}
 
 interface ProcessedSource {
   declared: KnowledgeSource;
@@ -454,14 +492,20 @@ export async function runKnowledgeStage(
       }
     }
 
-    // Step 9 (v2.0): if `compile.progressive` is enabled, run the pure
-    // compile() pass and persist compile-manifest.json beside _manifest.json.
+    // Step 9 (v2.1): smart compile default. Compile when explicitly opted in
+    // OR when the materialized corpus exceeds the inline budget (the same knob
+    // that gates v1 silent truncation). Explicit `compile.progressive: false`
+    // pins the v1 path even for large bundles.
+    const compileExplicit = block?.compile?.progressive;
+    const compileShouldRun =
+      compileExplicit === true ||
+      (compileExplicit !== false && shouldAutoCompile(manifest, block));
     let compiled: CompiledKnowledge | undefined;
-    if (block?.compile?.progressive) {
+    if (compileShouldRun) {
       const compileOpts = {
         progressive: true,
-        tocMaxLines: block.compile.tocMaxLines ?? 150,
-        emitAgentsMd: block.compile.emitAgentsMd ?? false,
+        tocMaxLines: block?.compile?.tocMaxLines ?? 150,
+        emitAgentsMd: block?.compile?.emitAgentsMd ?? false,
       };
       const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
         id: s.id,

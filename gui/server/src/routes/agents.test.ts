@@ -535,6 +535,172 @@ describe("PUT /api/agents/:name/config", () => {
     const res = await put(appWith(), "ghost", { modelTier: "fast" });
     expect(res.status).toBe(404);
   });
+
+  // ─── Task v2.1-C: knowledge patch ──────────────────────────────────────
+  it("writes a canonical `knowledge` block, replacing any prior block", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    // Seed a prior knowledge block so we can verify REPLACE semantics
+    // (intentional removals must propagate; partial merge would be wrong).
+    const cfgPath = join(bundlePath, "agent.config.json");
+    const seed = JSON.parse(await readFile(cfgPath, "utf8"));
+    seed.knowledge = { sources: [{ id: "old", type: "file", path: "/x", delivery: "inline" }] };
+    await writeFile(cfgPath, JSON.stringify(seed));
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", {
+      knowledge: {
+        sources: [
+          {
+            id: "docs",
+            type: "url",
+            url: "https://x.test/",
+            delivery: "auto",
+            summary: "team docs",
+            toc: true,
+            retrieval: { mode: "bm25" },
+          },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const written = JSON.parse(await readFile(cfgPath, "utf8"));
+    expect(written.knowledge.sources).toHaveLength(1);
+    expect(written.knowledge.sources[0]).toMatchObject({
+      id: "docs",
+      type: "url",
+      url: "https://x.test/",
+      delivery: "auto",
+      summary: "team docs",
+      toc: true,
+      retrieval: { mode: "bm25" },
+    });
+    // Other top-level keys preserved.
+    expect(written.name).toBe("foo");
+    expect(written.targets).toEqual(["opencode"]);
+  });
+
+  it("rejects a malformed knowledge block with 400 BAD_KNOWLEDGE", async () => {
+    await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    // type=url requires url; supplying `path` instead is structurally wrong
+    // per the canonical schema's strict per-variant validation.
+    const res = await put(appWith(), "foo", {
+      knowledge: { sources: [{ id: "bad", type: "url", path: "/oops", delivery: "auto" }] },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("BAD_KNOWLEDGE");
+  });
+
+  it("accepts a knowledge patch alongside targets/modelTier", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", {
+      targets: ["opencode", "kiro"],
+      modelTier: "high",
+      knowledge: { sources: [] },
+    });
+    expect(res.status).toBe(200);
+    const written = JSON.parse(await readFile(join(bundlePath, "agent.config.json"), "utf8"));
+    expect(written.targets).toEqual(["opencode", "kiro"]);
+    expect(written.modelTier).toBe("high");
+    expect(written.knowledge).toEqual({ sources: [] });
+  });
+
+  // ─── Task v2.1-D: mcpServers patch (MCP wiring toggle) ────────────────
+  // `mcpServers` is a string[] of server *names* per the canonical schema —
+  // spawn config lives in the user's AI-client global MCP config, not the
+  // bundle. The patch REPLACES the array verbatim so toggle-OFF can drop
+  // the agent-smith-knowledge name without partial-merge confusion.
+  it("writes an mcpServers array, replacing any prior array (toggle-OFF preserves siblings)", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    const cfgPath = join(bundlePath, "agent.config.json");
+    const seed = JSON.parse(await readFile(cfgPath, "utf8"));
+    seed.mcpServers = ["agent-smith-knowledge", "other-server"];
+    await writeFile(cfgPath, JSON.stringify(seed));
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    // Toggle-OFF result: only `other-server` survives.
+    const res = await put(appWith(), "foo", {
+      mcpServers: ["other-server"],
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const written = JSON.parse(await readFile(cfgPath, "utf8"));
+    expect(written.mcpServers).toEqual(["other-server"]);
+    // Other top-level keys preserved.
+    expect(written.name).toBe("foo");
+    expect(written.targets).toEqual(["opencode"]);
+  });
+
+  it("round-trips the canonical agent-smith-knowledge name on toggle-ON", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", {
+      mcpServers: ["agent-smith-knowledge"],
+    });
+    expect(res.status).toBe(200);
+    const written = JSON.parse(await readFile(join(bundlePath, "agent.config.json"), "utf8"));
+    expect(written.mcpServers).toEqual(["agent-smith-knowledge"]);
+  });
+
+  it("writes an empty mcpServers array (toggle-OFF with no siblings)", async () => {
+    const bundlePath = await writeBundle("default", "foo");
+    const cfgPath = join(bundlePath, "agent.config.json");
+    const seed = JSON.parse(await readFile(cfgPath, "utf8"));
+    seed.mcpServers = ["agent-smith-knowledge"];
+    await writeFile(cfgPath, JSON.stringify(seed));
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", { mcpServers: [] });
+    expect(res.status).toBe(200);
+    const written = JSON.parse(await readFile(cfgPath, "utf8"));
+    expect(written.mcpServers).toEqual([]);
+  });
+
+  it("rejects the legacy AI-client object-map shape with 400 (regression guard)", async () => {
+    await writeBundle("default", "foo");
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+      }),
+    );
+    const res = await put(appWith(), "foo", {
+      mcpServers: {
+        "agent-smith-knowledge": { command: "smith", args: [] },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("agent-name validation guard (:name routes)", () => {

@@ -52,6 +52,7 @@ describe("DoctorFixButton", () => {
     expect(mutate).toHaveBeenCalledWith({
       command: "doctor",
       fixKnowledgeRefresh: true,
+      fixKnowledgeCompile: false,
     });
   });
 });

@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import { runKnowledgeStage } from "../../../core/knowledge/pipeline";
+import type { KnowledgeBlock } from "../../../core/knowledge/types";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
 import type { AgentBundle } from "../../../core/types";
@@ -34,17 +35,27 @@ export interface KnowledgeCompileOptions extends KnowledgeCompileDeps {
 /**
  * `smith knowledge compile [name] [--all]`
  *
- * Re-runs the knowledge pipeline for one or every bundle that opts in to
- * progressive compile (`knowledge.compile.progressive: true`) and persists
- * `compile-manifest.json` under the agent's knowledge dir.
+ * Forces a compile for one or every bundle that has a `knowledge` block with
+ * at least one source, regardless of `compile.progressive` opt-in or v2.1
+ * smart-default thresholds. Persists `compile-manifest.json` under the
+ * agent's knowledge dir.
+ *
+ * Policy (v2.1-B):
+ *   - The CLI is a *forced* compile. The user explicitly typed `smith
+ *     knowledge compile <name>`; honor that.
+ *   - The smart auto-compile default (in `runKnowledgeStage`) is for
+ *     `smith agent install`'s implicit decisions — not this command.
+ *   - We inject a `compile` block on the way into the pipeline so the
+ *     existing compile branch fires deterministically. `tocMaxLines` and
+ *     `emitAgentsMd` fall back to the bundle's own values where present.
  *
  * Exit codes follow agent-smith conventions:
- *   - 0  success (every targeted bundle compiled, or `--all` had at least one)
+ *   - 0  success (every targeted bundle with sources compiled cleanly)
  *   - 1  runtime error during compile
- *   - 2  usage error — bundle has no `compile.progressive=true`
+ *   - 2  usage error — bundle has no knowledge sources to compile
  *
- * `--all` skips bundles without a compile block (with a warn line) and only
- * elevates to a non-zero exit code when EVERY bundle was skipped.
+ * `--all` skips bundles without any knowledge sources (with a warn line) and
+ * only elevates to a non-zero exit code when EVERY bundle was skipped.
  */
 export async function runKnowledgeCompile(
   opts: KnowledgeCompileOptions,
@@ -90,30 +101,39 @@ export async function runKnowledgeCompile(
   for (const bundle of bundles) {
     const name = bundle.config.name;
     const block = bundle.config.knowledge;
-    if (!block?.compile?.progressive) {
-      // Single-name path: this is a usage error — caller should add the block.
-      // --all path: skip silently with a warn so a mixed catalog still works.
+    // The only real error: no knowledge sources to compile. A bundle with a
+    // `knowledge` block but zero sources is just as actionable as no block at
+    // all — both mean "nothing for compile() to consume".
+    if (!block || !block.sources || block.sources.length === 0) {
+      // --all path: skip with a one-line warn so a mixed catalog still works.
+      // Single-name path: usage error.
       if (opts.all) {
-        console.warn(
-          pc.yellow(
-            `skip ${name}: no knowledge.compile.progressive=true`,
-          ),
-        );
+        console.warn(pc.yellow(`skip ${name}: no knowledge sources to compile`));
         skippedCount += 1;
         continue;
       }
       console.error(
-        `${name}: no knowledge.compile.progressive=true in agent.config.json — add it to enable progressive compile.`,
+        `${name}: no knowledge sources to compile — add a "knowledge.sources" entry in agent.config.json.`,
       );
-      console.error(
-        `  Edit agent.config.json under "knowledge" and add:`,
-      );
-      console.error(`    "compile": { "progressive": true }`);
       return 2;
     }
 
+    // Force compile regardless of opt-in / smart-default. The user explicitly
+    // asked for it; pin progressive=true on the way in and let the pipeline's
+    // existing compile branch run. Defaults mirror the schema/pipeline so the
+    // emitted manifest matches what `smith agent install` would produce when
+    // it auto-compiles.
+    const forcedBlock: KnowledgeBlock = {
+      ...block,
+      compile: {
+        progressive: true,
+        tocMaxLines: block.compile?.tocMaxLines ?? 150,
+        emitAgentsMd: block.compile?.emitAgentsMd ?? false,
+      },
+    };
+
     try {
-      const result = await runKnowledgeStage(block, {
+      const result = await runKnowledgeStage(forcedBlock, {
         bundleDir: bundle.bundlePath,
         knowledgeDir: knowledgeDirFor(name, paths),
         cacheDir: cacheDirFor(name, paths),
@@ -150,8 +170,8 @@ export async function runKnowledgeCompile(
     // knows --all matched nothing actionable.
     if (skippedCount > 0) {
       console.error(
-        `no bundles had knowledge.compile.progressive=true; ` +
-          `add it to at least one agent.config.json to enable progressive compile.`,
+        `no registered bundles had knowledge sources to compile; ` +
+          `add a "knowledge.sources" entry to at least one agent.config.json.`,
       );
       return 2;
     }
