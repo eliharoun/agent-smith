@@ -25,4 +25,15 @@ export const agentsApi = {
       method: "PUT",
       body: JSON.stringify(patch),
     }),
+  applyMcpWiring: (
+    name: string,
+    body: { enable: boolean; platforms: Array<"opencode" | "claude-code" | "codex" | "kiro"> },
+  ) =>
+    apiFetch<{
+      results: Array<{ platform: string; ok: boolean; error?: string }>;
+      platforms: Array<{ platform: string; hasEntry: boolean; cliInstalled: boolean }>;
+    }>(`/api/agents/${encodeURIComponent(name)}/mcp-wiring`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

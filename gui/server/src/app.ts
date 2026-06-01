@@ -20,6 +20,7 @@ import { registerInstalledStatusesRoute } from "./routes/installed-statuses";
 import { registerJackOutRoute } from "./routes/jack-out";
 import { registerJobsRoutes } from "./routes/jobs";
 import { registerKnowledgeRoute } from "./routes/knowledge";
+import { registerMcpRoutes } from "./routes/mcp";
 import { registerModelConfigRoute } from "./routes/model-config";
 import { registerOnboardingRoute } from "./routes/onboarding";
 import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
@@ -60,6 +61,19 @@ export interface AppDeps {
   guiJobsJsonlPath?: string;
   /** Phase 3: override for the per-job output log directory. */
   guiJobsOutputDir?: string;
+  /**
+   * v2.1-E: per-platform global MCP config paths used by the wiring routes.
+   * Tests inject paths under a tmpdir; production reads HOME and lets the
+   * service compute defaults.
+   */
+  mcpConfigPathsFor?: () => Record<
+    "opencode" | "claude-code" | "codex" | "kiro",
+    string
+  >;
+  /** v2.1-E: detected platforms for the wiring routes. Tests inject. */
+  detectMcpPlatforms?: () => Promise<
+    Set<"opencode" | "claude-code" | "codex" | "kiro">
+  >;
   /**
    * C4.3.2: same-origin Origin header required on state-changing /api/*
    * requests (CSRF defense, security-audit HIGH-2). The production caller
@@ -167,6 +181,11 @@ export function createApp(deps: AppDeps) {
   registerSkillsRoute(app, { skillRegistryPath, installedSkillsPath });
   registerCatalogsRoute(app, { registryPath, skillRegistryPath });
   registerKnowledgeRoute(app, { registryPath, agentSmithHome });
+  registerMcpRoutes(app, {
+    registryPath,
+    ...(deps.mcpConfigPathsFor ? { configPathsFor: deps.mcpConfigPathsFor } : {}),
+    ...(deps.detectMcpPlatforms ? { detectInstalled: deps.detectMcpPlatforms } : {}),
+  });
   registerAtlassianRoute(app, {
     envDeps: { smithEnvPath: join(agentSmithHome, ".env") },
     registryPath,
