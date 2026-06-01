@@ -119,19 +119,28 @@ The more specific about input class (TypeScript code, PR diffs, SQL schemas) and
 
 #### Q3 of 8 — Targets
 
-Which AI coding platforms this agent gets installed into. Each target gets a rendered `.md` file at a different path with platform-specific frontmatter.
+Which AI coding platforms this agent gets installed into. Each target gets a rendered file at a different path with platform-specific shape.
 
 | Choice | Installs to | When to use |
 |---|---|---|
-| `all` | all three | **Recommended default.** You might switch platforms or use multiple. |
-| `opencode` | `~/.config/opencode/agents/<name>.md` | OpenCode only |
-| `claude-code` | `~/.claude/agents/<name>.md` | Claude Code only |
-| `codex` | `~/.agents/skills/<name>/SKILL.md` | Codex only |
+| `opencode` | `~/.config/opencode/agents/<name>.md` | OpenCode |
+| `claude-code` | `~/.claude/agents/<name>.md` | Claude Code |
+| `codex` | `~/.agents/skills/<name>/SKILL.md` | Codex |
+| `kiro` | `~/.kiro/agents/<name>.json` | Kiro |
+| `agents-md` | `AGENTS.md` (project root or `~/AGENTS.md`) | Cross-tool standing context — read by Cursor, Windsurf, Copilot, Aider, Devin, Junie, Roo, Zed, Warp, Codex CLI, Gemini CLI |
 | custom mix | the targets you list (comma-separated) | Specific subset |
 
-Installing to a target the user doesn't use is harmless — the file just sits there. Skipping a target they later want means re-running `smith agent install`. Default to `all` unless they have a specific reason.
+The first four (`opencode`/`claude-code`/`codex`/`kiro`) are **summoned subagents** — the user invokes them deliberately via picker, slash command, or Task tool. `agents-md` is a different shape: **standing project context** — every AI tool that opens the project reads it automatically as ambient instructions. Bundles can target both shapes; the same persona acts as a summoned worker AND broadcasts its conventions to any tool in the project.
 
-**Ask the user:** "Which platforms? (a) all three [opencode, claude-code, codex] — recommended, (b) opencode only, (c) claude-code only, (d) codex only, (e) custom mix."
+When `claude-code` and `agents-md` are both targeted, the claude-code render becomes a 1-line pointer (`See AGENTS.md.`) to avoid duplication.
+
+Recommended defaults:
+- A **specialized worker** (PR reviewer, incident debugger, security threat-modeler) → `[opencode, claude-code, codex, kiro]`. Ambient AGENTS.md is wrong for personas the user invokes deliberately.
+- A **team conventions / project-context bundle** (coding standards, runbooks, glossary) → add `agents-md` to whatever subagent targets you want; AGENTS.md is the right default surface for this.
+
+Installing to a target the user doesn't use is harmless — the file just sits there. Skipping a target they later want means re-running `smith agent install`.
+
+**Ask the user:** "Which platforms? (a) all four subagent platforms [opencode, claude-code, codex, kiro] — recommended for personas you'll invoke deliberately, (b) one specific platform, (c) add `agents-md` for project-wide standing context (any tool that reads AGENTS.md), (d) custom mix."
 
 #### Q4 of 8 — Model tier
 
@@ -268,7 +277,7 @@ smith agent init <name> \
 
 **`--catalog`:** pass only when catalog intent was detected (see "Catalog intent detection"). Accepts a registered label or absolute path; unregistered values are rejected with a `not-found` SmithError. See USER.md handling below.
 
-**Targets flag:** the CLI requires an explicit comma-list. If the user picked "all" in Q3, expand it to `opencode,claude-code,codex` before invoking. `--targets all` is rejected.
+**Targets flag:** the CLI requires an explicit comma-list. If the user picked "all four subagent platforms" in Q3, expand it to `opencode,claude-code,codex,kiro` before invoking. If they also asked for project-wide standing context, append `agents-md`. `--targets all` is rejected.
 
 **Permission flag:** pass `--permission <preset>` for `read-only`, `read-edit`, or `full` (these match the Q6 presets). For a custom map, pass `--permission-json '{"read":"allow","edit":"deny",...}'` instead. The two flags are mutually exclusive (if both are set, `--permission-json` wins). Omit both to leave `permission` absent from the config — each platform then applies its own defaults (no schema-injected default).
 
@@ -420,7 +429,7 @@ Same as A4 + A5.
 
 | Command | Purpose | Key flags |
 |---|---|---|
-| `smith agent init <name>` | Scaffold a new bundle (or `--from` clone) | `--description` (req) `--targets` `--model-tier` `--mode` `--permission` `--permission-json` `--mcp-servers` `--skills` `--requires-skills` `--catalog` `--from` |
+| `smith agent init <name>` | Scaffold a new bundle (or `--from` clone, or `--from-apm` import) | `--description` (req) `--targets` `--model-tier` `--mode` `--permission` `--permission-json` `--mcp-servers` `--skills` `--requires-skills` `--catalog` `--from` `--from-apm` |
 | `smith agent validate <name>` | Validate a bundle without installing | exits 0 = ready, 1 = errors |
 | `smith agent install <name>` | Validate + render + install to all configured targets; offers to install agent's required skills | exits 0 = installed. Flags: `--yes` (install required skills without prompting), `--with-skills` (alias for `--yes`), `--no-skills` (skip required-skills install) |
 | `smith agent list` | List all known agent bundles | — |
