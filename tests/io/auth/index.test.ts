@@ -21,11 +21,17 @@ describe("detectAllPlatforms", () => {
         stub({ platform: "kiro", status: "unauthenticated" }),
     });
     expect(Object.keys(result).sort()).toEqual([
+      "agents-md",
       "claude-code",
       "codex",
       "kiro",
       "opencode",
     ]);
+    // AGENTS.md is a markdown contract with no CLI surface — detector
+    // emits a static cli-not-installed entry to keep the matrix shape
+    // aligned with Target after the T5a widening.
+    expect(result["agents-md"].cliInstalled).toBe(false);
+    expect(result["agents-md"].status).toBe("cli-not-installed");
     expect(result.opencode.status).toBe("authenticated");
     expect(result.codex.cliInstalled).toBe(false);
     expect(result.kiro.status).toBe("unauthenticated");

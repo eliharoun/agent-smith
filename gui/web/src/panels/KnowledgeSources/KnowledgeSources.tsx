@@ -89,6 +89,29 @@ export function KnowledgeSources({ agent }: Props) {
       title={agent}
       headerActions={
         <div className="flex gap-2">
+          {/*
+           * T11: progressive-compile + MCP serve buttons. Both are
+           * intentionally disabled when there are zero sources — there's
+           * nothing to index/serve. The CLI separately enforces that the
+           * bundle has `knowledge.compile.progressive: true` set in
+           * agent.config.json (exit 2 with a friendly suggestedCommand
+           * otherwise), so we don't gate on that client-side: a no-op
+           * payload still produces a useful error in the job log.
+           */}
+          <Button
+            variant="ghost"
+            disabled={empty}
+            onClick={() => start.mutate({ command: "knowledge.compile", name: agent })}
+          >
+            compile
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={empty}
+            onClick={() => start.mutate({ command: "knowledge.serve", name: agent })}
+          >
+            serve
+          </Button>
           <Button variant="ghost" disabled={empty} onClick={() => setRefreshAllConfirm(true)}>
             refresh all
           </Button>

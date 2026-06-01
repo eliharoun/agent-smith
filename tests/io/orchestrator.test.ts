@@ -64,6 +64,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const result = await buildAndInstall([fakeBundle("demo", { kind: "user-global" })], paths, {
       modelResolutionEnv: fakeModelEnv,
@@ -80,6 +81,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const bundle = fakeBundle("demo", { kind: "user-global" });
     bundle.config.targets = ["claude-code", "codex"];
@@ -111,6 +113,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const bundle = fakeBundle("demo", { kind: "user-global" });
     bundle.config.targets = ["opencode"];
@@ -142,6 +145,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const broken = fakeBundle("demo", { kind: "user-global" });
     broken.files.identity = ""; // empty -> validator error
@@ -159,6 +163,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const emptySkillsRoot = join(root, "empty-skills");
     await mkdir(emptySkillsRoot, { recursive: true });
@@ -191,6 +196,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const opencodeConfigPath = join(root, "opencode.json");
     await writeFile(opencodeConfigPath, JSON.stringify({ mcp: { linear: {} } }));
@@ -226,6 +232,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const opencodeConfigPath = join(root, "opencode.json");
     await writeFile(opencodeConfigPath, JSON.stringify({ mcp: { linear: {} } }));
@@ -258,6 +265,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const bundleA = fakeBundle("locked-agent", { kind: "user-global" });
     const bundleB = fakeBundle("free-agent", { kind: "user-global" });
@@ -297,6 +305,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const bundle = fakeBundle("demo", { kind: "user-global" });
     bundle.config.targets = ["claude-code"];
@@ -319,6 +328,7 @@ describe("io/orchestrator", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     const bundle = fakeBundle("demo", { kind: "user-global" });
     bundle.config.targets = ["claude-code"];

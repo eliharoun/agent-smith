@@ -125,6 +125,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
     )
     .option("--from <source>", "Clone an existing bundle")
     .option(
+      "--from-apm <path>",
+      "Import a Microsoft APM bundle (apm.yml) as the starting point",
+    )
+    .option(
       "--catalog <labelOrPath>",
       "Scaffold into a registered agent catalog (by label or path). Default: user-global.",
     )
@@ -157,6 +161,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
           ),
           catalogKind,
           ...(raw.from ? { from: raw.from } : {}),
+          ...(raw.fromApm ? { fromApm: raw.fromApm } : {}),
         });
       }),
     );

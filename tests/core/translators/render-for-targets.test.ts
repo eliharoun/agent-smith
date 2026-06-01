@@ -26,7 +26,7 @@ describe("renderForTargets — knowledge grant injection", () => {
   const out = renderForTargets(
     config,
     "body",
-    { opencode: undefined, "claude-code": undefined, codex: undefined, kiro: undefined },
+    { opencode: undefined, "claude-code": undefined, codex: undefined, kiro: undefined, "agents-md": undefined },
     dir,
   );
 

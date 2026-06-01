@@ -32,7 +32,7 @@ describe("e2e: knowledge-demo example bundle", () => {
 
     const result = await buildAndInstall(
       [bundle],
-      { opencode: oc, "claude-code": oc, codex: oc, kiro: oc },
+      { opencode: oc, "claude-code": oc, codex: oc, kiro: oc, "agents-md": oc },
       {
         knowledgePaths: { agentSmithHome },
         modelResolutionEnv: {

@@ -104,6 +104,16 @@ export function injectByTargetIntoFrontmatter(
         "BUG: injectByTargetIntoFrontmatter called with kiro target — call injectKnowledgeIntoRender",
       );
     }
+    case "agents-md": {
+      // AGENTS.md is a plain markdown file consumed by external tools
+      // (Cursor, Windsurf, Copilot, etc.). It has no frontmatter and no
+      // permission model — the consuming tool applies its own. Return the
+      // frontmatter unchanged (no-op). The agents-md translator (T5b) will
+      // emit a body-only format that bypasses this function entirely; this
+      // arm exists so the type-level exhaustiveness check is satisfied
+      // during the T5a widening.
+      return out;
+    }
     default: {
       const _exhaustive: never = target;
       throw new Error(`Unhandled target: ${String(_exhaustive)}`);

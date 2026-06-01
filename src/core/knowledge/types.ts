@@ -60,6 +60,16 @@ export interface NormalizedRefresh {
 /** Auth provider for url sources. */
 export type KnowledgeAuth = "atlassian" | "none";
 
+/** v2.0 compile-stage retrieval mode for the optional MCP server. */
+export type RetrievalMode = "off" | "bm25" | "external-mcp";
+
+/** v2.0 compile-stage per-source retrieval declaration. */
+export interface RetrievalSpec {
+  mode: RetrievalMode;
+  /** Required when mode === "external-mcp". */
+  mcpUrl?: string;
+}
+
 /** Confluence page body format. */
 export type ConfluenceFormat = "storage" | "view" | "markdown";
 
@@ -78,6 +88,12 @@ interface KnowledgeSourceBase {
    *  instead of errors and the source is omitted from the manifest.
    *  Bundle-config validation happens at load time (Zod), not here. */
   optional?: boolean;
+  /** v2.0: TOC line override; falls back to description, then computed summary. */
+  summary?: string;
+  /** v2.0: include in the compiled TOC stanza (default true when compile.progressive). */
+  toc?: boolean;
+  /** v2.0: per-source retrieval mode for the optional MCP server. */
+  retrieval?: RetrievalSpec;
 }
 
 export interface FileSource extends KnowledgeSourceBase {
@@ -139,10 +155,20 @@ export interface KnowledgeInlineBudget {
   totalTokens: number;
 }
 
+/** v2.0 compile-stage options. When omitted on a `KnowledgeBlock`, the
+ *  pipeline runs in v1 mode and produces no `CompiledKnowledge`. */
+export interface CompileOptions {
+  progressive: boolean;
+  tocMaxLines: number;
+  emitAgentsMd: boolean;
+}
+
 export interface KnowledgeBlock {
   packs?: string[];
   inlineBudget?: KnowledgeInlineBudget;
   sources?: KnowledgeSource[];
+  /** v2.0 compile stage. When omitted, pipeline runs in v1 mode. */
+  compile?: CompileOptions;
 }
 
 /** What the assembler needs to render the prompt sections. */
@@ -203,6 +229,12 @@ export interface MaterializedSource {
   source?: { url?: string; path?: string; ref?: string; resolvedSha?: string };
   /** ISO 8601. */
   fetchedAt?: string;
+  /** v2.0: TOC line override; falls back to description, then computed summary. */
+  summary?: string;
+  /** v2.0: include in the compiled TOC stanza (default true when compile.progressive). */
+  toc?: boolean;
+  /** v2.0: per-source retrieval mode for the optional MCP server. */
+  retrieval?: RetrievalSpec;
 }
 
 export interface KnowledgeManifestSourceEntry {
@@ -216,6 +248,12 @@ export interface KnowledgeManifestSourceEntry {
   extractor?: PdfExtractor | null;
   tokensInline: number;
   description?: string;
+  /** v2.0: TOC line override; falls back to description, then computed summary. */
+  summary?: string;
+  /** v2.0: include in the compiled TOC stanza (default true when compile.progressive). */
+  toc?: boolean;
+  /** v2.0: per-source retrieval mode for the optional MCP server. */
+  retrieval?: RetrievalSpec;
 }
 
 export interface KnowledgeManifest {

@@ -78,6 +78,11 @@ describe("v1 surface stability — CanonicalConfigSchema", () => {
         "knowledge",
         "requires",
         "platformConventions",
+        // `targetOptions` (added 2026-05-31, Task 5b) is an optional
+        // top-level addition — forwards-compatible per the policy in this
+        // file's header. Bundles without a `targetOptions` block render
+        // unchanged (each sub-key has a default).
+        "targetOptions",
         "thresholds",
       ]),
     );
@@ -86,7 +91,7 @@ describe("v1 surface stability — CanonicalConfigSchema", () => {
   test("targets enum values are exactly the supported platforms", () => {
     const targets = json.properties.targets as { items: { enum: string[] } };
     expect(new Set(targets.items.enum)).toEqual(
-      new Set(["opencode", "claude-code", "codex", "kiro"]),
+      new Set(["opencode", "claude-code", "codex", "kiro", "agents-md"]),
     );
   });
 
@@ -130,8 +135,11 @@ describe("v1 surface stability — KnowledgeBlockSchema", () => {
   });
 
   test("knowledge block property set is exactly the v1 contract", () => {
+    // `compile` (added 2026-05-31, knowledge-compiler v2) is an optional
+    // top-level addition — forwards-compatible per the policy in this file's
+    // header. Bundles without a `compile` block render in v1 mode unchanged.
     expect(new Set(Object.keys(json.properties))).toEqual(
-      new Set(["packs", "inlineBudget", "sources"]),
+      new Set(["packs", "inlineBudget", "sources", "compile"]),
     );
   });
 });

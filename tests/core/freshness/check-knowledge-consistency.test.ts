@@ -49,6 +49,7 @@ function input(agents: string[] = []): CheckKnowledgeConsistencyInput {
       "claude-code": ctx.claudeAgentsDir,
       codex: ctx.codexAgentsDir,
       kiro: ctx.kiroAgentsDir,
+      "agents-md": join(ctx.root, "agents-md"),
     },
     agents,
   };

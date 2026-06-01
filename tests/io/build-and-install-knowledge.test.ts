@@ -32,6 +32,7 @@ describe("buildAndInstall with knowledge", () => {
       "claude-code": claudeAgentsDir,
       codex: codexAgentsDir,
       kiro: kiroAgentsDir,
+      "agents-md": join(agentSmithHome, "agents-md"),
     };
     await writeFile(join(bundleDir, "schema.sql"), "select 1;");
   });

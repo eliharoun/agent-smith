@@ -16,6 +16,7 @@ describe("translators/dispatcher", () => {
       "claude-code": undefined,
       codex: undefined,
       kiro: undefined,
+      "agents-md": undefined,
     });
     expect(out).toHaveLength(3);
     const targets = out.map((r) => r.target).sort();
@@ -35,6 +36,7 @@ describe("translators/dispatcher", () => {
       "claude-code": undefined,
       codex: undefined,
       kiro: undefined,
+      "agents-md": undefined,
     });
     expect(out).toHaveLength(1);
     expect(out[0]?.target).toBe("opencode");

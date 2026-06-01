@@ -92,6 +92,16 @@ const kiroAuthed: PlatformAuth = {
   detail: "logged in (IdC)",
 };
 
+// AGENTS.md is a markdown contract — no CLI, no auth surface to probe.
+// Used to fill the matrix for tests so it satisfies PlatformAuthMatrix
+// after the T5a Target widening.
+const agentsMdNotInstalled: PlatformAuth = {
+  platform: "agents-md",
+  cliInstalled: false,
+  status: "cli-not-installed",
+  detail: "AGENTS.md is a markdown contract — no CLI to authenticate",
+};
+
 /**
  * Build a minimal RunDoctor input keyed off a platformAuth matrix.
  * Used by exit-code-policy tests below.
@@ -101,6 +111,7 @@ function makeInputWithMatrix(matrixOverrides: Partial<{
   "claude-code": PlatformAuth;
   codex: PlatformAuth;
   kiro: PlatformAuth;
+  "agents-md": PlatformAuth;
 }>): Parameters<typeof runDoctor>[0] {
   const matrix = {
     opencode: {
@@ -123,6 +134,7 @@ function makeInputWithMatrix(matrixOverrides: Partial<{
       cliInstalled: true,
       status: "authenticated" as const,
     },
+    "agents-md": agentsMdNotInstalled,
     ...matrixOverrides,
   };
   return {
@@ -210,6 +222,7 @@ describe("doctor: per-platform auth matrix", () => {
           "claude-code": claudeAuthed,
           codex: codexNotInstalled,
           kiro: kiroAuthed,
+          "agents-md": agentsMdNotInstalled,
         },
       },
     });
@@ -254,6 +267,7 @@ describe("doctor: per-platform auth matrix", () => {
           "claude-code": claudeAuthed,
           codex: codexNotInstalled,
           kiro: kiroAuthed,
+          "agents-md": agentsMdNotInstalled,
         },
       },
     });

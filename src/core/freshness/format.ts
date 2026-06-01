@@ -2,6 +2,10 @@ import { join } from "node:path";
 import { tokenCreationInstructions } from "../../io/atlassian-auth";
 import { stateHome } from "../../io/state-home";
 import type { WorkspaceVersionStatus } from "../../io/workspace-version";
+import type {
+  Finding as KnowledgeCompileFinding,
+  KnowledgeCompileReport,
+} from "./check-knowledge-compile";
 import type { Finding as RefreshFinding, RefreshHooksReport } from "./check-refresh-hooks";
 import type { DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { RemoteCatalogsReport } from "./remote-catalogs";
@@ -155,6 +159,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatKnowledgeRefreshSection(report.knowledgeRefresh));
     blocks.push("");
   }
+  if (report.knowledgeCompile) {
+    blocks.push(formatKnowledgeCompileSection(report.knowledgeCompile));
+    blocks.push("");
+  }
   if (report.knowledgeConsistency) {
     blocks.push(formatKnowledgeConsistencySection(report.knowledgeConsistency));
     blocks.push("");
@@ -294,6 +302,10 @@ function renderSectionDetail(
     case "knowledge-refresh":
       return report.knowledgeRefresh
         ? formatKnowledgeRefreshSection(report.knowledgeRefresh)
+        : null;
+    case "knowledge-compile":
+      return report.knowledgeCompile
+        ? formatKnowledgeCompileSection(report.knowledgeCompile)
         : null;
     case "knowledge-prompt-disk-consistency":
       return report.knowledgeConsistency
@@ -768,6 +780,33 @@ function formatRefreshFinding(f: RefreshFinding): string {
       return `[corrupt-cache]       ${f.agent}/${f.sourceId} — refresh cache entry is unparseable or off-schema`;
     case "unmanaged-codex-hooks":
       return `[unmanaged-codex-hooks] ${f.path} — pre-existing user file lacks the _smith_managed sentinel`;
+  }
+}
+
+/**
+ * Render the knowledge-compile drift section. Read-only: lists each
+ * finding with a human-readable line. Repair is handled by the CLI's
+ * `--fix-knowledge-compile` flag (which re-runs `smith knowledge compile`
+ * for each affected agent).
+ */
+export function formatKnowledgeCompileSection(r: KnowledgeCompileReport): string {
+  const lines: string[] = ["Knowledge compile:"];
+  if (r.findings.length === 0) {
+    lines.push("  Status: ok");
+    return lines.join("\n");
+  }
+  lines.push(`  Status: ${r.findings.length} finding${r.findings.length === 1 ? "" : "s"}`);
+  for (const f of r.findings) lines.push(`  ${formatKnowledgeCompileFinding(f)}`);
+  lines.push("  Fix:    smith doctor --fix-knowledge-compile");
+  return lines.join("\n");
+}
+
+function formatKnowledgeCompileFinding(f: KnowledgeCompileFinding): string {
+  switch (f.kind) {
+    case "missing-manifest":
+      return `[missing-manifest] ${f.agent} — compile.progressive=true but compile-manifest.json is absent (or unparseable)`;
+    case "drift":
+      return `[drift]            ${f.agent} — recorded ${f.recordedHash.slice(0, 8)} != fresh ${f.currentHash.slice(0, 8)}`;
   }
 }
 

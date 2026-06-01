@@ -110,7 +110,8 @@ beforeEach(async () => {
     opencode: join(tmp, "out/opencode/agents"),
     "claude-code": join(tmp, "out/claude/agents"),
     codex: join(tmp, "out/codex/skills"),
-    kiro: join(tmp, "out/kiro/skills")
+    kiro: join(tmp, "out/kiro/skills"),
+    "agents-md": join(tmp, "out/agents-md")
   };
   await mkdir(agentsDir, { recursive: true });
   await writeFile(userPath, "You note things.\n");

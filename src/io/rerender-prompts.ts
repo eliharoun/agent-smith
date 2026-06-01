@@ -132,6 +132,7 @@ export async function rerenderPrompts(
     "claude-code": undefined,
     codex: undefined,
     kiro: undefined,
+    "agents-md": undefined,
   };
   // Per-target resolution mirrors the orchestrator (src/io/orchestrator.ts):
   // a single target's model-resolution failure should NOT take down the

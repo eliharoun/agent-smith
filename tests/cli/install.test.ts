@@ -11,6 +11,7 @@ const paths: InstallPaths = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/agents/skills",
   kiro: "/fake/kiro/agents",
+  "agents-md": "/fake/agents-md/agents",
 };
 
 const emptyResult: OrchestratorResult = {

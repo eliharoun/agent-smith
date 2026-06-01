@@ -21,6 +21,7 @@ const authedMatrix: PlatformAuthMatrix = {
   "claude-code": { platform: "claude-code", cliInstalled: true, status: "authenticated" },
   codex: { platform: "codex", cliInstalled: true, status: "authenticated" },
   kiro: { platform: "kiro", cliInstalled: true, status: "authenticated" },
+  "agents-md": { platform: "agents-md", cliInstalled: false, status: "cli-not-installed" },
 };
 
 const claudeMeta: ToolMapMeta = {
@@ -848,6 +849,7 @@ describe("runDoctor: agent-required-skills section", () => {
           "claude-code": "/nonexistent",
           codex: "/nonexistent",
           kiro: "/nonexistent",
+          "agents-md": "/nonexistent",
         },
         agents: [],
       },
@@ -887,6 +889,7 @@ describe("runDoctor: agent-required-skills section", () => {
             "claude-code": "/nonexistent",
             codex: "/nonexistent",
             kiro: "/nonexistent",
+            "agents-md": "/nonexistent",
           },
           agents: ["myagent"],
         },

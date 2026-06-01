@@ -3,6 +3,7 @@ import {
   injectKnowledgeIntoRender,
   injectPlatformConventions,
 } from "../knowledge/permission-grant";
+import { translateAgentsMd } from "./agents-md";
 import { translateClaudeCode } from "./claude-code";
 import { translateCodex } from "./codex";
 import { translateKiro } from "./kiro";
@@ -21,6 +22,7 @@ const TRANSLATORS: Record<
   "claude-code": translateClaudeCode,
   codex: translateCodex,
   kiro: translateKiro,
+  "agents-md": translateAgentsMd,
 };
 
 /**
@@ -57,4 +59,10 @@ export function renderForTargets(
   });
 }
 
-export { translateClaudeCode, translateCodex, translateKiro, translateOpenCode };
+export {
+  translateAgentsMd,
+  translateClaudeCode,
+  translateCodex,
+  translateKiro,
+  translateOpenCode,
+};

@@ -3,7 +3,7 @@
  */
 import type { KnowledgeBlock } from "./knowledge/types";
 
-export type Target = "opencode" | "claude-code" | "codex" | "kiro";
+export type Target = "opencode" | "claude-code" | "codex" | "kiro" | "agents-md";
 
 /**
  * Per-target install root paths. Shared by installer (writes there),
@@ -119,6 +119,27 @@ export function normalizeModelTier(input: ModelTierInput): CanonicalModelTier {
 }
 
 /**
+ * Per-target rendering options for the `agents-md` target.
+ */
+export interface AgentsMdTargetOptions {
+  /** Override the rendered file path (default: "AGENTS.md"). */
+  path?: string;
+}
+
+/**
+ * Per-target rendering options for the `claude-code` target.
+ */
+export interface ClaudeCodeTargetOptions {
+  /**
+   * When true and `agents-md` is also a target, the claude-code render
+   * becomes a 1-line pointer ("See AGENTS.md.") instead of the full body.
+   * Default: true when both targets are present in `targets`, undefined
+   * otherwise. Set to `false` to opt out of the auto-defer.
+   */
+  deferToAgentsMd?: boolean;
+}
+
+/**
  * The canonical agent configuration. Lives in agent.config.json.
  * Translated per-target at install time.
  */
@@ -211,6 +232,22 @@ export interface CanonicalConfig {
    * registry shrinkage).
    */
   platformConventions?: Partial<Record<Target, string[]>>;
+  /**
+   * Per-target rendering options that don't fit the canonical fields above.
+   * Each sub-key is target-specific and additive — omitting the block
+   * leaves all targets at their defaults.
+   *
+   * Currently used for:
+   *   - agentsMd.path: override the rendered file path (default "AGENTS.md").
+   *   - claudeCode.deferToAgentsMd: when true and `agents-md` is also a
+   *     target, the claude-code render becomes a 1-line pointer
+   *     ("See AGENTS.md.") instead of the full body. Default is true when
+   *     both targets are present in `targets`, undefined otherwise.
+   */
+  targetOptions?: {
+    agentsMd?: AgentsMdTargetOptions;
+    claudeCode?: ClaudeCodeTargetOptions;
+  };
   /**
    * Optional per-bundle override of validator thresholds. Replaces the
    * corresponding global default for any field that is set; omitted fields

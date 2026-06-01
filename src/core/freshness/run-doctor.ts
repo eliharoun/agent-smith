@@ -54,6 +54,11 @@ import {
   checkRefreshHooks,
   type RefreshHooksReport,
 } from "./check-refresh-hooks";
+import {
+  type CheckKnowledgeCompileInput,
+  checkKnowledgeCompile,
+  type KnowledgeCompileReport,
+} from "./check-knowledge-compile";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { InstalledModelsPaths } from "./installed-models";
@@ -101,6 +106,7 @@ export type DoctorSectionId =
   | "remote-catalogs"
   | "duplicate-catalogs"
   | "knowledge-refresh"
+  | "knowledge-compile"
   | "knowledge-prompt-disk-consistency";
 
 export interface DoctorSectionStartEvent {
@@ -319,6 +325,16 @@ export interface RunDoctorInput {
    */
   knowledgeRefresh?: CheckRefreshHooksInput;
   /**
+   * Optional knowledge-compile detection. When provided, runs the
+   * read-only drift check defined in
+   * {@link "./check-knowledge-compile".checkKnowledgeCompile}. For each
+   * candidate (a registered agent with `knowledge.compile.progressive=true`),
+   * it compares the persisted `compile-manifest.json` against a fresh
+   * `compile()` over the agent's existing materialized sources. Repair
+   * (`--fix-knowledge-compile`) is wired in the CLI layer.
+   */
+  knowledgeCompile?: CheckKnowledgeCompileInput;
+  /**
    * Optional knowledge-prompt-disk-consistency check. When provided, verifies
    * that Knowledge Index bullets in rendered prompts resolve to existing files,
    * repos/ symlinks are valid, and manifest entries match disk.
@@ -522,6 +538,18 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let knowledgeCompile: KnowledgeCompileReport | undefined;
+  if (input.knowledgeCompile) {
+    emitStart(input, "knowledge-compile", "Knowledge compile");
+    knowledgeCompile = await checkKnowledgeCompile(input.knowledgeCompile);
+    emitDone(
+      input,
+      "knowledge-compile",
+      knowledgeCompileEventStatus(knowledgeCompile),
+      knowledgeCompileSummary(knowledgeCompile),
+    );
+  }
+
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
   if (input.knowledgeConsistency) {
     emitStart(input, "knowledge-prompt-disk-consistency", "Knowledge prompt-disk consistency");
@@ -565,6 +593,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(remoteCatalogs ? { remoteCatalogs } : {}),
     ...(duplicateCatalogs ? { duplicateCatalogs } : {}),
     ...(knowledgeRefresh ? { knowledgeRefresh } : {}),
+    ...(knowledgeCompile ? { knowledgeCompile } : {}),
     ...(knowledgeConsistency ? { knowledgeConsistency } : {}),
   };
 }
@@ -1356,6 +1385,25 @@ function knowledgeRefreshEventStatus(r: RefreshHooksReport): DoctorSectionDoneEv
 function knowledgeRefreshSummary(r: RefreshHooksReport): string {
   if (r.findings.length === 0) return "Knowledge refresh: ok";
   return `Knowledge refresh: ${r.findings.length} finding${r.findings.length === 1 ? "" : "s"}`;
+}
+
+function knowledgeCompileEventStatus(
+  r: KnowledgeCompileReport,
+): DoctorSectionDoneEvent["status"] {
+  // The detector never returns "error" today — every finding is a
+  // user-fixable drift signal. Map status verbatim and keep the switch
+  // open for a future hard-failure kind (e.g. unreadable knowledge dir).
+  return r.status === "warn" ? "warn" : "ok";
+}
+
+function knowledgeCompileSummary(r: KnowledgeCompileReport): string {
+  if (r.findings.length === 0) return "Knowledge compile: ok";
+  const missing = r.findings.filter((f) => f.kind === "missing-manifest").length;
+  const drift = r.findings.filter((f) => f.kind === "drift").length;
+  const parts: string[] = [];
+  if (missing > 0) parts.push(`${missing} missing-manifest`);
+  if (drift > 0) parts.push(`${drift} drift`);
+  return `Knowledge compile: ${parts.join(", ")}`;
 }
 
 function duplicateCatalogsEventStatus(

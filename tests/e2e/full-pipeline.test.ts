@@ -26,7 +26,8 @@ beforeEach(async () => {
     opencode: join(root, "out/opencode/agents"),
     "claude-code": join(root, "out/claude/agents"),
     codex: join(root, "out/agents/skills"),
-    kiro: join(root, "out/kiro/agents")
+    kiro: join(root, "out/kiro/agents"),
+    "agents-md": join(root, "out/agents-md")
   };
   // Make a complete bundle on disk
   const dir = join(agentsDir, "code-reviewer");

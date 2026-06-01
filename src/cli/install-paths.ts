@@ -10,6 +10,20 @@ export function defaultInstallPaths(): InstallPaths {
     "claude-code": join(homedir(), ".claude/agents"),
     codex: join(homedir(), ".agents/skills"),
     kiro: join(homedir(), ".kiro/agents"),
+    // AGENTS.md is consumed by external tools (Cursor, Windsurf, Copilot,
+    // etc.) and lives at the project or home root, not a platform-managed
+    // agents directory. The translator emits a relative path (default
+    // "AGENTS.md") which the installer joins with this root.
+    //
+    // TODO(T5b/follow-up): InstallPaths is currently global (one set per
+    // install run, not per bundle), so this resolves to `~` for every
+    // bundle regardless of source kind. This works for `user-global`
+    // bundles (lands at ~/AGENTS.md), but project/registered bundles
+    // probably want their AGENTS.md at the bundle's project root. For
+    // those, users can set `targetOptions.agentsMd.path` to an absolute
+    // or repo-relative path. A future PR can extend InstallPaths to be
+    // bundle-aware so the default does the right thing automatically.
+    "agents-md": homedir(),
   };
 }
 

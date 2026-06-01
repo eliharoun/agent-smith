@@ -16,6 +16,13 @@ export const RESOLVERS: Record<Target, Resolver> = {
   "claude-code": resolveClaudeCodeModel,
   codex: resolveCodexModel,
   kiro: resolveKiroModel,
+  // AGENTS.md is a plain markdown contract — no model id is ever written
+  // into the file, since the consuming tool (Cursor, Windsurf, Copilot,
+  // etc.) picks its own model. Resolver returns undefined so no `model:`
+  // ever flows downstream. The agents-md translator (T5b) will likewise
+  // ignore any resolved model. This entry exists only to satisfy the
+  // Record<Target, Resolver> exhaustiveness during the T5a widening.
+  "agents-md": async () => undefined,
 };
 
 export {

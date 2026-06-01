@@ -22,6 +22,7 @@ const paths: InstallPaths = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/agents/skills",
   kiro: "/fake/kiro/agents",
+  "agents-md": "/fake/agents-md/agents",
 };
 
 describe("io/uninstaller computeUninstallPath", () => {
@@ -173,7 +174,7 @@ describe("io/uninstaller removeBundle", () => {
       source: { kind: "user-global", rootPath: "/tmp" } as AgentBundle["source"],
       files: { identity: "", expertise: "", soul: "", user: "" },
     };
-    const localPaths: InstallPaths = { opencode: "/tmp/oc", "claude-code": "/tmp/cc", codex: "/tmp/cx", kiro: "/tmp/kiro" };
+    const localPaths: InstallPaths = { opencode: "/tmp/oc", "claude-code": "/tmp/cc", codex: "/tmp/cx", kiro: "/tmp/kiro", "agents-md": "/tmp/agents-md" };
     const localKnowledge = { agentSmithHome: "/tmp/as" };
 
     const result = await removeBundle(bundle, localPaths, localKnowledge, {
@@ -200,7 +201,7 @@ describe("io/uninstaller removeBundle", () => {
       source: { kind: "user-global", rootPath: "/tmp" } as AgentBundle["source"],
       files: { identity: "", expertise: "", soul: "", user: "" },
     };
-    const localPaths: InstallPaths = { opencode: "/tmp/oc", "claude-code": "/tmp/cc", codex: "/tmp/cx", kiro: "/tmp/kiro" };
+    const localPaths: InstallPaths = { opencode: "/tmp/oc", "claude-code": "/tmp/cc", codex: "/tmp/cx", kiro: "/tmp/kiro", "agents-md": "/tmp/agents-md" };
     const localKnowledge = { agentSmithHome: "/tmp/as" };
 
     const result = await removeBundle(bundle, localPaths, localKnowledge, {
@@ -303,6 +304,7 @@ describe("io/uninstaller defaultRmFile (integration)", () => {
       "claude-code": join(root, "claude/agents"),
       codex: join(root, "agents/skills"),
       kiro: join(root, "kiro/agents"),
+      "agents-md": join(root, "agents-md/agents"),
     };
     // Knowledge home lives under the same tmp root. We deliberately do NOT
     // create knowledge/<name>/ — the production rm() should ENOENT and the
@@ -396,6 +398,7 @@ describe("io/uninstaller manifest-aware removeBundle", () => {
       "claude-code": join(installRoot, "claude/agents"),
       codex: join(installRoot, "agents/skills"),
       kiro: join(installRoot, "kiro/agents"),
+      "agents-md": join(installRoot, "agents-md/agents"),
     };
   });
   afterEach(async () => {

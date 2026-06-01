@@ -145,7 +145,7 @@ Scaffold a new agent bundle. Defaults to `~/.config/agent-smith/agents/<name>/`;
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--description <text>` | string, 10–200 chars | — (**required** unless `--from` is given) | One-line description shown in agent pickers. Must start with an action phrase (e.g. `Use proactively...`, `Reviews...`, `Builds...`) per the `^(Use\b\|[A-Z][a-z]+s?\b)` regex. |
-| `--targets <list>` | comma-list of `opencode\|claude-code\|codex\|kiro` | all four | Which platforms this agent installs to. |
+| `--targets <list>` | comma-list of `opencode\|claude-code\|codex\|kiro\|agents-md` | `opencode,claude-code,codex,kiro` | Which platforms this agent installs to. `agents-md` emits a single AGENTS.md (Cursor / Windsurf / Copilot / Aider / Codex CLI / Devin / Junie / Roo / Zed / Warp / Gemini CLI all consume it). See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md#the-agents-md-target). |
 | `--model-tier <tier>` | enum: `balanced\|fast\|high\|inherit` (aliases: `opus`, `sonnet`, `haiku`) | `balanced` | Capability tier the agent expects. `inherit` defers to the calling agent's model. See [Models](./guide/07-models.md). |
 | `--mode <mode>` | enum: `primary\|subagent\|all` | (unset) | `primary` = user-facing, picker-listed. `subagent` = invocable only via Task tool. `all` = both. When unset, downstream platform translators decide picker visibility. |
 | `--permission <preset>` | enum: `read-only\|read-edit\|full` | (unset) | Pre-built permission preset. `read-only` denies write/exec. `read-edit` allows file edits but no shell. `full` allows everything. When unset, the bundle inherits the platform's default permission set. |
@@ -153,7 +153,8 @@ Scaffold a new agent bundle. Defaults to `~/.config/agent-smith/agents/<name>/`;
 | `--mcp-servers <list>` | comma-list | empty | MCP server names to wire into the agent. |
 | `--skills <list>` | comma-list | empty | Bundled skill names to bake into the agent's prompt. |
 | `--requires-skills <list>` | comma-list of `name` or `catalog/name` | empty | Runtime skill dependencies. `smith agent install` auto-checks and offers to install missing ones. See [Required skills](#required-skills-requiresskills). |
-| `--from <bundle>` | bundle name | — | Clone an existing bundle's files (IDENTITY/EXPERTISE/SOUL) as the new starting point. Inherits `--description` from the source if not overridden. |
+| `--from <bundle>` | bundle name | — | Clone an existing bundle's files (IDENTITY/EXPERTISE/SOUL) as the new starting point. Inherits `--description` from the source if not overridden. Mutually exclusive with `--from-apm`. |
+| `--from-apm <path>` | path to `apm.yml` | — | Import a Microsoft APM bundle (`apm.yml`) as the starting point. Maps APM `runtimes` to smith `targets`, converts `references[]` to knowledge sources, forces `compile.progressive=true` and `compile.emitAgentsMd=true`. One-way. See [guide/16 — APM import](./guide/16-knowledge-compiler.md#apm-import-smith-agent-init---from-apm). |
 | `--catalog <label-or-path>` | string | — | Scaffold into a registered agent catalog by label or absolute path; refused if not registered. See [Sharing & distribution § 2.2](./guide/15-sharing-and-distribution.md#22-scaffold-into-the-catalog-directory). |
 
 **Notes:**
@@ -296,7 +297,7 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--force` | bool | `false` | Bypass smith's would-clobber refusal: write the rendered file even if the destination exists and isn't claimed by smith's `installed-agents.json` manifest. Also re-claims a manifest entry whose recorded path no longer matches the new render's relativePath (rename / translator change). |
 | `--allow-missing-mcp` | bool | `false` | Demote missing-MCP-server errors to warnings (install blocks by default). |
 | `--allow-missing-cli` | bool | `false` | Demote missing-platform-CLI errors to warnings; resolver emits the static tier literal instead of dropping the target. |
-| `--platforms <list>` | comma-list of `opencode\|claude-code\|codex\|kiro` | all declared targets | Restrict install to specific platforms (subset of the agent's declared targets). |
+| `--platforms <list>` | comma-list of `opencode\|claude-code\|codex\|kiro\|agents-md` | all declared targets | Restrict install to specific platforms (subset of the agent's declared targets). |
 | `--all` | bool | `false` | Install every agent discovered in `--from <url>`. |
 | `--agents <list>` | comma-list | — | Comma-separated agent names to install from `--from <url>`. |
 | `--json` | bool | `false` | Discover agents from `--from <url>`, print JSON, do not install. |
@@ -417,9 +418,9 @@ Full offboarding: `agent uninstall-all` + `rm -rf ~/.config/agent-smith`. Requir
 
 #### `smith doctor`
 
-Health check across up to 15 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `knowledge-refresh`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section (v1-task RC2-10) groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code. v1-task C3.14.
+Health check across up to 16 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `knowledge-refresh`, `knowledge-compile`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section (v1-task RC2-10) groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code. v1-task C3.14.
 
-**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh]`
+**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile]`
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -431,6 +432,7 @@ Health check across up to 15 sections: `opencode`, `claude-code`, `codex`, `kiro
 | `--json` | bool | `false` | Machine-readable JSON output; disables spinners. Includes a `skippedPlatforms: PlatformId[]` field (always present, empty when all four are installed). |
 | `--skip-model-resolution` | bool | `false` | Skip the v0.6.0 model-resolution check (faster but less complete). Auto-skipped when OpenCode is not on PATH. |
 | `--fix-knowledge-refresh` | bool | `false` | Auto-repair drift in the `knowledgeRefresh` section: `missing-hook` and `orphaned-consent` route through `smith agent reconfigure`; `corrupt-cache` removes the bad meta file (next refresh repopulates). `unmanaged-codex-hooks` is **not** auto-fixed — prints a hint to run `smith knowledge migrate-codex`. See [guide/14 — Knowledge-refresh drift](./guide/14-cli-reference.md#knowledge-refresh-drift-and-auto-repair). |
+| `--fix-knowledge-compile` | bool | `false` | v2. Auto-repair drift in the `knowledgeCompile` section: re-runs `smith knowledge compile <agent>` for every `missing-manifest` or `drift` finding. Both kinds repair via the same path because a re-compile both re-materializes sources and overwrites a stale or corrupt `compile-manifest.json`. See [guide/14 — Knowledge-compile drift](./guide/14-cli-reference.md#knowledge-compile-drift-and-auto-repair). |
 
 **Notes:**
 - Exit code is its own taxonomy: `0` = clean, `1` = drift detected, `2` = network error. `smith update` propagates this verbatim.
@@ -443,6 +445,7 @@ smith doctor --offline --no-cache              # full diagnostic, no network
 smith doctor --verbose                          # full per-section detail (the pre-v0.13 default)
 smith doctor --json | jq '.sections[].status'  # quick status check
 smith doctor --fix-knowledge-refresh           # auto-repair refresh-hook drift
+smith doctor --fix-knowledge-compile           # auto-repair compile-manifest drift (v2)
 ```
 
 #### `smith update`
@@ -540,6 +543,47 @@ Re-fetch URL/git caches for an agent and re-install. Use after upstream content 
 ```bash
 smith knowledge fetch code-reviewer --source api-docs
 ```
+
+#### `smith knowledge compile [name]`
+
+Compile a bundle's knowledge sources into a TOC stanza + `compile-manifest.json` (v2 progressive disclosure). Requires `knowledge.compile.progressive: true` in `agent.config.json`. `smith agent install` runs this automatically; manual invocation is for offline iteration and CI.
+
+**Synopsis:** `smith knowledge compile [name] [--all]`
+
+**Args:**
+| Arg | Required | Description |
+|---|---|---|
+| `[name]` | conditional | Bundle name. Required unless `--all`. Mutually exclusive with `--all`. |
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--all` | bool | `false` | Compile every registered bundle that has `compile.progressive=true`. Bundles without the block are skipped (one warn line per bundle); exits non-zero only if all targeted bundles were skipped. |
+
+**Exit codes:** `0` — compiled. `1` — runtime error. `2` — usage (no name and no `--all`, or both; named bundle has no compile block; `--all` matched no compile-enabled bundles).
+
+**Example:**
+```bash
+smith knowledge compile my-agent
+smith knowledge compile --all
+```
+
+See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
+
+#### `smith knowledge serve <name>`
+
+Serve an agent's knowledge over MCP — `knowledge.search` (BM25) + `knowledge.fetch` (range-bounded read). Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
+
+**Synopsis:** `smith knowledge serve <name> [--stdio]`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--stdio` | bool | `true` | Serve over stdio (MCP). Currently the only transport. |
+
+**Exit codes:** `0` — server exited cleanly on stdin EOF. `1` — runtime error. `2` — agent not registered; `--stdio false` passed.
+
+See [guide/16 — `smith knowledge serve --stdio`](./guide/16-knowledge-compiler.md#smith-knowledge-serve---stdio).
 
 #### `smith knowledge remove <agent> <source-id>`
 

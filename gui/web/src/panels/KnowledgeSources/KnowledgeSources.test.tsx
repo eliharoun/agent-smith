@@ -175,6 +175,66 @@ describe("KnowledgeSources", () => {
     expect(screen.getByText(/remove knowledge source/i)).toBeInTheDocument();
   });
 
+  // ─── T11: compile + serve buttons ──────────────────────────────────────
+
+  it("compile button dispatches knowledge.compile with name", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [
+          { source: { id: "docs", type: "url", url: "https://x.test/" } },
+        ],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /compile/i }));
+    await waitFor(() => {
+      const post = calls.find(
+        (c) =>
+          c.url.includes("/api/jobs") &&
+          c.init?.method === "POST" &&
+          ((JSON.parse((c.init?.body as string) ?? "{}").command as string) ===
+            "knowledge.compile"),
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post!.init!.body as string) ?? "{}");
+      expect(body).toMatchObject({ command: "knowledge.compile", name: "testing-agent" });
+    });
+  });
+
+  it("serve button dispatches knowledge.serve with name", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "testing-agent",
+        sources: [
+          { source: { id: "docs", type: "url", url: "https://x.test/" } },
+        ],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+    ) as unknown as typeof fetch;
+    renderPanel();
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^serve$/i }));
+    await waitFor(() => {
+      const post = calls.find(
+        (c) =>
+          c.url.includes("/api/jobs") &&
+          c.init?.method === "POST" &&
+          ((JSON.parse((c.init?.body as string) ?? "{}").command as string) ===
+            "knowledge.serve"),
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post!.init!.body as string) ?? "{}");
+      expect(body).toMatchObject({ command: "knowledge.serve", name: "testing-agent" });
+    });
+  });
+
   it("opens AddKnowledgeSourceModal with 8 source types", async () => {
     globalThis.fetch = mockFetch(
       () => ({ agent: "testing-agent", sources: [] }),

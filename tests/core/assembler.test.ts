@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import { assembleBody } from "../../src/core/assembler";
 
 describe("core/assembler", () => {
@@ -326,5 +326,27 @@ describe("tool routing policy", () => {
     const body = assembleBody(baseInput, skills, knowledge);
     expect(body).toContain("jira-helper");
     expect(body).not.toContain("confluence-helper");
+  });
+});
+
+describe("assembleBody with compiledKnowledge (v2 progressive disclosure)", () => {
+  it("uses compiledKnowledge.tocStanza in place of the v1 inline+index when supplied", () => {
+    const body = assembleBody(
+      { identity: "I", expertise: "E", soul: "S", user: "U" },
+      undefined,
+      undefined,
+      {
+        tocStanza: "## Knowledge\n\nCOMPILED-TOC",
+        warnings: [],
+        manifest: {
+          schemaVersion: 1,
+          contentHash: "h",
+          sources: [],
+          totals: { tocLines: 0, sourcesIndexed: 0, sourcesShown: 0 },
+        },
+      },
+    );
+    expect(body).toContain("COMPILED-TOC");
+    expect(body).not.toContain("## Knowledge Index");
   });
 });

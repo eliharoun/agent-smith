@@ -57,6 +57,7 @@ export const PLATFORM_CONVENTIONS: Record<Target, readonly PlatformConvention[]>
   opencode: [],
   "claude-code": [],
   codex: [],
+  "agents-md": [],
 };
 
 export function getConventionsForPlatform(target: Target): readonly PlatformConvention[] {

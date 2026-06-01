@@ -25,6 +25,7 @@ beforeEach(async () => {
     "claude-code": join(root, "claude/agents"),
     codex: join(root, "agents/skills"),
     kiro: join(root, "kiro/agents"),
+    "agents-md": join(root, "agents-md/agents"),
   };
 });
 afterEach(async () => {

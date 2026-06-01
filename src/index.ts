@@ -530,6 +530,42 @@ knowledgeCmd
   );
 
 knowledgeCmd
+  .command("compile [name]")
+  .description(
+    "Compile <name>'s knowledge sources into a TOC stanza + compile-manifest.json. Requires `knowledge.compile.progressive: true` in agent.config.json.",
+  )
+  .option("--all", "Compile every registered bundle that has compile.progressive=true")
+  .action(
+    wrap(
+      "knowledge compile",
+      async (name: string | undefined, opts: { all?: boolean }) => {
+        const { runKnowledgeCompile } = await import("./cli/commands/knowledge/compile");
+        return runKnowledgeCompile({
+          ...(name ? { name } : {}),
+          ...(opts.all ? { all: true } : {}),
+        });
+      },
+    ),
+  );
+
+knowledgeCmd
+  .command("serve <name>")
+  .description(
+    "Serve <name>'s knowledge over MCP (knowledge.search + knowledge.fetch). Stdio transport.",
+  )
+  .option("--stdio", "Serve over stdio (MCP); default and only transport in v1", true)
+  .action(
+    wrap(
+      "knowledge serve",
+      async (name: string, opts: { stdio?: boolean }) => {
+        const { runKnowledgeServe } = await import("./cli/commands/knowledge/serve");
+        await runKnowledgeServe({ name, stdio: opts.stdio !== false });
+        return 0;
+      },
+    ),
+  );
+
+knowledgeCmd
   .command("remove <agent> <source-id>")
   .description("Remove a knowledge source from <agent>'s bundle by source id")
   .action(
@@ -593,6 +629,10 @@ program
     "--fix-knowledge-refresh",
     "Auto-repair knowledge-refresh drift findings (re-register missing hooks, delete corrupt cache entries, clear orphaned consents)",
   )
+  .option(
+    "--fix-knowledge-compile",
+    "Auto-repair knowledge-compile drift findings (re-run `smith knowledge compile <agent>` for each missing-manifest or drift finding)",
+  )
   .action(
     wrap(
       "doctor",
@@ -604,6 +644,7 @@ program
         verbose?: boolean;
         quiet?: boolean;
         fixKnowledgeRefresh?: boolean;
+        fixKnowledgeCompile?: boolean;
       }) => {
         const { runDoctorCli } = await import("./cli/commands/doctor");
         // commander inverts --no-cache → opts.cache: false, so we negate.
@@ -615,6 +656,7 @@ program
           verbose: opts.verbose ?? false,
           quiet: opts.quiet ?? false,
           fixKnowledgeRefresh: opts.fixKnowledgeRefresh ?? false,
+          fixKnowledgeCompile: opts.fixKnowledgeCompile ?? false,
         });
       },
     ),

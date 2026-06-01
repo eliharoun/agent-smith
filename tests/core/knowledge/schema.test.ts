@@ -626,3 +626,47 @@ describe("KnowledgeSourceSchema — refresh field", () => {
     expect(r.success).toBe(false);
   });
 });
+
+describe("KnowledgeSourceSchema: compile-stage fields", () => {
+  it("accepts a per-source summary, toc, and retrieval block", () => {
+    const parsed = KnowledgeSourceSchema.parse({
+      id: "team-runbook",
+      type: "url",
+      url: "https://example.com/runbook",
+      delivery: "file",
+      summary: "On-call runbook for the data platform",
+      toc: true,
+      retrieval: { mode: "bm25" },
+    });
+    expect(parsed.summary).toBe("On-call runbook for the data platform");
+    expect(parsed.toc).toBe(true);
+    expect(parsed.retrieval?.mode).toBe("bm25");
+  });
+
+  it("rejects retrieval.mode values outside the enum", () => {
+    expect(() =>
+      KnowledgeSourceSchema.parse({
+        id: "x",
+        type: "url",
+        url: "https://x",
+        delivery: "file",
+        retrieval: { mode: "vector" },
+      }),
+    ).toThrow();
+  });
+
+  it("accepts a top-level compile block on KnowledgeBlock", () => {
+    const block = KnowledgeBlockSchema.parse({
+      sources: [],
+      compile: { progressive: true, tocMaxLines: 100, emitAgentsMd: true },
+    });
+    expect(block.compile?.progressive).toBe(true);
+    expect(block.compile?.tocMaxLines).toBe(100);
+  });
+
+  it("rejects compile.tocMaxLines above the cap", () => {
+    expect(() =>
+      KnowledgeBlockSchema.parse({ sources: [], compile: { tocMaxLines: 999 } }),
+    ).toThrow();
+  });
+});

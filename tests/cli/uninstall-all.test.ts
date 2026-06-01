@@ -12,6 +12,7 @@ const paths: InstallPaths = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/agents/skills",
   kiro: "/fake/kiro/agents",
+  "agents-md": "/fake/agents-md/agents",
 };
 
 // Hermetic knowledge paths so plan + remove don't touch the real user home.

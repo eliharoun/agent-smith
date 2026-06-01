@@ -58,6 +58,14 @@ async function readPlatformMcpServers(
       // check" — consistent with how missing config files behave for the
       // other platforms.
       return null;
+    case "agents-md":
+      // AGENTS.md is a plain markdown file consumed by external tools
+      // (Cursor, Windsurf, Copilot, etc.) — each tool has its own MCP
+      // system with no shared global config. There is no single file
+      // smith can probe for "is this MCP server installed?". Return null
+      // so the caller treats agents-md as "no MCP config to check",
+      // mirroring kiro's behaviour.
+      return null;
   }
 }
 

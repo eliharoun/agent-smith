@@ -9,6 +9,7 @@ const paths: InstallPaths = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/agents/skills",
   kiro: "/fake/kiro/agents",
+  "agents-md": "/fake/agents-md/agents",
 };
 const knowledgePaths = { agentSmithHome: "/fake/non-existent-agent-smith-home" };
 
@@ -66,7 +67,8 @@ describe("cli/uninstall-all: --platforms filter", () => {
         opencode: join(root, "opencode"),
         "claude-code": join(root, "claude"),
         codex: join(root, "codex"),
-        kiro: join(root, "kiro")
+        kiro: join(root, "kiro"),
+        "agents-md": join(root, "agents-md")
       },
       knowledgePaths: { agentSmithHome },
       loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,

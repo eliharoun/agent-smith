@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { defaultKnowledgePaths } from "../cli/install-paths";
 import { assembleBody } from "../core/assembler";
+import type { CompiledKnowledge } from "../core/knowledge/compile";
 import { runKnowledgeStage } from "../core/knowledge/pipeline";
 import { mergeCacheEntry, writeRefreshCache } from "../core/knowledge/refresh-cache";
 import { acquireInstallLock, releaseRefreshLock } from "../core/knowledge/refresh-lock";
@@ -294,6 +295,7 @@ export async function buildAndInstall(
       );
       let knowledgeSection: KnowledgeSection | undefined;
       let knowledgeDir: string | undefined;
+      let compiledKnowledge: CompiledKnowledge | undefined;
       if (mergedKnowledge && (mergedKnowledge.sources?.length ?? 0) > 0) {
         knowledgeDir = knowledgeDirFor(bundle.config.name, resolvedKnowledgePaths);
         const cacheDir = cacheDirFor(bundle.config.name, resolvedKnowledgePaths);
@@ -320,6 +322,7 @@ export async function buildAndInstall(
         }
         warnings.push(...stage.warnings.map((w) => `[${bundle.config.name}/knowledge] ${w}`));
         knowledgeSection = stage.section;
+        compiledKnowledge = stage.compiled;
 
         // Write per-source refresh-cache meta so the GUI surfaces a
         // lastRefreshAt immediately after install/render. Mirrors the
@@ -355,7 +358,7 @@ export async function buildAndInstall(
       // Final body: include knowledge section if the pipeline produced one.
       const body =
         knowledgeSection || skillsSection
-          ? assembleBody(bundle.files, skillsSection, knowledgeSection)
+          ? assembleBody(bundle.files, skillsSection, knowledgeSection, compiledKnowledge)
           : validationBody;
 
       // Knowledge-aware total-body length check on the FINAL rendered body.
@@ -375,6 +378,7 @@ export async function buildAndInstall(
         "claude-code": undefined,
         codex: undefined,
         kiro: undefined,
+        "agents-md": undefined,
       };
       // Targets that resolved successfully. If a per-target resolver throws
       // (unauthenticated, model-resolution-failed, etc.) or returns

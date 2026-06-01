@@ -1,3 +1,4 @@
+import type { CompiledKnowledge } from "./knowledge/compile";
 import type { KnowledgeSection } from "./knowledge/types";
 import { ROUTING_REGISTRY } from "./knowledge/routing-registry";
 
@@ -133,6 +134,7 @@ export function assembleBody(
   input: AssemblerInput,
   skillsSection?: SkillsSection,
   knowledgeSection?: KnowledgeSection,
+  compiledKnowledge?: CompiledKnowledge,
 ): string {
   const blocks: string[] = [
     clean(input.identity),
@@ -142,7 +144,10 @@ export function assembleBody(
   ];
   const routing = renderToolRoutingPolicy(skillsSection, knowledgeSection);
   if (routing) blocks.push(routing);
-  if (knowledgeSection) {
+  if (compiledKnowledge) {
+    // v2.0: progressive disclosure replaces the v1 inline + discipline + index trio.
+    blocks.push(compiledKnowledge.tocStanza);
+  } else if (knowledgeSection) {
     const inline = renderKnowledgeInline(knowledgeSection);
     if (inline) blocks.push(inline);
     const discipline = renderKnowledgeDiscipline(knowledgeSection);

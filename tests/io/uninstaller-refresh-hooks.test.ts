@@ -33,6 +33,7 @@ describe("removeBundle: refresh-manifest cleanup", () => {
       "claude-code": join(workDir, "claude/agents"),
       codex: join(workDir, "agents/skills"),
       kiro: join(workDir, "kiro/agents"),
+      "agents-md": join(workDir, "agents-md/agents"),
     };
     knowledgePaths = { agentSmithHome };
   });
@@ -107,6 +108,7 @@ describe("removeBundle: codex refresh-hook cleanup", () => {
       "claude-code": join(workDir, "claude/agents"),
       codex: join(workDir, "agents/skills"),
       kiro: join(workDir, "kiro/agents"),
+      "agents-md": join(workDir, "agents-md/agents"),
     };
     knowledgePaths = { agentSmithHome };
   });

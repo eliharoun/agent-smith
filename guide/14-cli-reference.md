@@ -55,11 +55,13 @@ duplication and surfaces only in tests, not user-visible output.
 | [`init-user`](#smith-init-user) | Open `USER.md` in `$EDITOR` | [01](./01-getting-started.md) |
 | [`jack-out`](#smith-jack-out) | Full offboarding: uninstall everything and remove `~/.config/agent-smith` | [11](./11-update-and-uninstall.md) |
 | [`knowledge add`](#smith-knowledge-add-agent-type-or-url-path-or-url) | Add a knowledge source to an agent's config | [04](./04-knowledge.md) |
+| [`knowledge compile`](#smith-knowledge-compile-name) | Compile a bundle's knowledge sources into a TOC stanza + manifest (v2) | [16](./16-knowledge-compiler.md) |
 | [`knowledge fetch`](#smith-knowledge-fetch-agent) | Re-acquire knowledge sources for an agent and re-install | [04](./04-knowledge.md) |
 | [`knowledge migrate-codex`](#smith-knowledge-migrate-codex) | Take ownership of a pre-existing `~/.codex/hooks.json` (upgrade helper) | [04](./04-knowledge.md) |
 | [`knowledge refresh-session`](#smith-knowledge-refresh-session) | Refresh session-mode sources for installed agents (soft-fail; for hook use) | [04](./04-knowledge.md) |
 | [`knowledge list`](#smith-knowledge-list-agent) | Show installed knowledge for an agent (from the manifest) | [04](./04-knowledge.md) |
 | [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
+| [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (BM25 search + fetch, stdio) | [16](./16-knowledge-compiler.md) |
 | [`knowledge validate`](#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents | [04](./04-knowledge.md) |
 | [`migrate-clones`](#smith-migrate-clones) | Migrate rc.1 external-repo clones from config to state dir | [13](./13-paths-and-state.md) |
 | [`skill bootstrap`](#smith-skill-bootstrap) | Install the bundled `the-architect` and `the-keymaker` skills to all platforms | [01](./01-getting-started.md) |
@@ -226,7 +228,7 @@ the rc.3 release notes.
 
 ### `smith agent init <name>`
 
-**Synopsis:** `smith agent init <name> [--description <text>] [--targets <list>] [--model-tier <tier>] [--mode <mode>] [--permission <preset>] [--permission-json <json>] [--mcp-servers <list>] [--skills <list>] [--requires-skills <list>] [--from <source>] [--catalog <label-or-path>]`
+**Synopsis:** `smith agent init <name> [--description <text>] [--targets <list>] [--model-tier <tier>] [--mode <mode>] [--permission <preset>] [--permission-json <json>] [--mcp-servers <list>] [--skills <list>] [--requires-skills <list>] [--from <source>] [--from-apm <path>] [--catalog <label-or-path>]`
 
 **Description:** Scaffold a new agent bundle. By default lands under
 `~/.config/agent-smith/agents/<name>/` (the `user-global` catalog); use
@@ -268,7 +270,18 @@ Source: `src/cli/commands/init-agent.ts` and `src/cli/commands/agent/register-co
 - `--requires-skills <list>` — comma-separated skill refs. Each entry is
   either `<name>` or `<catalog>/<name>`. Empty entries are dropped.
 - `--from <source>` — clone an existing bundle by name. Resolved against
-  the user's agents dir first, then `examples/`.
+  the user's agents dir first, then `examples/`. Mutually exclusive with
+  `--from-apm`.
+- `--from-apm <path>` — import a Microsoft APM (`microsoft/apm`) `apm.yml`
+  file as the starting point. Maps APM `runtimes` to smith `targets`
+  (claude-code/opencode/codex/kiro pass through 1:1; copilot/cursor/gemini/
+  windsurf collapse into `agents-md`; unknown runtimes silently dropped),
+  converts `references[]` into knowledge sources, and forces
+  `compile.progressive: true` + `compile.emitAgentsMd: true` on the
+  imported bundle. `mcp:` references are dropped (configure them
+  separately in `mcpServers`). One-way; smith → APM export is out of
+  scope. Mutually exclusive with `--from`. See
+  [Knowledge compiler — APM import](./16-knowledge-compiler.md#apm-import-smith-agent-init---from-apm).
 - `--catalog <label-or-path>` — scaffold into a registered agent catalog
   instead of the default user-global catalog. Accepts a catalog label
   (e.g. `team-agents`) or an absolute path; values containing a `/` are
@@ -297,6 +310,9 @@ $ smith agent init my-agent --from the-architect --description "Variant A"
 $ smith agent init code-reviewer --catalog team-agents \
     --description "Reviews PRs against team conventions"
 # → bundle created at <team-agents rootPath>/code-reviewer with a stub USER.md
+$ smith agent init my-agent --from-apm ./apm.yml
+# → smith bundle from a Microsoft APM apm.yml; compile.progressive=true,
+#   emitAgentsMd=true, persona stubs that you'll need to edit
 ```
 
 **See also:** [Getting started](./01-getting-started.md#agent-init-flags), [Bundle anatomy](./02-bundle-anatomy.md), [Permissions and platforms](./06-permissions-and-platforms.md), [Models](./07-models.md).
@@ -1753,6 +1769,102 @@ $ smith knowledge fetch my-agent --source runbook
 
 ---
 
+### `smith knowledge compile [name]`
+
+**Synopsis:** `smith knowledge compile [name] [--all]`
+
+**Description:** Re-runs the knowledge pipeline for one or every bundle
+that opts in to progressive compile (`knowledge.compile.progressive: true`
+in `agent.config.json`) and persists `compile-manifest.json` under the
+agent's knowledge dir. Reads the materialized cache produced by the
+last `smith agent install`; offline (no acquire, no network). Manual
+invocation is for offline iteration on summaries / TOC tuning and for
+CI checks — `smith agent install` runs compile automatically when the
+block is set. Source: `src/cli/commands/knowledge/compile.ts`.
+
+**Arguments:**
+
+- `[name]` — optional. Required unless `--all` is given. Mutually
+  exclusive with `--all`.
+
+**Flags:**
+
+- `--all` — compile every registered bundle that has
+  `compile.progressive=true`. Bundles without the block are skipped
+  (one warn line per skipped bundle); the command only exits non-zero
+  when every targeted bundle was skipped.
+
+**Exit codes:**
+
+- `0` — every targeted bundle compiled successfully.
+- `1` — runtime error inside a compile.
+- `2` — usage error: neither `[name]` nor `--all` given; both given;
+  named bundle has no `compile.progressive=true`; or `--all` matched no
+  compile-enabled bundles.
+
+**Examples:**
+
+```bash
+$ smith knowledge compile my-agent
+compiled my-agent: 7 source(s), 7 TOC line(s), hash 3a1f9c0e
+
+$ smith knowledge compile --all
+compiled my-agent: 7 source(s), 7 TOC line(s), hash 3a1f9c0e
+skip other-agent: no knowledge.compile.progressive=true
+```
+
+**See also:** [Knowledge compiler](./16-knowledge-compiler.md).
+
+---
+
+### `smith knowledge serve <name>`
+
+**Synopsis:** `smith knowledge serve <name> [--stdio]`
+
+**Description:** Spawns a stdio MCP server backed by an in-memory BM25
+index over the agent's materialized knowledge dir. Two tools:
+`knowledge.search(query, k=5)` returns top-k `(path, score, snippet)`
+matches; `knowledge.fetch(path, start?, end?)` returns file contents
+range-bounded to 64KB per response (path traversal rejected). The index
+is rebuilt on every spawn. Validates that the agent exists before
+opening stdio so an unknown name doesn't silently serve an empty index.
+Source: `src/cli/commands/knowledge/serve.ts`.
+
+Wire it into a platform's MCP config (the same way you'd wire any other
+MCP server) by pointing at:
+
+```
+command: smith
+args:    knowledge serve <name> --stdio
+```
+
+**Arguments:**
+
+- `<name>` — agent name. Must be registered.
+
+**Flags:**
+
+- `--stdio` — serve over stdio (MCP). Default and currently the only
+  transport; the flag exists for forward compat with a future
+  `--http <port>` mode.
+
+**Exit codes:**
+
+- `0` — server exited cleanly (stdin EOF).
+- `1` — runtime error inside the server.
+- `2` — agent not registered (`not-found`); `--stdio false` passed
+  (`usage-error`).
+
+**Examples:**
+
+```bash
+$ smith knowledge serve my-agent --stdio    # MCP-aware tool spawns this
+```
+
+**See also:** [Knowledge compiler — `smith knowledge serve --stdio`](./16-knowledge-compiler.md#smith-knowledge-serve---stdio).
+
+---
+
 ### `smith knowledge refresh-session`
 
 **Synopsis:** `smith knowledge refresh-session [--agent <name>] [--platform <id>] [--timeout <ms>] [--json]`
@@ -1981,7 +2093,7 @@ $ smith gui --port 9000 --no-open
 
 ### `smith doctor`
 
-**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh]`
+**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile]`
 
 **Description:** Run the health check, auto-filtered to the platform
 CLIs detected on `PATH` (`opencode`, `claude`, `codex`). Sections that
@@ -2066,6 +2178,10 @@ never raise `1`.
   (the section is already auto-suppressed).
 - `--fix-knowledge-refresh` — auto-repair drift findings reported by the
   `knowledgeRefresh` section. See [Knowledge-refresh drift and auto-repair](#knowledge-refresh-drift-and-auto-repair) below.
+- `--fix-knowledge-compile` — auto-repair drift findings reported by the
+  `knowledgeCompile` section (re-run `smith knowledge compile <agent>`
+  for each `missing-manifest` or `drift` finding). See
+  [Knowledge-compile drift and auto-repair](#knowledge-compile-drift-and-auto-repair) below.
 
 **Exit codes (doctor's internal taxonomy):**
 
@@ -2120,6 +2236,38 @@ $ smith doctor
 
 # Diagnose and auto-repair the first three drift kinds
 $ smith doctor --fix-knowledge-refresh
+```
+
+#### Knowledge-compile drift and auto-repair
+
+The `knowledgeCompile` section of `smith doctor` (v2) audits every
+registered agent that opts in to progressive compile
+(`knowledge.compile.progressive: true`) and reports two kinds of drift
+between the persisted `compile-manifest.json` and a fresh `compile()`
+over the agent's current materialized sources:
+
+| Finding | Meaning | Auto-fixable by `--fix-knowledge-compile`? |
+|---|---|---|
+| `missing-manifest` | Bundle declares `compile.progressive: true` but `<agentSmithHome>/knowledge/<agent>/compile-manifest.json` is absent — or present but unparseable / off-schema (corrupt). The "corrupt" sub-case is conflated because the remedy (re-compile) is identical. | yes — runs `smith knowledge compile <agent>` for the affected agent. |
+| `drift` | Manifest exists and parses, but its recorded `contentHash` does not match a fresh `compile()` over the agent's current `_manifest.json` materialized sources (i.e. the bundle's knowledge has changed since the last compile). | yes — runs `smith knowledge compile <agent>`. |
+
+Both findings repair through the same path: re-run
+[`smith knowledge compile <agent>`](#smith-knowledge-compile-name)
+which both re-materializes sources (so any underlying source change is
+picked up) and overwrites `compile-manifest.json` with a fresh hash.
+Per-agent errors print and the loop continues — one bad repair does not
+abort sibling repairs.
+
+The section is informational only; findings never affect doctor's exit
+code. Use the GUI's `/system/doctor` route or the CLI flag below to
+trigger repair.
+
+```bash
+# Diagnose only
+$ smith doctor
+
+# Diagnose and auto-repair every missing-manifest / drift finding
+$ smith doctor --fix-knowledge-compile
 ```
 
 ---

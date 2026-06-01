@@ -22,7 +22,11 @@ export function DoctorFixButton() {
   if (!hasFixable) return null;
 
   const onFix = () => {
-    start.mutate({ command: "doctor", fixKnowledgeRefresh: true });
+    start.mutate({
+      command: "doctor",
+      fixKnowledgeRefresh: true,
+      fixKnowledgeCompile: false,
+    });
   };
 
   return (

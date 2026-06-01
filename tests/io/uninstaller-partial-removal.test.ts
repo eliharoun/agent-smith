@@ -20,7 +20,8 @@ async function makePaths(): Promise<{
     opencode: join(root, "opencode"),
     "claude-code": join(root, "claude"),
     codex: join(root, "codex"),
-    kiro: join(root, "kiro")
+    kiro: join(root, "kiro"),
+    "agents-md": join(root, "agents-md")
   };
   await mkdir(paths.opencode, { recursive: true });
   await mkdir(paths["claude-code"], { recursive: true });

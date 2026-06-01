@@ -40,6 +40,7 @@ describe("buildAndInstall writes per-source refresh-cache meta", () => {
       "claude-code": claudeAgentsDir,
       codex: codexAgentsDir,
       kiro: kiroAgentsDir,
+      "agents-md": join(agentSmithHome, "agents-md"),
     };
     await writeFile(join(bundleDir, "schema.sql"), "select 1;");
     await writeFile(join(bundleDir, "notes.md"), "# Notes\nSome content.");

@@ -231,4 +231,36 @@ describe("translators/claude-code", () => {
     // bash is denied. The "deny → omitted" warning is suppressed (truism).
     expect(out.warnings ?? []).toEqual([]);
   });
+
+  // --- Task 5b: defer-to-AGENTS.md when both targets present ---
+
+  test("defers to AGENTS.md when both 'claude-code' and 'agents-md' targets are present (default)", () => {
+    const out = tcc(
+      { ...baseConfig, targets: ["claude-code", "agents-md"] },
+      "FULL BODY CONTENT",
+      { resolvedModel: undefined },
+    );
+    // body is replaced with the 1-line pointer; frontmatter is preserved.
+    expect(out.body).toBe("See AGENTS.md.");
+    expect(out.frontmatter.name).toBe("code-reviewer");
+    expect(out.frontmatter.description).toBe(baseConfig.description);
+  });
+
+  test("explicit deferToAgentsMd=false overrides default-when-both-present", () => {
+    const out = tcc(
+      {
+        ...baseConfig,
+        targets: ["claude-code", "agents-md"],
+        targetOptions: { claudeCode: { deferToAgentsMd: false } },
+      },
+      "FULL BODY CONTENT",
+      { resolvedModel: undefined },
+    );
+    expect(out.body).toBe("FULL BODY CONTENT");
+  });
+
+  test("does NOT defer when only 'claude-code' is in targets (no agents-md)", () => {
+    const out = tcc(baseConfig, "FULL BODY CONTENT", { resolvedModel: undefined });
+    expect(out.body).toBe("FULL BODY CONTENT");
+  });
 });

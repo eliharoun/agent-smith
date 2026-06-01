@@ -21,6 +21,7 @@ const Doctor = z.object({
   command: z.literal("doctor"),
   json: z.boolean().optional(),
   fixKnowledgeRefresh: z.boolean().default(false),
+  fixKnowledgeCompile: z.boolean().default(false),
 });
 const AgentList = z.object({ command: z.literal("agent.list") });
 const AgentInit = z.object({
@@ -291,6 +292,23 @@ const KnowledgeValidate = z.object({
   agent: z.string().min(1).optional(),
 });
 
+// T11: progressive-compile MCP plumbing. `compile` builds the per-bundle
+// BM25 index + manifest; `serve` exposes it over MCP stdio. Both target a
+// single bundle by `name` (mirroring the CLI's `<name>` positional). We
+// don't refine `name XOR all` because the CLI already emits a friendly
+// usage error and the schema stays permissive — same convention as the
+// other knowledge.* shapes above (knowledge.list/fetch/validate).
+const KnowledgeCompile = z.object({
+  command: z.literal("knowledge.compile"),
+  name: z.string().min(1).optional(),
+  all: z.boolean().optional(),
+});
+
+const KnowledgeServe = z.object({
+  command: z.literal("knowledge.serve"),
+  name: z.string().min(1),
+});
+
 // ─── Phase 3 ──────────────────────────────────────────────────────────────
 
 const DaemonStart = z.object({
@@ -378,6 +396,9 @@ export const JobRequest = z.discriminatedUnion("command", [
   KnowledgeList,
   KnowledgeFetch,
   KnowledgeValidate,
+  // T11: progressive compile + MCP serve
+  KnowledgeCompile,
+  KnowledgeServe,
   // Phase 3
   DaemonStart,
   DaemonStop,

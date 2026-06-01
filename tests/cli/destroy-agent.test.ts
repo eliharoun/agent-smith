@@ -10,6 +10,7 @@ const paths: InstallPaths = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/codex/skills",
   kiro: "/fake/kiro/skills",
+  "agents-md": "/fake/agents-md/skills",
 };
 
 const FAKE_CONFIG = "/fake/config/agent-smith";

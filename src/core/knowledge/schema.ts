@@ -33,6 +33,24 @@ const ConfluencePageRef = z.union([
   z.object({ id: z.number().int().positive() }),
 ]);
 
+// v2.0 compile-stage retrieval spec. `external-mcp` requires `mcpUrl`.
+const RetrievalMode = z.enum(["off", "bm25", "external-mcp"]);
+const RetrievalSpec = z
+  .object({
+    mode: RetrievalMode,
+    mcpUrl: z.string().url().optional(),
+  })
+  .strict()
+  .superRefine((r, ctx) => {
+    if (r.mode === "external-mcp" && !r.mcpUrl) {
+      ctx.addIssue({
+        code: "custom",
+        message: "retrieval.mode='external-mcp' requires mcpUrl",
+        path: ["mcpUrl"],
+      });
+    }
+  });
+
 // Shared base fields. Every variant extends this.
 const BaseFields = {
   id: z.string().regex(KEBAB, "id must be kebab-case"),
@@ -43,6 +61,10 @@ const BaseFields = {
   refresh: Refresh.optional(),
   description: z.string().optional(),
   optional: z.boolean().optional(),
+  // v2.0 (compile stage)
+  summary: z.string().min(1).max(280).optional(),
+  toc: z.boolean().optional(),
+  retrieval: RetrievalSpec.optional(),
 } as const;
 
 // Per-variant strict schemas. `.strict()` rejects unknown keys so cross-type
@@ -172,10 +194,21 @@ export const KnowledgeSourceSchema = z
     }
   });
 
+// v2.0 compile-stage block. When `progressive: true`, the pipeline emits a
+// CompiledKnowledge { tocStanza, manifest } in addition to the v1 outputs.
+const CompileBlock = z
+  .object({
+    progressive: z.boolean().default(true),
+    tocMaxLines: z.number().int().positive().max(400).default(150),
+    emitAgentsMd: z.boolean().default(false),
+  })
+  .strict();
+
 export const KnowledgeBlockSchema = z.object({
   packs: z.array(z.string().regex(KEBAB, "pack name must be kebab-case")).optional(),
   inlineBudget: z
     .object({ totalTokens: z.number().int().positive().max(16000) })
     .optional(),
   sources: z.array(KnowledgeSourceSchema).optional(),
+  compile: CompileBlock.optional(),
 });

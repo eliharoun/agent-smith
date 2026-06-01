@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import pc from "picocolors";
+import { importApmBundle } from "../../core/apm-import";
 import { CanonicalConfigSchema, parseConfig } from "../../core/config-schema";
 import { SmithError } from "../../core/smith-error";
 import { toMessage } from "../../core/to-message";
@@ -44,6 +45,15 @@ export interface InitAgentPaths {
    * Undefined is treated as "user-global" for backwards compatibility.
    */
   catalogKind?: SourceKind;
+  /**
+   * Absolute path to a Microsoft APM `apm.yml` file. Mutually exclusive
+   * with `from`: the apm flow imports a foreign bundle one-way (see
+   * src/core/apm-import.ts) rather than cloning a local smith bundle.
+   * When set, the imported persona content is written verbatim into the
+   * new bundle's IDENTITY/EXPERTISE/SOUL files (no on-disk source dir),
+   * and the imported config seeds the merge in place of a `--from` clone.
+   */
+  fromApm?: string;
 }
 
 /**
@@ -129,10 +139,30 @@ export async function initAgent(
     });
   }
 
+  if (paths.from && paths.fromApm) {
+    throw new SmithError({
+      code: "usage-error",
+      message: "--from and --from-apm are mutually exclusive",
+    });
+  }
+
   let baseConfig: Partial<CanonicalConfig>;
   let copyFiles: { name: string; sourcePath: string }[] = [];
+  // Persona files supplied as in-memory content (used by the --from-apm
+  // path, which has no on-disk source dir to copyFile from). Written
+  // verbatim alongside the agent.config.json. Same per-bundle file
+  // contract as the --from clone branch — IDENTITY/EXPERTISE/SOUL.
+  let writeFiles: { name: string; content: string }[] = [];
 
-  if (paths.from) {
+  if (paths.fromApm) {
+    const imported = await importApmBundle({ apmPath: paths.fromApm });
+    baseConfig = imported.config;
+    writeFiles = [
+      { name: "IDENTITY.md", content: imported.persona.identity },
+      { name: "EXPERTISE.md", content: imported.persona.expertise },
+      { name: "SOUL.md", content: imported.persona.soul },
+    ];
+  } else if (paths.from) {
     // Resolve `from` against agentsDir first (user's local copy wins on
     // collision), then fall back to examplesDir for bundled example sources.
     const localCandidate = join(paths.agentsDir, paths.from);
@@ -243,6 +273,10 @@ export async function initAgent(
       : baseConfig.requires
         ? { requires: baseConfig.requires }
         : {}),
+    // No CLI flag for knowledge yet — pass through whatever the source
+    // (--from clone or --from-apm import) declared. Required for APM
+    // imports, which always seed a knowledge.compile block.
+    ...(baseConfig.knowledge ? { knowledge: baseConfig.knowledge } : {}),
   };
 
   if (config.description.length === 0) {
@@ -268,6 +302,10 @@ export async function initAgent(
   if (copyFiles.length > 0) {
     for (const f of copyFiles) {
       await copyFile(f.sourcePath, join(dir, f.name));
+    }
+  } else if (writeFiles.length > 0) {
+    for (const f of writeFiles) {
+      await writeFile(join(dir, f.name), f.content);
     }
   } else {
     for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md"]) {
@@ -298,10 +336,19 @@ export async function initAgent(
   await writeFile(join(dir, "agent.config.json"), `${JSON.stringify(config, null, 2)}\n`);
 
   print(`${pc.green("Created")} ${dir}`);
-  if (copyFiles.length === 0) {
+  if (copyFiles.length === 0 && writeFiles.length === 0) {
     print(
       [
         pc.dim("Stub persona files written. Edit them, then run"),
+        pc.bold(`smith agent validate ${name}`),
+        pc.dim("→"),
+        pc.bold(`smith agent install ${name}`),
+      ].join(" "),
+    );
+  } else if (writeFiles.length > 0) {
+    print(
+      [
+        pc.dim("APM import complete. Review the persona files, then run"),
         pc.bold(`smith agent validate ${name}`),
         pc.dim("→"),
         pc.bold(`smith agent install ${name}`),

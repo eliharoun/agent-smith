@@ -54,6 +54,7 @@ const fakePaths: InstallPaths = {
   "claude-code": "/fake/claude",
   codex: "/fake/codex",
   kiro: "/fake/kiro",
+  "agents-md": "/fake/agents-md",
 };
 
 describe("install opencode refresh consent", () => {
@@ -151,7 +152,8 @@ describe("install opencode refresh consent", () => {
       opencode: join(agentHome, "opencode-agents"),
       "claude-code": join(agentHome, "claude-agents"),
       codex: join(agentHome, "codex-skills"),
-      kiro: join(agentHome, "kiro-skills")
+      kiro: join(agentHome, "kiro-skills"),
+      "agents-md": join(agentHome, "agents-md")
     };
     await mkdir(installPaths.opencode, { recursive: true });
     await writeFile(join(installPaths.opencode, "opencode-agent.md"), "x");
@@ -206,7 +208,8 @@ describe("install opencode refresh consent", () => {
       opencode: join(agentHome, "opencode-agents"),
       "claude-code": join(agentHome, "claude-agents"),
       codex: join(agentHome, "codex-skills"),
-      kiro: join(agentHome, "kiro-skills")
+      kiro: join(agentHome, "kiro-skills"),
+      "agents-md": join(agentHome, "agents-md")
     };
     await mkdir(installPaths.opencode, { recursive: true });
     await writeFile(join(installPaths.opencode, "agent-a.md"), "x");

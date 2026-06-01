@@ -31,7 +31,7 @@ The schema is enforced by zod in `src/core/config-schema.ts` and the underlying 
 | `schemaVersion` | number | yes | — | must be `1` (auto-migrated from legacy configs without it) |
 | `name` | string | yes | — | matches `KEBAB` regex; must equal bundle dirname |
 | `description` | string | yes | — | 10–200 chars; matches `ACTION_PHRASE` regex |
-| `targets` | array | yes | — | non-empty; each entry one of `opencode`, `claude-code`, `codex`, `kiro` |
+| `targets` | array | yes | — | non-empty; each entry one of `opencode`, `claude-code`, `codex`, `kiro`, `agents-md` |
 | `modelTier` | enum | yes | — | `balanced` \| `fast` \| `high` \| `inherit` (legacy aliases: `opus`, `sonnet`, `haiku`) |
 | `model` | string | no | omitted | non-empty; OpenCode-only override |
 | `mode` | enum | no | omitted | `primary` \| `subagent` \| `all` |
@@ -43,6 +43,7 @@ The schema is enforced by zod in `src/core/config-schema.ts` and the underlying 
 | `knowledge` | object | no | omitted | see [Knowledge](./04-knowledge.md) |
 | `requires` | object | no | omitted | container for `requires.skills` |
 | `platformConventions` | object | no | omitted | per-platform context paths the bundle requests; resolved via 3-tier precedence — see [Permissions and platforms — Platform conventions](./06-permissions-and-platforms.md#platform-conventions) |
+| `targetOptions` | object | no | omitted | per-target rendering options (`agentsMd.path`, `claudeCode.deferToAgentsMd`); see [Knowledge compiler](./16-knowledge-compiler.md#the-agents-md-target) |
 | `thresholds` | object | no | omitted | [per-bundle overrides for validator line-range and warn-char defaults](#thresholds) |
 
 The schema is `z.object({...})`, so unknown top-level keys are stripped silently. If you misspell a field you will not get a validator error — you will get a silently-ignored field. Run `smith agent validate` after editing.
@@ -65,7 +66,24 @@ Array of `{ catalog?, name }` entries declaring skills that must be installed fo
 
 ### `knowledge`
 
-Object with `packs?`, `inlineBudget?: { totalTokens }`, and `sources?` arrays. The `inlineBudget.totalTokens` defaults to 8000 and is capped at 16000 (`src/core/knowledge/schema.ts`). For the full source-type taxonomy (`file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`), materializer rules, and per-source schemas, see [Knowledge sources](./04-knowledge.md).
+Object with `packs?`, `inlineBudget?: { totalTokens }`, `sources?` array, and an optional `compile?` block. The `inlineBudget.totalTokens` defaults to 8000 and is capped at 16000 (`src/core/knowledge/schema.ts`). For the full source-type taxonomy (`file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`), materializer rules, and per-source schemas, see [Knowledge sources](./04-knowledge.md).
+
+The optional `compile` block opts the bundle into v2 progressive disclosure:
+
+```jsonc
+{
+  "knowledge": {
+    "sources": [...],
+    "compile": {
+      "progressive": true,    // default true; gate for the compile stage
+      "tocMaxLines": 150,     // 1–400; truncates the TOC stanza
+      "emitAgentsMd": false   // shorthand used by the APM importer
+    }
+  }
+}
+```
+
+When `compile` is absent the pipeline runs in v1 mode (byte-identical rendering). Per-source `summary`, `toc`, and `retrieval` fields layer on every source variant when the block is present. Full reference: [Knowledge compiler](./16-knowledge-compiler.md).
 
 ### `thresholds`
 

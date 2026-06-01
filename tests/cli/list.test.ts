@@ -7,6 +7,7 @@ const FAKE_PATHS = {
   "claude-code": "/fake/claude/agents",
   codex: "/fake/agents/skills",
   kiro: "/fake/kiro/agents",
+  "agents-md": "/fake/agents-md/agents",
 };
 
 describe("cli/list runListCli install-state markers", () => {

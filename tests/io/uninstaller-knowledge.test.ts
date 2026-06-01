@@ -99,6 +99,7 @@ describe("planUninstall: knowledge plan", () => {
     "claude-code": "/tmp/cc",
     codex: "/tmp/cx",
     kiro: "/tmp/kiro",
+    "agents-md": "/tmp/agents-md",
   };
 
   beforeEach(async () => {

@@ -22,6 +22,7 @@ beforeEach(() => {
     "claude-code": join(installRoot, "claude/agents"),
     codex: join(installRoot, "agents/skills"),
     kiro: join(installRoot, ".kiro/agents"),
+    "agents-md": join(installRoot, ".agents-md/agents"),
   };
 });
 afterEach(() => {

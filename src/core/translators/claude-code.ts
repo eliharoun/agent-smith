@@ -82,12 +82,24 @@ export function translateClaudeCode(
     frontmatter.hooks = sessionStartHook(config.name);
   }
 
+  // Defer-to-AGENTS.md: when both targets are declared on the same bundle,
+  // the canonical body lives in AGENTS.md and CLAUDE.md becomes a 1-line
+  // pointer so the two files don't drift. The default kicks in when both
+  // targets are present; users can opt out per-bundle by setting
+  // `targetOptions.claudeCode.deferToAgentsMd: false`. Frontmatter (model,
+  // permissions, hooks) is preserved either way — the pointer only
+  // replaces the body.
+  const bothTargeted =
+    config.targets.includes("agents-md") && config.targets.includes("claude-code");
+  const defer = config.targetOptions?.claudeCode?.deferToAgentsMd ?? bothTargeted;
+  const finalBody = defer ? "See AGENTS.md." : body;
+
   return {
     target: "claude-code",
     format: "markdown-frontmatter",
     relativePath: `${config.name}.md`,
     frontmatter,
-    body,
+    body: finalBody,
     ...(warnings.length > 0 ? { warnings } : {}),
   };
 }

@@ -515,6 +515,18 @@ Stick with `register` when:
 
 The two flows coexist — registering a catalog you already cloned does not conflict with another teammate using `--from <url>` to install the same repo into smith's managed clone area. Each side gets its own working tree.
 
+### 9.7 AGENTS.md as a sharing surface
+
+The flows above are git-based: a publisher hosts a catalog repo, consumers `register` or `--from` it. There's also a one-file sharing surface: declare `agents-md` as a target and `smith agent install` writes a single `AGENTS.md` (default `~/AGENTS.md`; override via `targetOptions.agentsMd.path`) that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read natively. Pair it with `compile.progressive: true` and the AGENTS.md body is a TOC pointing into the materialized knowledge dir rather than inlined-and-truncated prose.
+
+This is useful when:
+
+- You're publishing for an audience that uses one of the AGENTS.md-aware tools above and you don't want to maintain a per-runtime translator.
+- A teammate is on a runtime smith doesn't render natively (e.g. Cursor, Windsurf) and you want them to consume the same canonical bundle the rest of the team installs into smith.
+- You want a single file you can commit to a project root for an open-source repo, so contributors who use any AGENTS.md-aware tool get sensible defaults.
+
+The Microsoft APM ecosystem (`smith agent init --from-apm`) treats AGENTS.md the same way — APM bundles targeting `copilot` / `cursor` / `gemini` / `windsurf` are folded into the single `agents-md` target on import. See [16 — Knowledge compiler](./16-knowledge-compiler.md#the-agents-md-target) for placement rules, the CLAUDE.md pointer interaction, and the runtime list.
+
 ---
 
 ## 10. Gotchas and common mistakes

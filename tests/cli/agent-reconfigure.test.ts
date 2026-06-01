@@ -42,7 +42,8 @@ async function makeTree(): Promise<Tree> {
   const codexHome = join(root, "codex");
   const opencodeHome = join(root, "opencode");
   const kiroDir = join(root, "kiro");
-  for (const d of [home, claudeDir, opencodeDir, codexSkillDir, codexHome, opencodeHome, kiroDir]) {
+  const agentsMdDir = join(root, "agents-md");
+  for (const d of [home, claudeDir, opencodeDir, codexSkillDir, codexHome, opencodeHome, kiroDir, agentsMdDir]) {
     await mkdir(d, { recursive: true });
   }
   return {
@@ -52,6 +53,7 @@ async function makeTree(): Promise<Tree> {
       "claude-code": claudeDir,
       codex: codexSkillDir,
       kiro: kiroDir,
+      "agents-md": agentsMdDir,
     },
     codexHome,
     opencodeHome,
@@ -62,6 +64,7 @@ async function makeTree(): Promise<Tree> {
         "claude-code": claudeDir,
         codex: codexSkillDir,
         kiro: kiroDir,
+        "agents-md": agentsMdDir,
       },
       codexHome,
       opencodeHome,

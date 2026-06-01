@@ -48,6 +48,7 @@ const fakePaths: InstallPaths = {
   "claude-code": "/fake/claude",
   codex: "/fake/codex",
   kiro: "/fake/kiro",
+  "agents-md": "/fake/agents-md",
 };
 
 describe("install codex refresh consent", () => {

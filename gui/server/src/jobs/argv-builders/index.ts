@@ -20,10 +20,12 @@ import { buildInit } from "./init";
 import { buildInitUser } from "./init-user";
 import { buildJackOut } from "./jack-out";
 import { buildKnowledgeAdd } from "./knowledge-add";
+import { buildKnowledgeCompile } from "./knowledge-compile";
 import { buildKnowledgeFetch } from "./knowledge-fetch";
 import { buildKnowledgeList } from "./knowledge-list";
 import { buildKnowledgeMigrateCodex } from "./knowledge-migrate-codex";
 import { buildKnowledgeRemove } from "./knowledge-remove";
+import { buildKnowledgeServe } from "./knowledge-serve";
 import { buildKnowledgeValidate } from "./knowledge-validate";
 import { buildSkillBootstrap } from "./skill-bootstrap";
 import { buildSkillCatalogRename } from "./skill-catalog-rename";
@@ -104,6 +106,10 @@ export function buildArgv(req: JobRequest): BuiltArgv {
       return buildKnowledgeFetch(req);
     case "knowledge.validate":
       return buildKnowledgeValidate(req);
+    case "knowledge.compile":
+      return buildKnowledgeCompile(req);
+    case "knowledge.serve":
+      return buildKnowledgeServe(req);
     case "daemon.start":
       return buildDaemonStart(req);
     case "daemon.stop":

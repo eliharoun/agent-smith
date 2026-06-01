@@ -34,6 +34,8 @@ Define a bundle:
 
 Then `smith agent install` emits the right native config for every platform you target.
 
+A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool standard that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read. Pair it with the v2 knowledge compiler (`compile.progressive: true`) and one bundle reaches every AGENTS.md-aware runtime with progressive-disclosure pointers instead of inlined-and-truncated prose. See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
+
 > "Me. Me. Me too." — Agent Smith
 
 ---
@@ -174,6 +176,7 @@ Start with the [in-depth guide](./GUIDE.md) — a hub that links into focused to
 - [`05-skills.md`](./guide/05-skills.md) — installing skills, `requires.skills`, skill catalogs, drift
 - [`08-registries-and-catalogs.md`](./guide/08-registries-and-catalogs.md) — registries, catalog kinds, precedence
 - [`04-knowledge.md`](./guide/04-knowledge.md) — per-agent knowledge sources (files, dirs, URLs, git, Confluence, Jira)
+- [`16-knowledge-compiler.md`](./guide/16-knowledge-compiler.md) — v2 progressive disclosure: `compile` block, `agents-md` target, BM25 retrieval server, APM import
 - [`15-sharing-and-distribution.md`](./guide/15-sharing-and-distribution.md) — end-to-end publisher + consumer flow
 
 **Operating and troubleshooting**

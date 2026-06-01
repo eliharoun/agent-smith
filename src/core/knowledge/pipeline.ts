@@ -7,6 +7,8 @@ import { toMessage } from "../to-message";
 import type { AcquiredArtifact, GitSpawner } from "./acquire";
 import { urlCacheKey } from "./acquire";
 import { acquireSource, chooseMaterializer, runMaterializer } from "./acquire-source";
+import { compile, type CompiledKnowledge } from "./compile";
+import { writeCompileManifest } from "./compile-manifest";
 import {
   ensureRelativeSymlink,
   sweepStaleCacheEntries,
@@ -20,6 +22,7 @@ import type {
   KnowledgeSection,
   KnowledgeSource,
   MaterializedFile,
+  MaterializedSource,
 } from "./types";
 
 export interface PipelinePaths {
@@ -33,6 +36,8 @@ export interface PipelineResult {
   section: KnowledgeSection;
   warnings: string[];
   errors: string[];
+  /** v2.0: present when `block.compile?.progressive === true`. */
+  compiled?: CompiledKnowledge;
 }
 
 /**
@@ -362,6 +367,9 @@ export async function runKnowledgeStage(
         extractor: null,
         tokensInline,
         ...(p.declared.description ? { description: p.declared.description } : {}),
+        ...(p.declared.summary !== undefined ? { summary: p.declared.summary } : {}),
+        ...(p.declared.toc !== undefined ? { toc: p.declared.toc } : {}),
+        ...(p.declared.retrieval !== undefined ? { retrieval: p.declared.retrieval } : {}),
       });
 
       if (p.effectiveDelivery === "inline") {
@@ -446,7 +454,46 @@ export async function runKnowledgeStage(
       }
     }
 
-    return { manifest, section, warnings, errors };
+    // Step 9 (v2.0): if `compile.progressive` is enabled, run the pure
+    // compile() pass and persist compile-manifest.json beside _manifest.json.
+    let compiled: CompiledKnowledge | undefined;
+    if (block?.compile?.progressive) {
+      const compileOpts = {
+        progressive: true,
+        tocMaxLines: block.compile.tocMaxLines ?? 150,
+        emitAgentsMd: block.compile.emitAgentsMd ?? false,
+      };
+      const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
+        id: s.id,
+        scope: s.scope,
+        type: s.type,
+        delivery: s.delivery,
+        files: s.files.map((f) => ({
+          relPath: f.path,
+          bytes: f.bytes,
+          sha256: f.sha256,
+          ...(f.summary ? { summary: f.summary } : {}),
+        })),
+        tokensInline: s.tokensInline,
+        ...(s.description !== undefined ? { description: s.description } : {}),
+        ...(s.source ? { source: s.source } : {}),
+        ...(s.fetchedAt ? { fetchedAt: s.fetchedAt } : {}),
+        ...(s.summary !== undefined ? { summary: s.summary } : {}),
+        ...(s.toc !== undefined ? { toc: s.toc } : {}),
+        ...(s.retrieval !== undefined ? { retrieval: s.retrieval } : {}),
+      }));
+      compiled = compile(matSources, compileOpts, { rootDir: paths.knowledgeDir });
+      await writeCompileManifest(paths.knowledgeDir, compiled.manifest);
+      for (const w of compiled.warnings) warnings.push(w);
+    }
+
+    return {
+      manifest,
+      section,
+      warnings,
+      errors,
+      ...(compiled ? { compiled } : {}),
+    };
   } catch (err) {
     // If swap hasn't started, tmpDir is safe to remove. If swap started,
     // leave tmpDir + oldDir for cleanupStaleStageDirs to handle on next run.

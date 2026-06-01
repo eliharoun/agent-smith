@@ -66,5 +66,16 @@ export async function detectAllPlatforms(
   for (const r of results) {
     matrix[r.platform] = r;
   }
+  // AGENTS.md is a markdown contract consumed by external tools (Cursor,
+  // Windsurf, Copilot, etc.); it has no CLI binary and no auth surface
+  // smith can probe. Always report cli-not-installed so the matrix
+  // satisfies Record<Target, PlatformAuth> after the T5a widening
+  // without misrepresenting any external tool's state.
+  matrix["agents-md"] = {
+    platform: "agents-md",
+    cliInstalled: false,
+    status: "cli-not-installed",
+    detail: "AGENTS.md is a markdown contract — no CLI to authenticate",
+  };
   return matrix as PlatformAuthMatrix;
 }

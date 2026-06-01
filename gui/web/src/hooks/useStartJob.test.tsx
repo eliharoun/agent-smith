@@ -68,7 +68,11 @@ describe("useStartJob", () => {
     const spy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => useStartJob(), { wrapper: wrapper(qc) });
     await act(async () => {
-      await result.current.mutateAsync({ command: "doctor", fixKnowledgeRefresh: false });
+      await result.current.mutateAsync({
+        command: "doctor",
+        fixKnowledgeRefresh: false,
+        fixKnowledgeCompile: false,
+      });
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     const agentsCalls = spy.mock.calls.filter(

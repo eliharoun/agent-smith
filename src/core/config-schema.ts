@@ -57,7 +57,7 @@ export const CanonicalConfigSchema = z.object({
       "description should start with an action phrase (e.g. 'Use proactively...', 'Reviews...', 'Builds...')",
     ),
   targets: z
-    .array(z.enum(["opencode", "claude-code", "codex", "kiro"]))
+    .array(z.enum(["opencode", "claude-code", "codex", "kiro", "agents-md"]))
     .min(1, "at least one target required"),
   modelTier: z
     .enum(["high", "balanced", "fast", "opus", "sonnet", "haiku", "inherit"])
@@ -87,7 +87,18 @@ export const CanonicalConfigSchema = z.object({
       "claude-code": z.array(z.string()).optional(),
       codex: z.array(z.string()).optional(),
       kiro: z.array(z.string()).optional(),
+      "agents-md": z.array(z.string()).optional(),
     })
+    .optional(),
+  // Per-target rendering options (Task 5b). Strict object — unknown
+  // sub-keys raise validation errors so typos like `targetOptions.agents_md`
+  // surface immediately rather than being silently dropped.
+  targetOptions: z
+    .object({
+      agentsMd: z.object({ path: z.string().min(1).optional() }).strict().optional(),
+      claudeCode: z.object({ deferToAgentsMd: z.boolean().optional() }).strict().optional(),
+    })
+    .strict()
     .optional(),
   thresholds: z
     .object({

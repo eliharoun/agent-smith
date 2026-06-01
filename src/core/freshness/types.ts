@@ -256,6 +256,13 @@ export interface DoctorReport {
    */
   knowledgeRefresh?: import("./check-refresh-hooks").RefreshHooksReport;
   /**
+   * Optional knowledge-compile detection report. Undefined when the caller
+   * doesn't request the check. Informational only — never affects
+   * {@link DoctorReport.exitCode}. Repair is handled by the CLI's
+   * `--fix-knowledge-compile` flag.
+   */
+  knowledgeCompile?: import("./check-knowledge-compile").KnowledgeCompileReport;
+  /**
    * Optional duplicate-catalogs check (v1-task RC2-10). Walks both
    * registries and groups entries by normalized git URL; reports
    * clusters of size >= 2 so the user can clean up accidental

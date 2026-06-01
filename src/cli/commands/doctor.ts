@@ -152,6 +152,30 @@ export interface DoctorCliOptions {
     codexHome: string;
     opencodeConfigHome: string;
   };
+  /**
+   * v2.0: when true, after running the knowledge-compile detection section,
+   * iterate `report.knowledgeCompile.findings` and re-run
+   * `runKnowledgeCompile({ name })` for each missing-manifest / drift
+   * finding. The repair both re-materializes sources (so any underlying
+   * source change is picked up) and overwrites a corrupt `compile-manifest.json`.
+   * Per-finding errors print but do NOT abort the repair pass.
+   */
+  fixKnowledgeCompile?: boolean;
+  /**
+   * Override for tests: knowledge-compile detection inputs. When omitted,
+   * production wiring derives candidates from the registered bundles and
+   * uses `defaultAgentSmithHome()`. Tests inject in-memory bundles and a
+   * tmpdir agent-smith home so the section runs hermetically.
+   */
+  knowledgeCompile?: {
+    agentSmithHome: string;
+    /**
+     * Returns the bundles whose `knowledge.compile.progressive=true` should
+     * be considered. Tests pass an in-memory list. The default wiring walks
+     * the registry via `loadAllBundles`.
+     */
+    loadAllBundles: () => Promise<import("../../core/types").AgentBundle[]>;
+  };
 }
 
 /**
@@ -295,6 +319,29 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     (b.config.knowledge?.sources ?? []).some((s) => s.type === "confluence" || s.type === "jira"),
   );
 
+  // Build knowledge-compile detection candidates from every bundle that
+  // opts in to progressive compile. Tests inject `opts.knowledgeCompile`
+  // with their own bundle list + tmpdir agent-smith home.
+  const knowledgeCompileAgentSmithHome =
+    opts.knowledgeCompile?.agentSmithHome ?? defaultAgentSmithHome();
+  const knowledgeCompileBundles = opts.knowledgeCompile
+    ? await opts.knowledgeCompile.loadAllBundles()
+    : bundleResult.bundles;
+  const knowledgeCompileCandidates = knowledgeCompileBundles
+    .filter((b) => b.config.knowledge?.compile?.progressive === true)
+    .map((b) => {
+      const compileBlock = b.config.knowledge?.compile;
+      return {
+        name: b.config.name,
+        knowledgeDir: join(knowledgeCompileAgentSmithHome, "knowledge", b.config.name),
+        compileOptions: {
+          progressive: true,
+          tocMaxLines: compileBlock?.tocMaxLines ?? 150,
+          emitAgentsMd: compileBlock?.emitAgentsMd ?? false,
+        },
+      };
+    });
+
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,
     schemaMeta,
@@ -375,6 +422,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       opencodeConfigHome:
         opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
     },
+    knowledgeCompile: { candidates: knowledgeCompileCandidates },
   });
 
   // --- --fix-knowledge-refresh auto-repair ----------------------------------
@@ -390,7 +438,15 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
   ) {
     const krPaths = opts.knowledgeRefreshPaths;
     const cacheRoot = krPaths?.cacheRoot ?? defaultCacheRoot();
-    const installPaths: InstallPaths = krPaths?.installPaths ?? defaultInstallPaths();
+    // krPaths.installPaths is keyed by RefreshPlatformId (the four
+    // refresh-capable platforms) and is therefore a strict subset of
+    // InstallPaths. Backfill the agents-md key from defaults so the
+    // value satisfies InstallPaths after the T5a widening — agents-md
+    // has no refresh hooks and the reconfigureAgent code path never
+    // reads paths["agents-md"], so the value is inert here.
+    const installPaths: InstallPaths = krPaths?.installPaths
+      ? { ...krPaths.installPaths, "agents-md": defaultInstallPaths()["agents-md"] }
+      : defaultInstallPaths();
     const reconfigureDeps = {
       agentSmithHome: krPaths?.agentSmithHome ?? defaultAgentSmithHome(),
       paths: installPaths,
@@ -436,6 +492,45 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         }
       } catch (err) {
         print(`  ✗ repair failed for ${f.kind}: ${toMessage(err)}`);
+      }
+    }
+  }
+
+  // --- --fix-knowledge-compile auto-repair ---------------------------------
+  // Runs AFTER detection. For each missing-manifest / drift finding, re-run
+  // `runKnowledgeCompile({ name })` against the same bundle list the
+  // detector inspected. This both re-materializes sources (so any
+  // underlying source change is picked up) and overwrites a corrupt or
+  // missing `compile-manifest.json`. Per-finding errors print and the loop
+  // continues — one bad repair must not abort sibling repairs.
+  if (
+    opts.fixKnowledgeCompile &&
+    report.knowledgeCompile &&
+    report.knowledgeCompile.findings.length > 0
+  ) {
+    const { runKnowledgeCompile } = await import("./knowledge/compile");
+    const bundleByName = new Map<string, import("../../core/types").AgentBundle>();
+    for (const b of knowledgeCompileBundles) bundleByName.set(b.config.name, b);
+    const compilePaths = { agentSmithHome: knowledgeCompileAgentSmithHome };
+    for (const f of report.knowledgeCompile.findings) {
+      try {
+        const bundle = bundleByName.get(f.agent);
+        if (!bundle) {
+          print(`  ✗ ${f.agent}: bundle not found in registry; skipping repair`);
+          continue;
+        }
+        const code = await runKnowledgeCompile({
+          name: f.agent,
+          paths: compilePaths,
+          loadBundle: async (n) => (n === f.agent ? bundle : null),
+        });
+        if (code === 0) {
+          print(`  ✓ recompiled ${f.agent} (${f.kind})`);
+        } else {
+          print(`  ✗ recompile of ${f.agent} exited ${code}`);
+        }
+      } catch (err) {
+        print(`  ✗ repair failed for ${f.agent}: ${toMessage(err)}`);
       }
     }
   }

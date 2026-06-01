@@ -529,6 +529,39 @@ describe("SkillSync (C4.2.3)", () => {
   });
 });
 
+// ─── T11: knowledge compile + serve ────────────────────────────────────────
+
+describe("Knowledge compile + serve (T11)", () => {
+  it("accepts knowledge.compile with name", () => {
+    const r = JobRequest.parse({ command: "knowledge.compile", name: "demo" });
+    expect(r.command).toBe("knowledge.compile");
+    if (r.command === "knowledge.compile") expect(r.name).toBe("demo");
+  });
+
+  it("accepts knowledge.compile with all=true", () => {
+    const r = JobRequest.parse({ command: "knowledge.compile", all: true });
+    expect(r.command).toBe("knowledge.compile");
+    if (r.command === "knowledge.compile") expect(r.all).toBe(true);
+  });
+
+  it("accepts knowledge.compile bare (CLI emits its own usage error)", () => {
+    // The CLI rejects `name + all both unset` itself; the schema mirrors
+    // existing knowledge.* permissiveness rather than refining cross-fields.
+    const r = JobRequest.parse({ command: "knowledge.compile" });
+    expect(r.command).toBe("knowledge.compile");
+  });
+
+  it("accepts knowledge.serve with name", () => {
+    const r = JobRequest.parse({ command: "knowledge.serve", name: "demo" });
+    expect(r.command).toBe("knowledge.serve");
+    if (r.command === "knowledge.serve") expect(r.name).toBe("demo");
+  });
+
+  it("rejects knowledge.serve without name", () => {
+    expect(() => JobRequest.parse({ command: "knowledge.serve" })).toThrow();
+  });
+});
+
 describe("Multi-select install (Task 6)", () => {
   it("skill.install accepts from + skills[] + json", () => {
     const r = JobRequest.safeParse({ command: "skill.install", from: "https://x/y", skills: ["a", "b"], targets: ["kiro"] });

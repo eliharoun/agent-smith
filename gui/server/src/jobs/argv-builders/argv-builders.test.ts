@@ -833,3 +833,40 @@ test("agent.install-all forwards allowMissingCli as --allow-missing-cli", () => 
   });
   expect(r.argv).toContain("--allow-missing-cli");
 });
+
+// ─── T11: knowledge compile + serve builders ─────────────────────────────
+
+test("knowledge.compile builds correct argv (single agent)", () => {
+  const r = buildArgv({ command: "knowledge.compile", name: "demo" });
+  expect(r.argv).toEqual(["knowledge", "compile", "demo"]);
+  // Compile mutates the agent's compile-manifest under its knowledge dir;
+  // serialize against other knowledge.* and agent.install ops on the same
+  // bundle (the CLI also takes a filesystem lock, this is GUI-side mutex).
+  expect(r.lockKeys).toEqual(["knowledge:demo"]);
+  expect(r.preview).toBe("smith knowledge compile demo");
+});
+
+test("knowledge.compile --all", () => {
+  const r = buildArgv({ command: "knowledge.compile", all: true });
+  expect(r.argv).toEqual(["knowledge", "compile", "--all"]);
+  // No bundle name → workspace-level lock so two GUI tabs can't run --all
+  // concurrently.
+  expect(r.lockKeys).toEqual(["workspace"]);
+  expect(r.preview).toBe("smith knowledge compile --all");
+});
+
+test("knowledge.compile prefers name over all when both set (--all wins per CLI)", () => {
+  // Schema permits both; CLI rejects with usage error. Builder picks --all
+  // path so the CLI sees the same shape it does from the terminal.
+  const r = buildArgv({ command: "knowledge.compile", name: "demo", all: true });
+  expect(r.argv).toEqual(["knowledge", "compile", "--all"]);
+});
+
+test("knowledge.serve builds correct argv with --stdio", () => {
+  const r = buildArgv({ command: "knowledge.serve", name: "demo" });
+  expect(r.argv).toEqual(["knowledge", "serve", "demo", "--stdio"]);
+  // Serve is a long-running MCP stdio process — lock on the bundle so
+  // compile/serve don't race on the BM25 index file.
+  expect(r.lockKeys).toEqual(["knowledge:demo"]);
+  expect(r.preview).toBe("smith knowledge serve demo --stdio");
+});
