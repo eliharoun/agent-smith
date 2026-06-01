@@ -103,17 +103,38 @@ Then re-run bin/install.
 EOF
     exit 1
   fi
-  # Update mode if the resolved target lives under \$REPO_ROOT (resolve
-  # both sides to canonical form so symlinked tmpdirs on macOS — where
-  # /var → /private/var — compare equally).
+  # Two install layouts to detect as "update mode":
+  #   (a) Legacy symlink: existing_target resolves to <repo>/src/index.ts.
+  #   (b) New wrapper:    existing_target IS the wrapper file at
+  #       ~/.local/bin/smith and its `exec` line embeds <repo>/src/index.ts.
+  # In both cases, "update mode" means the existing install points at
+  # this repo. Resolve REPO_ROOT to canonical form so symlinked tmpdirs
+  # on macOS (/var → /private/var) compare equally.
   repo_root_canonical="$(resolve_path "$REPO_ROOT")"
+  is_update=""
   case "$existing_target" in
     "$repo_root_canonical"/*)
-      IS_UPDATE_MODE=1
-      echo "agent-smith already installed; updating..."
+      # Layout (a): legacy symlink.
+      is_update=1
       ;;
     *)
-      cat >&2 <<EOF
+      # Layout (b): if existing_target is the wrapper at this same path
+      # AND its exec line names a script under repo_root_canonical, treat
+      # as update. grep-quoting REPO_ROOT defends against $REPO_ROOT chars
+      # that have meaning in a regex (./^$* etc.) by using fixed-string
+      # matching.
+      if [[ -f "$existing_target" && -r "$existing_target" ]] \
+         && grep -qF "exec \"" "$existing_target" \
+         && grep -qF "\"$repo_root_canonical/src/index.ts\"" "$existing_target"; then
+        is_update=1
+      fi
+      ;;
+  esac
+  if [[ -n "$is_update" ]]; then
+    IS_UPDATE_MODE=1
+    echo "agent-smith already installed; updating..."
+  else
+    cat >&2 <<EOF
 Error: existing agent-smith installation detected at $existing_smith.
 
 This installer expects a clean machine or an existing ~/.agent-smith/ installation.
@@ -122,9 +143,8 @@ To migrate, first remove the existing installation:
   - If installed as a compiled binary: rm $existing_smith
   - Then re-run bin/install.
 EOF
-      exit 1
-      ;;
-  esac
+    exit 1
+  fi
 else
   IS_FRESH_INSTALL=1
   echo "Fresh install."
@@ -240,7 +260,7 @@ if ! eval "$gui_build_cmd"; then
   printf '\033[33mwarn:\033[0m GUI build failed; the CLI will work but `smith gui` will 404 until you run: bun run gui:build\n' >&2
 fi
 
-# --- Step 6: (Fresh install only) Symlink ~/.local/bin/smith ---
+# --- Step 6: Write ~/.local/bin/smith launcher wrapper ---
 
 # Restore +x on src/index.ts unconditionally: a future `git pull` in update
 # mode might (rarely) drop the executable bit (mode-only diff, file
@@ -248,10 +268,67 @@ fi
 # run; defensive against silently-broken update mode.
 chmod +x "$REPO_ROOT/src/index.ts"
 
-if [[ -n "$IS_FRESH_INSTALL" ]]; then
-  mkdir -p "$HOME/.local/bin"
-  ln -sf "$REPO_ROOT/src/index.ts" "$HOME/.local/bin/smith"
+# The launcher used to be a symlink to src/index.ts whose shebang is
+# `#!/usr/bin/env bun`. That fails in stripped-PATH spawn contexts:
+# Spotlight/dock launches, MCP clients (Claude Code, Kiro, OpenCode,
+# Codex) spawning the smith MCP server, cron, launchd. `env` cannot
+# find `bun` in those contexts and the spawn dies with
+# "env: bun: No such file or directory".
+#
+# Replacement: a tiny bash wrapper that hardcodes bun's absolute path
+# captured at install time. Re-rewritten on every run (fresh install
+# AND update) so a moved bun (version bump, path change) is picked up
+# at the next install.
+BUN_PATH="$(command -v bun || true)"
+if [[ -z "$BUN_PATH" || "$BUN_PATH" != /* ]]; then
+  echo "Error: could not resolve absolute path to bun (got: '${BUN_PATH:-<empty>}')." >&2
+  echo "Step 3 ensures bun is available; this is unexpected. Install bun manually" >&2
+  echo "from https://bun.sh and re-run bin/install." >&2
+  exit 1
 fi
+# Canonicalize so symlinked tmpdirs (macOS /var → /private/var) and
+# shell-shim layouts (~/.bun/bin/bun → /usr/local/bin/bun, etc.) embed
+# a single stable form. Idempotent — same canonical path every run.
+bun_canon="$(resolve_path "$BUN_PATH")"
+if [[ -n "$bun_canon" ]]; then
+  BUN_PATH="$bun_canon"
+fi
+
+mkdir -p "$HOME/.local/bin"
+LAUNCHER="$HOME/.local/bin/smith"
+
+# Canonicalize REPO_ROOT before embedding so the wrapper's exec line
+# matches what update-mode detection sees on the next run. On macOS,
+# /var → /private/var; without canonicalization a user installing from
+# /var/.../repo would write `exec "/var/.../src/index.ts"` and the
+# next run's resolve_path would compute /private/var/... — the
+# update-mode grep wouldn't match and the run would fall through to
+# conflict mode.
+LAUNCHER_REPO="$(resolve_path "$REPO_ROOT")"
+if [[ -z "$LAUNCHER_REPO" ]]; then
+  LAUNCHER_REPO="$REPO_ROOT"
+fi
+
+# Heredoc: $BUN_PATH and $LAUNCHER_REPO interpolate at heredoc-write time
+# (unquoted EOF marker); \$@ stays literal so runtime arg-passing works.
+# rm -f first to clear a previous symlink (transitioning from the old
+# layout) — `cat >` follows symlinks and would write through the old
+# target, which is wrong.
+rm -f "$LAUNCHER"
+cat > "$LAUNCHER" <<EOF
+#!/usr/bin/env bash
+# agent-smith launcher — hardcodes bun's path for hermetic spawn contexts.
+#
+# GUI apps launched from Spotlight/dock/Finder, MCP clients (Claude Code,
+# Kiro, OpenCode, Codex), cron, and launchd all spawn with a stripped PATH.
+# A '#!/usr/bin/env bun' shebang fails because 'env' can't find 'bun' in
+# those contexts. This wrapper captures bun's path at install time and
+# exec's smith's entry script directly.
+#
+# Re-rewritten on every \`bash bin/install\` and \`smith update\` run.
+exec "$BUN_PATH" "$LAUNCHER_REPO/src/index.ts" "\$@"
+EOF
+chmod +x "$LAUNCHER"
 
 # --- Step 7: PATH wiring ---
 

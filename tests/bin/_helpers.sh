@@ -114,6 +114,70 @@ assert_symlink_target() {
   fi
 }
 
+# Assert that $launcher is a regular executable bash wrapper that exec's
+# bun at $bun_path with the entry script at $entry_path. This is the
+# replacement for assert_symlink_target after the launcher migration:
+# the symlink-shebang model fails under stripped-PATH spawn contexts
+# (Spotlight, MCP clients, cron) because env can't find bun, so the
+# installer now writes a wrapper that hardcodes both paths.
+#
+# Asserts:
+#   1. $launcher exists and is a regular file (not a symlink).
+#   2. $launcher is executable.
+#   3. $launcher's body contains `exec "$bun_path" "$entry_path" "$@"`
+#      (literal — paths embedded directly in the script).
+# Canonicalize a path the same way bin/install does (resolve_path),
+# so test fixtures written under /var/... compare equal to the
+# /private/var/... form the installer embeds in the wrapper. Falls
+# back to the input path if neither readlink -f nor python3 is
+# available.
+canonicalize_path() {
+  local p="$1" resolved
+  if resolved="$(readlink -f -- "$p" 2>/dev/null)" && [[ -n "$resolved" ]]; then
+    echo "$resolved"; return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    if resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null)" \
+       && [[ -n "$resolved" ]]; then
+      echo "$resolved"; return 0
+    fi
+  fi
+  echo "$p"
+}
+
+assert_launcher_wrapper() {
+  local label="$1" launcher="$2" bun_path="$3" entry_path="$4"
+  if [[ -L "$launcher" ]]; then
+    echo "FAIL: $label" >&2
+    echo "  $launcher is a symlink; expected regular file (wrapper)" >&2
+    return 1
+  fi
+  if [[ ! -f "$launcher" ]]; then
+    echo "FAIL: $label" >&2
+    echo "  $launcher does not exist or is not a regular file" >&2
+    return 1
+  fi
+  if [[ ! -x "$launcher" ]]; then
+    echo "FAIL: $label" >&2
+    echo "  $launcher is not executable" >&2
+    return 1
+  fi
+  # Canonicalize both paths — the installer embeds canonical forms so
+  # update-mode detection works on macOS (/var → /private/var).
+  local canon_bun canon_entry
+  canon_bun="$(canonicalize_path "$bun_path")"
+  canon_entry="$(canonicalize_path "$entry_path")"
+  local expected_line="exec \"$canon_bun\" \"$canon_entry\" \"\$@\""
+  if ! grep -qF "$expected_line" "$launcher"; then
+    echo "FAIL: $label" >&2
+    echo "  $launcher does not contain the expected exec line" >&2
+    echo "  expected: $expected_line" >&2
+    echo "  actual body:" >&2
+    sed 's/^/    /' "$launcher" >&2
+    return 1
+  fi
+}
+
 # Creates a fake `bun` shim on a tmpdir directory and echoes the dir.
 # Use to satisfy step 3's `command -v bun` check in tests where step 3
 # isn't the focus. The shim does nothing useful when invoked but is

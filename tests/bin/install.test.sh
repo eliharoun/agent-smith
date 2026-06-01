@@ -227,12 +227,12 @@ test_gui_build_failure_warns_and_continues() {
   assert_eq "exit code (warn-and-continue)" "0" "$code" || return 1
   assert_contains "warn message" "$out" "GUI build failed" || return 1
   assert_contains "retry pointer" "$out" "bun run gui:build" || return 1
-  # Symlink must still be created — the CLI works without GUI.
-  assert_symlink_target "smith symlink despite gui build failure" \
-    "$home/.local/bin/smith" "$repo/src/index.ts" || return 1
+  # Launcher wrapper must still be created — the CLI works without GUI.
+  assert_launcher_wrapper "smith launcher despite gui build failure" \
+    "$home/.local/bin/smith" "$bun_dir/bun" "$repo/src/index.ts" || return 1
 }
 
-test_fresh_install_creates_symlink() {
+test_fresh_install_creates_launcher_wrapper() {
   local home repo bun_dir out code
   home="$(make_tmp_home)"
   repo="$(make_tmp_repo)"
@@ -244,7 +244,8 @@ test_fresh_install_creates_symlink() {
     bash "$repo/bin/install" 2>&1)"
   code=$?
   assert_eq "exit code" "0" "$code" || return 1
-  assert_symlink_target "smith symlink" "$home/.local/bin/smith" "$repo/src/index.ts" || return 1
+  assert_launcher_wrapper "smith launcher" \
+    "$home/.local/bin/smith" "$bun_dir/bun" "$repo/src/index.ts" || return 1
 }
 
 test_fresh_install_appends_marker_block_to_zshrc() {
@@ -305,7 +306,8 @@ test_no_modify_path_skips_rc_edit() {
       return 1
     fi
   fi
-  assert_symlink_target "smith symlink" "$home/.local/bin/smith" "$repo/src/index.ts" || return 1
+  assert_launcher_wrapper "smith launcher" \
+    "$home/.local/bin/smith" "$bun_dir/bun" "$repo/src/index.ts" || return 1
   assert_contains "summary mentions opt-out" "$out" "PATH:" || return 1
   assert_contains "summary tells user what to add" "$out" '$HOME/.local/bin' || return 1
 }
@@ -328,7 +330,8 @@ test_unwritable_rc_skips_rc_edit_without_aborting() {
   # Restore perms so cleanup_tmp_dirs can rm -rf the tmpdir.
   chmod 0644 "$rc"
   assert_eq "exit code" "0" "$code" || return 1
-  assert_symlink_target "smith symlink" "$home/.local/bin/smith" "$repo/src/index.ts" || return 1
+  assert_launcher_wrapper "smith launcher" \
+    "$home/.local/bin/smith" "$bun_dir/bun" "$repo/src/index.ts" || return 1
   if grep -q "agent-smith installer" "$rc"; then
     echo "FAIL: read-only rc should not have been edited" >&2
     cat "$rc" >&2
@@ -554,7 +557,7 @@ run_test test_update_mode_refuses_dirty_git_tree
 run_test test_fresh_install_runs_bun_install
 run_test test_fresh_install_runs_gui_build
 run_test test_gui_build_failure_warns_and_continues
-run_test test_fresh_install_creates_symlink
+run_test test_fresh_install_creates_launcher_wrapper
 run_test test_fresh_install_appends_marker_block_to_zshrc
 run_test test_idempotency_marker_block_appended_at_most_once
 run_test test_no_modify_path_skips_rc_edit

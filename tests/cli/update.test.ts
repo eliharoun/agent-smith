@@ -148,6 +148,7 @@ describe("runUpdateCli", () => {
         reinstallCalled = true;
         return { ok: true };
       },
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => {
         doctorCalled = true;
         return 0;
@@ -160,7 +161,7 @@ describe("runUpdateCli", () => {
     expect(doctorCalled).toBe(true);
     const out = lines.join("\n");
     expect(out).toMatch(
-      /Pulled latest[\s\S]*Dependencies up to date[\s\S]*Rebuilding GUI bundle[\s\S]*GUI bundle rebuilt[\s\S]*Refreshing agent-smith knowledge[\s\S]*Running smith doctor/,
+      /Pulled latest[\s\S]*Dependencies up to date[\s\S]*Refreshing smith launcher[\s\S]*Launcher refreshed[\s\S]*Rebuilding GUI bundle[\s\S]*GUI bundle rebuilt[\s\S]*Refreshing agent-smith knowledge[\s\S]*Running smith doctor/,
     );
   });
 
@@ -184,6 +185,7 @@ describe("runUpdateCli", () => {
       bunInstall: async () => ({ ok: true }),
       runGuiBuild: async () => ({ ok: true }),
       runReinstall: async () => ({ ok: true }),
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => 1,
     });
     expect(code).toBe(1);
@@ -361,6 +363,7 @@ describe("runUpdateCli", () => {
         reinstallCalls.push({ workspace, agent });
         return { ok: true };
       },
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => 0,
     });
     expect(code).toBe(0);
@@ -391,6 +394,7 @@ describe("runUpdateCli", () => {
       bunInstall: async () => ({ ok: true }),
       runGuiBuild: async () => ({ ok: true }),
       runReinstall: async () => ({ ok: false, error: "knowledge dir lock contention" }),
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => 0,
     });
     expect(code).toBe(3);
@@ -420,6 +424,7 @@ describe("runUpdateCli", () => {
       bunInstall: async () => ({ ok: true }),
       runGuiBuild: async () => ({ ok: true }),
       runReinstall: async () => ({ ok: false, error: "..." }),
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => 1,
     });
     expect(code).toBe(1);
@@ -445,6 +450,7 @@ describe("runUpdateCli", () => {
       bunInstall: async () => ({ ok: true }),
       runGuiBuild: async () => ({ ok: true }),
       runReinstall: async () => ({ ok: false, error: "..." }),
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => 2,
     });
     expect(code).toBe(2);
@@ -475,6 +481,10 @@ describe("runUpdateCli", () => {
         reinstallCalled = true;
         return { ok: true };
       },
+      runWriteLauncher: () =>
+        Promise.reject(
+          new Error("runWriteLauncher must not be called in dry-run"),
+        ),
       runDoctor: () =>
         Promise.reject(new Error("runDoctor must not be called in dry-run")),
     });
@@ -508,6 +518,7 @@ describe("runUpdateCli", () => {
         reinstallCalled = true;
         return { ok: true };
       },
+      runWriteLauncher: async () => ({ ok: true }),
       runDoctor: async () => {
         doctorCalled = true;
         return 0;
@@ -544,6 +555,114 @@ describe("runUpdateCli", () => {
       bunInstall: async () => ({ ok: true }),
       runGuiBuild: async () => ({ ok: false, error: "..." }),
       runReinstall: async () => ({ ok: true }),
+      runWriteLauncher: async () => ({ ok: true }),
+      runDoctor: async () => 1,
+    });
+    expect(code).toBe(1);
+  });
+
+  test("calls runWriteLauncher with the resolved workspace path", async () => {
+    const { importMetaUrl } = await fakeWorkspace();
+    const { runner } = makeRunner([
+      {
+        match: (a) => a[0] === "status" && a[1] === "--porcelain",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+      {
+        match: (a) => a[0] === "pull" && a[1] === "--ff-only",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+    ]);
+    const launcherCalls: string[] = [];
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      importMetaUrl,
+      runner,
+      bunInstall: async () => ({ ok: true }),
+      runGuiBuild: async () => ({ ok: true }),
+      runReinstall: async () => ({ ok: true }),
+      runWriteLauncher: async (workspace) => {
+        launcherCalls.push(workspace);
+        return { ok: true };
+      },
+      runDoctor: async () => 0,
+    });
+    expect(code).toBe(0);
+    expect(launcherCalls.length).toBe(1);
+    expect(typeof launcherCalls[0]).toBe("string");
+    expect(launcherCalls[0]?.length).toBeGreaterThan(0);
+  });
+
+  test("launcher refresh failure + doctor=0 returns EXIT_PARTIAL but other steps still run", async () => {
+    const { importMetaUrl } = await fakeWorkspace();
+    const { runner } = makeRunner([
+      {
+        match: (a) => a[0] === "status" && a[1] === "--porcelain",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+      {
+        match: (a) => a[0] === "pull" && a[1] === "--ff-only",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+    ]);
+    const lines: string[] = [];
+    let reinstallCalled = false;
+    let guiBuildCalled = false;
+    let doctorCalled = false;
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: (s) => lines.push(s),
+      importMetaUrl,
+      runner,
+      bunInstall: async () => ({ ok: true }),
+      runGuiBuild: async () => {
+        guiBuildCalled = true;
+        return { ok: true };
+      },
+      runReinstall: async () => {
+        reinstallCalled = true;
+        return { ok: true };
+      },
+      runWriteLauncher: async () => ({ ok: false, error: "could not resolve bun" }),
+      runDoctor: async () => {
+        doctorCalled = true;
+        return 0;
+      },
+    });
+    // Warn-and-continue: subsequent steps still run.
+    expect(guiBuildCalled).toBe(true);
+    expect(reinstallCalled).toBe(true);
+    expect(doctorCalled).toBe(true);
+    // Soft-fail surfaces as EXIT_PARTIAL when doctor itself was clean.
+    expect(code).toBe(3);
+    const out = lines.join("\n");
+    expect(out).toContain("Launcher refresh failed");
+    expect(out).toContain("could not resolve bun");
+    expect(out).toContain("bash bin/install");
+  });
+
+  test("launcher refresh failure + doctor=1 returns 1 (doctor drift takes precedence)", async () => {
+    const { importMetaUrl } = await fakeWorkspace();
+    const { runner } = makeRunner([
+      {
+        match: (a) => a[0] === "status" && a[1] === "--porcelain",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+      {
+        match: (a) => a[0] === "pull" && a[1] === "--ff-only",
+        result: { stdout: "", stderr: "", code: 0 },
+      },
+    ]);
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      importMetaUrl,
+      runner,
+      bunInstall: async () => ({ ok: true }),
+      runGuiBuild: async () => ({ ok: true }),
+      runReinstall: async () => ({ ok: true }),
+      runWriteLauncher: async () => ({ ok: false, error: "..." }),
       runDoctor: async () => 1,
     });
     expect(code).toBe(1);

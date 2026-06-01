@@ -1,5 +1,6 @@
 import type { Runner } from "../../io/git";
 import { defaultRunner, pullIfClean, revListCount } from "../../io/git";
+import { writeLauncher } from "../../io/launcher";
 import { resolveWorkspacePath } from "../../io/workspace-version";
 import { fileURLToPath } from "node:url";
 import { EXIT_OK, EXIT_PARTIAL, EXIT_RUNTIME } from "../exit-codes";
@@ -42,6 +43,16 @@ export interface UpdateCliOptions {
    */
   runGuiBuild?: (
     cwd: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * For testing: override the launcher-rewrite step that runs between
+   * the agent-smith reinstall and doctor. The default invokes
+   * `writeLauncher({ workspacePath })` which rewrites `~/.local/bin/smith`
+   * with the bun-path-hardcoded wrapper. Tests pass a stub to keep the
+   * test process's real `~/.local/bin/smith` untouched.
+   */
+  runWriteLauncher?: (
+    workspacePath: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /**
    * For testing: override `import.meta.url` resolution. Defaults to the
@@ -88,6 +99,18 @@ async function defaultRunGuiBuild(
   return code === 0
     ? { ok: true }
     : { ok: false, error: `bun run gui:build exited with code ${code}` };
+}
+
+async function defaultRunWriteLauncher(
+  workspacePath: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Rewrite ~/.local/bin/smith with the bun-path-hardcoded wrapper.
+  // Mirrors `bin/install` Step 6's logic so users picking up this fix
+  // via `smith update` get the same launcher shape as fresh installs.
+  // Idempotent — same canonical paths on every run.
+  const result = await writeLauncher({ workspacePath });
+  if (result.ok) return { ok: true };
+  return { ok: false, error: result.error };
 }
 
 async function defaultRunReinstall(
@@ -152,6 +175,7 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   const bunInstall = opts.bunInstall ?? defaultBunInstall;
   const runGuiBuild = opts.runGuiBuild ?? defaultRunGuiBuild;
   const runReinstall = opts.runReinstall ?? defaultRunReinstall;
+  const runWriteLauncher = opts.runWriteLauncher ?? defaultRunWriteLauncher;
   // The cwd parameter is intentionally unused: runDoctorCli self-resolves the
   // workspace from doctor.ts's import.meta.url. Threading cwd through would
   // require a second injection seam in doctor.ts; the asymmetry is documented
@@ -214,6 +238,24 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   }
   print("Dependencies up to date.");
 
+  // Step 3a: rewrite ~/.local/bin/smith launcher.
+  // The launcher used to be a symlink to src/index.ts whose shebang is
+  // #!/usr/bin/env bun. That fails under stripped-PATH spawn contexts
+  // (Spotlight/dock launches, MCP clients spawning the smith MCP
+  // server, cron, launchd). Replace with a wrapper that hardcodes bun's
+  // absolute path. Idempotent — same canonical paths on every run.
+  // Warn-and-continue on failure: doctor still reports drift, the user
+  // can re-run `bash bin/install` manually.
+  print("");
+  print("Refreshing smith launcher...");
+  const launcherResult = await runWriteLauncher(workspacePath);
+  if (!launcherResult.ok) {
+    print(`Launcher refresh failed: ${launcherResult.error}`);
+    print("  (Other update steps continue. Retry: bash bin/install)");
+  } else {
+    print("Launcher refreshed.");
+  }
+
   // Step 3b: rebuild GUI bundle.
   // gui/web/dist/ is gitignored; after a pull that brings in GUI changes
   // (or a pull on a clone whose dist was never built), `smith gui` would
@@ -251,11 +293,11 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   print("Running smith doctor...");
   const doctorCode = await runDoctor(workspacePath);
 
-  // If reinstall OR GUI build failed but doctor passed, surface the
-  // partial. Doctor drift (1) or network (2) take precedence — they're
-  // more actionable than either soft-fail above.
+  // If launcher rewrite, reinstall, or GUI build failed but doctor passed,
+  // surface the partial. Doctor drift (1) or network (2) take precedence —
+  // they're more actionable than the soft-fails above.
   if (
-    (!reinstallResult.ok || !guiBuildResult.ok) &&
+    (!launcherResult.ok || !reinstallResult.ok || !guiBuildResult.ok) &&
     doctorCode === EXIT_OK
   ) {
     return EXIT_PARTIAL;
