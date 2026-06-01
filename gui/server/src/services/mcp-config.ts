@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { atomicWriteText } from "../io/atomic-write";
+import { resolveSmithPath } from "./resolve-smith-path";
 
 /**
  * The canonical name of the bundled MCP server the toggle owns. Only this
@@ -44,8 +45,17 @@ export function defaultMcpConfigPaths(home: string = homedir()): Record<McpPlatf
   };
 }
 
+/**
+ * Build the canonical spawn entry written into each platform's MCP config.
+ *
+ * Resolves smith to its absolute path via {@link resolveSmithPath} so
+ * GUI-launched MCP clients (Spotlight, dock, Finder) — which inherit no
+ * shell PATH — can spawn the server. Throws SmithError("not-found") when
+ * smith can't be located; the route handler surfaces this as HTTP 500
+ * with an actionable body.
+ */
 function spawnEntry(agent: string): { command: string; args: string[] } {
-  return { command: "smith", args: ["knowledge", "serve", agent, "--stdio"] };
+  return { command: resolveSmithPath(), args: ["knowledge", "serve", agent, "--stdio"] };
 }
 
 /**

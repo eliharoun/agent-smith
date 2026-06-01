@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,39 @@ import {
   removeMcpEntry,
   writeMcpEntry,
 } from "./mcp-config";
+import { __resetSmithPathCacheForTests } from "./resolve-smith-path";
+
+// Stub the smith-path resolver via SMITH_BIN — this matches the existing
+// smith-binary.ts convention and avoids global mock.module leakage into
+// resolve-smith-path.test.ts. The fixture is a real executable file so the
+// resolver's validateExecutable() check accepts it.
+// Build the stub at a path AND assign its realpath form (resolver canonicalizes
+// via realpathSync, which on macOS resolves /tmp -> /private/tmp).
+const STUB_RAW_PATH = join(tmpdir(), `smith-stub-${process.pid}`);
+let STUBBED_SMITH_PATH = STUB_RAW_PATH; // overwritten in beforeAll
+let savedSmithBin: string | undefined;
+
+beforeAll(() => {
+  mkdirSync(join(STUB_RAW_PATH, ".."), { recursive: true });
+  writeFileSync(STUB_RAW_PATH, "#!/bin/sh\nexit 0\n");
+  chmodSync(STUB_RAW_PATH, 0o755);
+  STUBBED_SMITH_PATH = realpathSync(STUB_RAW_PATH);
+  savedSmithBin = process.env.SMITH_BIN;
+  process.env.SMITH_BIN = STUB_RAW_PATH;
+  __resetSmithPathCacheForTests();
+});
+
+afterAll(() => {
+  if (savedSmithBin === undefined) delete process.env.SMITH_BIN;
+  else process.env.SMITH_BIN = savedSmithBin;
+  __resetSmithPathCacheForTests();
+  // Best-effort cleanup of the stub.
+  try {
+    require("node:fs").unlinkSync(STUB_RAW_PATH);
+  } catch {
+    /* ignore */
+  }
+});
 
 let root: string;
 
@@ -36,7 +70,7 @@ describe("writeMcpEntry / removeMcpEntry — Claude Code (JSON, top-level mcpSer
     await writeMcpEntry({ platform: "claude-code", agent: "foo", configPath: p });
     const data = JSON.parse(await readFile(p, "utf8"));
     expect(data.mcpServers[SERVER_NAME]).toEqual({
-      command: "smith",
+      command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
   });
@@ -105,7 +139,7 @@ describe("writeMcpEntry / removeMcpEntry — OpenCode (JSON, top-level mcp)", ()
     await writeMcpEntry({ platform: "opencode", agent: "foo", configPath: p });
     const data = JSON.parse(await readFile(p, "utf8"));
     expect(data.mcp[SERVER_NAME]).toEqual({
-      command: "smith",
+      command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
     expect(data.mcpServers).toBeUndefined();
@@ -136,7 +170,7 @@ describe("writeMcpEntry / removeMcpEntry — Codex (TOML, [mcp_servers.<name>])"
     const parsed = parseToml(text) as Record<string, unknown>;
     const mcp = parsed.mcp_servers as Record<string, { command: string; args: string[] }>;
     expect(mcp[SERVER_NAME]).toEqual({
-      command: "smith",
+      command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
   });
@@ -176,7 +210,7 @@ describe("writeMcpEntry / removeMcpEntry — Kiro (JSON, top-level mcpServers)",
     await writeMcpEntry({ platform: "kiro", agent: "foo", configPath: p });
     const data = JSON.parse(await readFile(p, "utf8"));
     expect(data.mcpServers[SERVER_NAME]).toEqual({
-      command: "smith",
+      command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
   });
@@ -198,6 +232,31 @@ describe("writeMcpEntry / removeMcpEntry — Kiro (JSON, top-level mcpServers)",
     data = JSON.parse(await readFile(p, "utf8"));
     expect(data.mcpServers[SERVER_NAME]).toBeUndefined();
     expect(data.mcpServers["k-other"]).toEqual({ command: "x", args: [] });
+  });
+});
+
+describe("writeMcpEntry — absolute path discipline", () => {
+  // Spotlight/dock-launched GUI clients don't inherit shell PATH, so writing
+  // a bare "smith" silently fails to spawn. The toggle MUST write the
+  // resolver's absolute path. Asserts the published behaviour, not the
+  // resolver's mechanics (those live in resolve-smith-path.test.ts).
+  it("writes an absolute path for command, never a bare name", async () => {
+    for (const platform of ["claude-code", "opencode", "kiro"] as const) {
+      const p = join(root, `${platform}.json`);
+      await writeMcpEntry({ platform, agent: "foo", configPath: p });
+      const data = JSON.parse(await readFile(p, "utf8"));
+      const block = platform === "opencode" ? data.mcp : data.mcpServers;
+      const cmd = block[SERVER_NAME].command as string;
+      expect(cmd.startsWith("/")).toBe(true);
+      expect(cmd).toBe(STUBBED_SMITH_PATH);
+    }
+    // Codex (TOML) too.
+    const p = join(root, "abs-codex.toml");
+    await writeMcpEntry({ platform: "codex", agent: "foo", configPath: p });
+    const parsed = parseToml(await readFile(p, "utf8")) as Record<string, unknown>;
+    const mcp = parsed.mcp_servers as Record<string, { command: string }>;
+    expect(mcp[SERVER_NAME].command.startsWith("/")).toBe(true);
+    expect(mcp[SERVER_NAME].command).toBe(STUBBED_SMITH_PATH);
   });
 });
 

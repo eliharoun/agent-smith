@@ -10,6 +10,7 @@ import {
   writeMcpEntry,
 } from "../services/mcp-config";
 import { parseRegistry } from "../services/parse-registry";
+import { resolveSmithPath } from "../services/resolve-smith-path";
 
 export interface McpRouteDeps {
   registryPath: string;
@@ -79,6 +80,24 @@ export function registerMcpRoutes(app: Hono, deps: McpRouteDeps) {
     }
     const { enable, platforms } = parsed.data;
     const paths = configPathsFor();
+    // Pre-flight: when enabling, every platform's writer needs an absolute
+    // smith path. If the resolver can't find smith we'd write the same
+    // failure into N platforms — fail fast with a single, actionable 500
+    // instead so the GUI banner can render "couldn't resolve smith path;
+    // reinstall smith and retry".
+    if (enable) {
+      try {
+        resolveSmithPath();
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "could not resolve smith executable path";
+        throw new HttpError(
+          500,
+          "SMITH_NOT_FOUND",
+          `${message}. Reinstall smith and retry.`,
+        );
+      }
+    }
     const results = await Promise.all(
       platforms.map(async (platform) => {
         const configPath = paths[platform];

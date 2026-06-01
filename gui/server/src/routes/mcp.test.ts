@@ -1,9 +1,39 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
 import { JobManager } from "../jobs/job-manager";
+import { __resetSmithPathCacheForTests } from "../services/resolve-smith-path";
+
+// Stub the smith-path resolver via SMITH_BIN env override — same convention
+// as smith-binary.ts. Tests can flip resolverShouldFail to simulate the
+// not-found path without leaking a mock.module into other test files.
+const STUB_RAW_PATH = join(tmpdir(), `smith-stub-routes-${process.pid}`);
+let STUBBED_SMITH_PATH = STUB_RAW_PATH; // overwritten in beforeAll
+let savedSmithBin: string | undefined;
+
+beforeAll(() => {
+  mkdirSync(join(STUB_RAW_PATH, ".."), { recursive: true });
+  writeFileSync(STUB_RAW_PATH, "#!/bin/sh\nexit 0\n");
+  chmodSync(STUB_RAW_PATH, 0o755);
+  STUBBED_SMITH_PATH = realpathSync(STUB_RAW_PATH);
+  savedSmithBin = process.env.SMITH_BIN;
+  process.env.SMITH_BIN = STUB_RAW_PATH;
+  __resetSmithPathCacheForTests();
+});
+
+afterAll(() => {
+  if (savedSmithBin === undefined) delete process.env.SMITH_BIN;
+  else process.env.SMITH_BIN = savedSmithBin;
+  __resetSmithPathCacheForTests();
+  try {
+    require("node:fs").unlinkSync(STUB_RAW_PATH);
+  } catch {
+    /* ignore */
+  }
+});
 
 let root: string;
 let registryPath: string;
@@ -149,12 +179,14 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
     expect(cc?.hasEntry).toBe(true);
     const kiro = body.platforms.find((p) => p.platform === "kiro");
     expect(kiro?.hasEntry).toBe(true);
-    // Verify on disk too.
+    // Verify on disk too. The command is the resolver's absolute path —
+    // see the SMITH_BIN stub at the top of the file.
     const ccData = JSON.parse(await readFile(configPaths()["claude-code"], "utf8"));
     expect(ccData.mcpServers["agent-smith-knowledge"]).toEqual({
-      command: "smith",
+      command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
+    expect(ccData.mcpServers["agent-smith-knowledge"].command.startsWith("/")).toBe(true);
   });
 
   it("disables: removes only the canonical entry, preserves siblings", async () => {
@@ -228,5 +260,51 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
       body: JSON.stringify({ enable: true, platforms: ["claude-code"] }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it("500s with an actionable body when the smith-path resolver fails (enable)", async () => {
+    // Force the resolver into the not-found branch by pointing SMITH_BIN
+    // at an invalid path and clearing all argv/HOME/PATH discovery candidates.
+    const prevSmithBin = process.env.SMITH_BIN;
+    const prevArgv1 = process.argv[1];
+    const prevHome = process.env.HOME;
+    const prevPath = process.env.PATH;
+    const fakeHome = await mkdtemp(join(tmpdir(), "fail-home-"));
+    process.env.SMITH_BIN = "/path/that/does/not/exist";
+    process.argv[1] = "/path/that/does/not/exist";
+    process.env.HOME = fakeHome; // no ~/.local/bin/smith here
+    process.env.PATH = "/usr/bin:/bin"; // smith not on this PATH
+    __resetSmithPathCacheForTests();
+    try {
+      const app = appWith();
+      const res = await app.request("/api/agents/foo/mcp-wiring", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer t",
+          "content-type": "application/json",
+          origin: "http://localhost.test",
+        },
+        body: JSON.stringify({ enable: true, platforms: ["claude-code", "kiro"] }),
+      });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string; code: string };
+      expect(body.code).toBe("SMITH_NOT_FOUND");
+      expect(body.error).toMatch(/smith/i);
+      expect(body.error).toMatch(/reinstall/i);
+      // The config files MUST NOT have been touched: pre-flight failed.
+      const ccPath = configPaths()["claude-code"];
+      const ccExists = await Bun.file(ccPath).exists();
+      expect(ccExists).toBe(false);
+    } finally {
+      if (prevSmithBin === undefined) delete process.env.SMITH_BIN;
+      else process.env.SMITH_BIN = prevSmithBin;
+      process.argv[1] = prevArgv1;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevPath === undefined) delete process.env.PATH;
+      else process.env.PATH = prevPath;
+      __resetSmithPathCacheForTests();
+      await rm(fakeHome, { recursive: true, force: true });
+    }
   });
 });
