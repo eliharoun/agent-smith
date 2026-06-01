@@ -15,6 +15,15 @@ function mockFetch(
   viewProvider: () => View,
   calls: Call[],
   agentDetailProvider?: () => Record<string, unknown>,
+  wiringPlanProvider?: () => {
+    platforms: Array<{
+      platform: "opencode" | "claude-code" | "codex" | "kiro";
+      cliInstalled: boolean;
+      configPath: string;
+      hasEntry: boolean;
+      configReadable: boolean;
+    }>;
+  },
 ) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -27,10 +36,44 @@ function mockFetch(
     if (url.includes("/api/knowledge/") && (init?.method ?? "GET") === "GET") {
       return new Response(JSON.stringify(viewProvider()), { status: 200 });
     }
+    // v2.1-E: MCP wiring plan + apply endpoints (the toggle's confirm modal
+    // fetches the plan; confirm POSTs the apply request).
+    if (url.endsWith("/mcp-wiring-plan") && (init?.method ?? "GET") === "GET") {
+      const plan = wiringPlanProvider?.() ?? {
+        platforms: [
+          {
+            platform: "claude-code",
+            cliInstalled: true,
+            configPath: "/home/user/.claude.json",
+            hasEntry: false,
+            configReadable: true,
+          },
+        ],
+      };
+      return new Response(JSON.stringify(plan), { status: 200 });
+    }
+    if (url.endsWith("/mcp-wiring") && init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          results: [{ platform: "claude-code", ok: true, configPath: "/x" }],
+          platforms: [
+            {
+              platform: "claude-code",
+              cliInstalled: true,
+              configPath: "/x",
+              hasEntry: true,
+              configReadable: true,
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }
     if (
       url.includes("/api/agents/") &&
       !url.includes("/installed-status") &&
       !url.includes("/config") &&
+      !url.includes("/mcp-wiring") &&
       (init?.method ?? "GET") === "GET"
     ) {
       const detail = agentDetailProvider?.() ?? {
@@ -228,10 +271,9 @@ describe("KnowledgeSources", () => {
     });
   });
 
-  // ─── v2.1-D: MCP wiring toggle (replaces the fire-and-forget serve btn) ─
+  // ─── v2.1-E: MCP wiring toggle — confirmation modal + multi-step chain ─
 
-  it("MCP toggle ON: PUTs mcpServers patch with the canonical name appended to the array", async () => {
-    // Start with an empty mcpServers array in agent detail. Toggle is OFF.
+  it("MCP toggle ON: opens confirmation modal listing the wiring plan", async () => {
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
@@ -264,23 +306,18 @@ describe("KnowledgeSources", () => {
     expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
 
-    await waitFor(() => {
-      const put = calls.find(
-        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
-      );
-      expect(put).toBeDefined();
-      const body = JSON.parse((put!.init!.body as string) ?? "{}");
-      expect(body).toEqual({ mcpServers: ["agent-smith-knowledge"] });
-    });
-    // ON banner appears after a successful save with the two-step copy.
+    // Modal renders with the verb + plan summary.
     await waitFor(() =>
-      expect(screen.getByText(/two steps to finish wiring/i)).toBeInTheDocument(),
+      expect(screen.getByText(/wire knowledge mcp server for testing-agent/i)).toBeInTheDocument(),
     );
-    expect(screen.getByText(/smith agent install testing-agent/i)).toBeInTheDocument();
-    expect(screen.getByText(/knowledge serve testing-agent --stdio/i)).toBeInTheDocument();
+    expect(screen.getByText(/ai client mcp configs/i)).toBeInTheDocument();
+    // /mcp-wiring-plan was fetched.
+    expect(
+      calls.find((c) => c.url.endsWith("/mcp-wiring-plan") && (c.init?.method ?? "GET") === "GET"),
+    ).toBeDefined();
   });
 
-  it("MCP toggle ON: preserves any pre-existing names in the array (dedupes the canonical name)", async () => {
+  it("MCP toggle ON: confirm dispatches PUT /config → POST /mcp-wiring → agent.install", async () => {
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
@@ -310,9 +347,13 @@ describe("KnowledgeSources", () => {
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
 
     const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
-    expect(toggle).toHaveAttribute("aria-checked", "false");
     fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^wire 1 platform/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^wire 1 platform/i }));
 
+    // 1. PUT /config — full deduplicated array (preserves siblings + adds canonical name).
     await waitFor(() => {
       const put = calls.find(
         (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
@@ -321,9 +362,31 @@ describe("KnowledgeSources", () => {
       const body = JSON.parse((put!.init!.body as string) ?? "{}");
       expect(body).toEqual({ mcpServers: ["github-mcp", "agent-smith-knowledge"] });
     });
+    // 2. POST /mcp-wiring with enable=true and the platforms list.
+    await waitFor(() => {
+      const post = calls.find(
+        (c) => c.url.endsWith("/mcp-wiring") && c.init?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post!.init!.body as string) ?? "{}");
+      expect(body.enable).toBe(true);
+      expect(body.platforms).toContain("claude-code");
+    });
+    // 3. agent.install dispatched.
+    await waitFor(() => {
+      const job = calls.find(
+        (c) =>
+          c.url.includes("/api/jobs") &&
+          c.init?.method === "POST" &&
+          (JSON.parse((c.init?.body as string) ?? "{}").command as string) === "agent.install",
+      );
+      expect(job).toBeDefined();
+      const body = JSON.parse((job!.init!.body as string) ?? "{}");
+      expect(body.name).toBe("testing-agent");
+    });
   });
 
-  it("MCP toggle OFF: removes the canonical name but preserves other entries in the array", async () => {
+  it("MCP toggle OFF: confirm sends enable=false and full deduplicated array", async () => {
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
@@ -348,6 +411,18 @@ describe("KnowledgeSources", () => {
           mcpServers: ["agent-smith-knowledge", "github-mcp"],
         },
       }),
+      // Plan: claude-code currently has the entry, so disable should target it.
+      () => ({
+        platforms: [
+          {
+            platform: "claude-code",
+            cliInstalled: true,
+            configPath: "/home/user/.claude.json",
+            hasEntry: true,
+            configReadable: true,
+          },
+        ],
+      }),
     ) as unknown as typeof fetch;
     renderPanel();
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
@@ -355,23 +430,32 @@ describe("KnowledgeSources", () => {
     const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
     await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
     fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByText(/unwire knowledge mcp server/i)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^unwire 1 platform/i }));
 
+    // PUT /config with the canonical name dropped, sibling preserved.
     await waitFor(() => {
       const put = calls.find(
         (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
       );
       expect(put).toBeDefined();
       const body = JSON.parse((put!.init!.body as string) ?? "{}");
-      // Sibling preserved; agent-smith-knowledge removed.
       expect(body).toEqual({ mcpServers: ["github-mcp"] });
     });
-    // OFF banner is the simpler one-liner.
-    await waitFor(() =>
-      expect(screen.getByText(/knowledge mcp server disabled\. run/i)).toBeInTheDocument(),
-    );
+    // POST /mcp-wiring with enable=false.
+    await waitFor(() => {
+      const post = calls.find(
+        (c) => c.url.endsWith("/mcp-wiring") && c.init?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse((post!.init!.body as string) ?? "{}");
+      expect(body.enable).toBe(false);
+    });
   });
 
-  it("MCP toggle OFF with no other entries sends an empty array", async () => {
+  it("MCP toggle: cancelling the modal reverts the optimistic flip and dispatches no writes", async () => {
     globalThis.fetch = mockFetch(
       () => ({
         agent: "testing-agent",
@@ -393,23 +477,28 @@ describe("KnowledgeSources", () => {
           name: "testing-agent",
           description: "",
           targets: ["opencode"],
-          mcpServers: ["agent-smith-knowledge"],
+          mcpServers: [],
         },
       }),
     ) as unknown as typeof fetch;
     renderPanel();
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
     const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
-    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
     fireEvent.click(toggle);
-    await waitFor(() => {
-      const put = calls.find(
-        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
-      );
-      expect(put).toBeDefined();
-      const body = JSON.parse((put!.init!.body as string) ?? "{}");
-      expect(body).toEqual({ mcpServers: [] });
-    });
+    await waitFor(() =>
+      expect(screen.getByText(/wire knowledge mcp server for/i)).toBeInTheDocument(),
+    );
+    // The toggle is optimistically ON while the modal is open.
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    // Toggle reverts; no PUT/config or POST/mcp-wiring fired.
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "false"));
+    expect(
+      calls.find((c) => c.url.endsWith("/config") && c.init?.method === "PUT"),
+    ).toBeUndefined();
+    expect(
+      calls.find((c) => c.url.endsWith("/mcp-wiring") && c.init?.method === "POST"),
+    ).toBeUndefined();
   });
 
   it("does not render the legacy debug serve button", async () => {

@@ -1,6 +1,7 @@
-import type { KnowledgeSource } from "gui-shared";
+import type { KnowledgeSource, Platform as PlatformId } from "gui-shared";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { agentsApi } from "@/api/agents";
 import { useAgent, useSaveAgentConfig } from "@/hooks/useAgents";
 import { useGrantRefreshConsent, useKnowledge } from "@/hooks/useKnowledge";
 import { useStartJob } from "@/hooks/useStartJob";
@@ -11,6 +12,7 @@ import { TypedTokenModal } from "@/ui/TypedTokenModal";
 import { AddKnowledgeSourceModal } from "./AddKnowledgeSourceModal";
 import { EditKnowledgeSourceModal } from "./EditKnowledgeSourceModal";
 import { KnowledgeSourceRow } from "./KnowledgeSourceRow";
+import { McpWiringModal } from "./McpWiringModal";
 import { RefreshConsentBanner } from "./RefreshConsentBanner";
 
 /** Canonical name of the bundled MCP server the toggle owns. */
@@ -84,33 +86,37 @@ export function KnowledgeSources({ agent }: Props) {
   const [editing, setEditing] = useState<KnowledgeSource | null>(null);
   const [refreshAllConfirm, setRefreshAllConfirm] = useState(false);
 
-  // MCP wiring toggle state (Task v2.1-D).
+  // MCP wiring toggle state (Task v2.1-D / v2.1-E).
   // The toggle reflects whether the bundle's `mcpServers: string[]` array
   // contains "agent-smith-knowledge": present → ON, absent → OFF. We read
   // from the agent detail (which the panel already fetches for the
-  // per-source editor); on flip we PUT the full deduplicated array
-  // (existing entries + the toggle outcome) so intentional removals
-  // propagate.
+  // per-source editor). On flip the panel:
+  //   1. opens a confirmation modal listing exactly which AI-client MCP
+  //      configs will be touched (via GET /mcp-wiring-plan);
+  //   2. on confirm: PUT /config (mcpServers array) → POST /mcp-wiring →
+  //      dispatch agent.install. Failure mid-chain reverts the optimistic
+  //      flip and surfaces the error inline.
   const config = detail.data?.config as Record<string, unknown> | undefined;
   const mcpServers = readMcpServers(config);
   const savedOn = mcpServers.includes(MCP_SERVER_KEY);
-  // Optimistic flag for in-flight flip — the switch animates instantly,
-  // and we revert on PUT failure. Cleared when the refetched config
-  // catches up (so the toggle reflects ground truth after save).
+  // Optimistic flag for in-flight flip — the switch animates instantly
+  // when the user clicks, and we revert if the chain fails or the modal
+  // is cancelled. Cleared when the refetched config catches up (so the
+  // toggle reflects ground truth after save).
   const [optimisticOn, setOptimisticOn] = useState<boolean | null>(null);
   useEffect(() => {
     if (optimisticOn !== null && optimisticOn === savedOn) setOptimisticOn(null);
   }, [optimisticOn, savedOn]);
   const mcpOn = optimisticOn ?? savedOn;
-  // Sticky install-reminder banner (Task v2.1-D). Shown after the user
-  // flips the toggle (the panel can't run `smith agent install` itself —
-  // that's a heavy operation gated behind the existing install UI). Stays
-  // visible until the user navigates away or dismisses it. The banner
-  // copy depends on the direction of the flip: ON tells the user about
-  // the second step (adding spawn config to their AI client's global MCP
-  // config); OFF only mentions running install (leaving an unused server
-  // entry in the AI-client config is harmless).
-  const [installReminder, setInstallReminder] = useState<"on" | "off" | null>(null);
+  // Confirmation modal: when non-null, shows the wiring plan + confirm
+  // button. `enable` is the desired direction of the flip.
+  const [pendingFlip, setPendingFlip] = useState<{ enable: boolean } | null>(null);
+  // Multi-step chain progress. When non-null, the toggle is locked and
+  // the body shows a small status line.
+  const [chainStep, setChainStep] = useState<
+    "config" | "wiring" | "install" | null
+  >(null);
+  const [chainError, setChainError] = useState<string | null>(null);
 
   if (q.isLoading) {
     return (
@@ -151,27 +157,87 @@ export function KnowledgeSources({ agent }: Props) {
       (j.source.refresh && REFRESH_MODES.has(String(j.source.refresh))),
   );
 
+  // Click handler: open the confirmation modal. Optimistic state is set
+  // here so the visual flip happens immediately; the modal is what gates
+  // the actual writes. Cancelling the modal reverts the optimistic flip.
   function flipMcpToggle(next: boolean) {
-    if (saveConfig.isPending) return;
+    if (chainStep !== null) return;
     setOptimisticOn(next);
-    // Build the deduplicated array: existing entries minus the canonical
-    // name, plus the canonical name iff toggle is ON. Whole array is sent
-    // (server replaces). Empty array is fine — the canonical schema
-    // accepts an empty `mcpServers` because the field is optional.
+    setPendingFlip({ enable: next });
+  }
+
+  function cancelFlip() {
+    setPendingFlip(null);
+    setOptimisticOn(null);
+    setChainError(null);
+  }
+
+  /**
+   * Multi-step orchestration triggered when the user confirms the modal.
+   *  1. PUT /config — write the canonical mcpServers array.
+   *  2. POST /mcp-wiring — write/remove spawn config across detected
+   *     AI clients (only the platforms the modal selected).
+   *  3. Dispatch agent.install — rebuild the rendered files.
+   * Per-platform write failures are reported by the wiring endpoint and
+   * surfaced as a non-blocking warning; the chain continues to install.
+   */
+  async function applyMcpWiring(enable: boolean, platforms: PlatformId[]) {
+    setChainError(null);
     const without = mcpServers.filter((n) => n !== MCP_SERVER_KEY);
-    const nextArray = next ? [...without, MCP_SERVER_KEY] : without;
-    saveConfig.mutate(
-      { mcpServers: nextArray },
-      {
-        onSuccess: () => {
-          setInstallReminder(next ? "on" : "off");
-        },
-        onError: () => {
-          // Revert optimistic flip; the banner stays hidden.
-          setOptimisticOn(null);
-        },
-      },
-    );
+    const nextArray = enable ? [...without, MCP_SERVER_KEY] : without;
+    setChainStep("config");
+    try {
+      await saveConfig.mutateAsync({ mcpServers: nextArray });
+    } catch (err) {
+      setChainError(`config save failed: ${(err as Error).message}`);
+      setChainStep(null);
+      setOptimisticOn(null);
+      return;
+    }
+    if (platforms.length > 0) {
+      setChainStep("wiring");
+      try {
+        const res = await agentsApi.applyMcpWiring(agent, { enable, platforms });
+        const failures = res.results.filter((r) => !r.ok);
+        if (failures.length > 0) {
+          // Partial-success: keep the chain going (the user can retry the
+          // failing platforms by toggling again — writes are idempotent).
+          setChainError(
+            `wiring failed on: ${failures
+              .map((f) => `${f.platform} (${f.error ?? "unknown"})`)
+              .join(", ")}`,
+          );
+        }
+      } catch (err) {
+        setChainError(`wiring failed: ${(err as Error).message}`);
+        setChainStep(null);
+        setOptimisticOn(null);
+        return;
+      }
+    }
+    // platforms.length === 0 means "every platform is already in the
+    // desired state" or "no CLIs detected" — still run install so the
+    // bundle's rendered files reflect the new mcpServers entry.
+    setChainStep("install");
+    try {
+      // useStartJob is fire-and-forget (returns jobId immediately). The
+      // existing JobCompletionListener invalidates queries when the job
+      // finishes, so the toggle's saved state catches up automatically.
+      // Targets are derived from the bundle's `targets` (canonical list);
+      // the install command without --platforms picks them up by default.
+      await start.mutateAsync({
+        command: "agent.install",
+        name: agent,
+        platforms: (detail.data?.targets ?? []) as PlatformId[],
+        withSkills: false,
+      });
+    } catch (err) {
+      setChainError(`install dispatch failed: ${(err as Error).message}`);
+      setChainStep(null);
+      return;
+    }
+    setChainStep(null);
+    setPendingFlip(null);
   }
 
   return (
@@ -195,7 +261,7 @@ export function KnowledgeSources({ agent }: Props) {
           </Button>
           <Toggle
             checked={mcpOn}
-            disabled={saveConfig.isPending}
+            disabled={chainStep !== null}
             onChange={flipMcpToggle}
             label="mcp wiring"
             aria-label="knowledge mcp server wiring"
@@ -217,75 +283,26 @@ export function KnowledgeSources({ agent }: Props) {
         <code>knowledge.search</code> and <code>knowledge.fetch</code> at session start.
       </div>
 
-      {installReminder === "on" && (
+      {chainStep !== null && (
         <div
-          className="border border-matrix-green bg-black/40 px-3 py-2 mb-3 flex items-start justify-between gap-3"
+          className="border border-matrix-green bg-black/40 px-3 py-2 mb-3 font-mono text-xs text-matrix-body"
           role="status"
+          aria-live="polite"
         >
-          <div className="font-mono text-xs text-matrix-body space-y-2">
-            <div className="text-matrix-green">
-              // knowledge mcp server enabled. two steps to finish wiring:
-            </div>
-            <div>
-              1. run <code className="text-matrix-green">smith agent install {agent}</code> so the
-              bundle is rebuilt.
-            </div>
-            <div>
-              2. add the spawn config to your AI client&rsquo;s global MCP settings:
-              <div className="mt-1 ml-3">
-                <span className="text-matrix-green-muted">command:</span>{" "}
-                <code className="text-matrix-green">smith</code>
-                <br />
-                <span className="text-matrix-green-muted">args:</span>{" "}
-                <code className="text-matrix-green">knowledge serve {agent} --stdio</code>
-              </div>
-            </div>
-            <div>where to add it (per platform):</div>
-            <ul className="ml-3 space-y-1">
-              <li>
-                <span className="text-matrix-green-muted">- OpenCode:</span>{" "}
-                <code>~/.config/opencode/opencode.json</code>{" "}
-                <span className="text-matrix-green-muted">(top-level "mcp" key)</span>
-              </li>
-              <li>
-                <span className="text-matrix-green-muted">- Claude Code:</span>{" "}
-                <code>~/.claude.json</code>{" "}
-                <span className="text-matrix-green-muted">(top-level "mcpServers" key)</span>
-              </li>
-              <li>
-                <span className="text-matrix-green-muted">- Codex:</span>{" "}
-                <code>~/.codex/config.toml</code>{" "}
-                <span className="text-matrix-green-muted">
-                  ([mcp_servers.agent-smith-knowledge])
-                </span>
-              </li>
-            </ul>
-          </div>
-          <Button variant="ghost" onClick={() => setInstallReminder(null)}>
-            dismiss
-          </Button>
+          // mcp wiring:{" "}
+          {chainStep === "config" && "saving bundle config…"}
+          {chainStep === "wiring" && "writing AI client MCP configs…"}
+          {chainStep === "install" && (
+            <>
+              dispatching <code>smith agent install {agent}</code>…
+            </>
+          )}
         </div>
       )}
 
-      {installReminder === "off" && (
-        <div
-          className="border border-matrix-green bg-black/40 px-3 py-2 mb-3 flex items-center justify-between gap-3"
-          role="status"
-        >
-          <div className="font-mono text-xs text-matrix-body">
-            // knowledge mcp server disabled. run{" "}
-            <code className="text-matrix-green">smith agent install {agent}</code> to apply.
-          </div>
-          <Button variant="ghost" onClick={() => setInstallReminder(null)}>
-            dismiss
-          </Button>
-        </div>
-      )}
-
-      {saveConfig.isError && (
+      {chainError && chainStep === null && (
         <div className="font-mono text-[10px] text-matrix-red mb-3" role="alert" aria-live="polite">
-          // mcp toggle save failed:{" "}
-          {saveConfig.error instanceof Error ? saveConfig.error.message : String(saveConfig.error)}
+          // mcp wiring: {chainError}
         </div>
       )}
 
@@ -376,6 +393,17 @@ export function KnowledgeSources({ agent }: Props) {
               sourceId: pendingRemove.id,
             });
             setPendingRemove(null);
+          }}
+        />
+      )}
+
+      {pendingFlip && chainStep === null && (
+        <McpWiringModal
+          agent={agent}
+          enable={pendingFlip.enable}
+          onCancel={cancelFlip}
+          onConfirm={(platforms) => {
+            void applyMcpWiring(pendingFlip.enable, platforms);
           }}
         />
       )}
