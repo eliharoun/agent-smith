@@ -4,7 +4,7 @@
 
 Read this when you're declaring a `knowledge` block in `agent.config.json`, debugging why a knowledge source didn't materialize the way you expected, configuring Atlassian credentials, or operating the `smith knowledge` CLI.
 
-> **v1 vs. v2.** Everything in this spoke describes the v1 inline/file pipeline, which is unchanged when the `knowledge.compile` block is absent. v2 adds a progressive-disclosure compile stage that runs *after* materialization, an `agents-md` install target, and a BM25 retrieval MCP server — all opt-in. See [16 — Knowledge compiler](./16-knowledge-compiler.md) for the v2 surface.
+> **v1 vs. v2.** Everything in this spoke describes the v1 inline/file pipeline. As of v2.1, smith chooses between v1-inline and the v2 progressive-disclosure compile stage automatically: small corpora (total estimated tokens under `inlineBudget.totalTokens`, default 8000) stay v1-inline; larger corpora auto-compile. Explicit `compile.progressive: true/false` overrides the heuristic; explicit `delivery: "inline"` on any source pins the bundle to v1 mode. v2 also adds an `agents-md` install target and a BM25 retrieval MCP server. See [16 — Knowledge compiler](./16-knowledge-compiler.md) for the smart default, overrides, and the v2 surface.
 
 > **Tip — browser GUI.** `/knowledge/:agent` in `smith gui` wraps `smith knowledge {list,add,fetch,validate}` with a per-source view, a one-click refresh button (job streamed live over SSE), and a `/system/atlassian-setup` route for the credential walk-through. `/knowledge/refresh-history` shows the refresh-mode timeline across agents. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
 

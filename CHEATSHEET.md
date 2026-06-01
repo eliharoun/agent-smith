@@ -86,7 +86,7 @@ back to the page over SSE.
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
 | Construct | `/catalogs/register` | `smith {agent,skill} register` |
 | Knowledge | `/knowledge` | `smith knowledge list` across agents |
-| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate) |
+| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes `agent-smith-knowledge` from the bundle's `mcpServers` (v2.1) |
 | Knowledge | `/knowledge/refresh-history` | refresh-mode timeline across agents |
 | Knowledge | `/knowledge/:agent/refresh-history` | per-agent refresh history |
 | Knowledge | `/system/atlassian-setup` | Atlassian credential setup (Confluence/Jira) |
@@ -546,7 +546,7 @@ smith knowledge fetch code-reviewer --source api-docs
 
 #### `smith knowledge compile [name]`
 
-Compile a bundle's knowledge sources into a TOC stanza + `compile-manifest.json` (v2 progressive disclosure). Requires `knowledge.compile.progressive: true` in `agent.config.json`. `smith agent install` runs this automatically; manual invocation is for offline iteration and CI.
+Force-compile a bundle's knowledge sources into a TOC stanza + `compile-manifest.json` (v2 progressive disclosure). Compiles regardless of the v2.1 smart-default threshold or the explicit `compile.progressive` opt-in/opt-out — the user explicitly typed it. `smith agent install` makes the implicit decision via the smart default; this command is for offline iteration, CI drift checks, or pre-warming the manifest.
 
 **Synopsis:** `smith knowledge compile [name] [--all]`
 
@@ -558,9 +558,9 @@ Compile a bundle's knowledge sources into a TOC stanza + `compile-manifest.json`
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--all` | bool | `false` | Compile every registered bundle that has `compile.progressive=true`. Bundles without the block are skipped (one warn line per bundle); exits non-zero only if all targeted bundles were skipped. |
+| `--all` | bool | `false` | Force compile for every registered bundle that has at least one knowledge source. Bundles with no knowledge block / no sources are skipped (one warn line per bundle); exits non-zero only if all targeted bundles were skipped. |
 
-**Exit codes:** `0` — compiled. `1` — runtime error. `2` — usage (no name and no `--all`, or both; named bundle has no compile block; `--all` matched no compile-enabled bundles).
+**Exit codes:** `0` — compiled. `1` — runtime error. `2` — usage (no name and no `--all`, or both; named bundle has no knowledge block / no sources; `--all` matched no bundles with sources).
 
 **Example:**
 ```bash

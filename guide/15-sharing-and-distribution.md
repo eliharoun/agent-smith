@@ -517,7 +517,7 @@ The two flows coexist — registering a catalog you already cloned does not conf
 
 ### 9.7 AGENTS.md as a sharing surface
 
-The flows above are git-based: a publisher hosts a catalog repo, consumers `register` or `--from` it. There's also a one-file sharing surface: declare `agents-md` as a target and `smith agent install` writes a single `AGENTS.md` (default `~/AGENTS.md`; override via `targetOptions.agentsMd.path`) that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read natively. Pair it with `compile.progressive: true` and the AGENTS.md body is a TOC pointing into the materialized knowledge dir rather than inlined-and-truncated prose.
+The flows above are git-based: a publisher hosts a catalog repo, consumers `register` or `--from` it. There's also a one-file sharing surface: declare `agents-md` as a target and `smith agent install` writes a single `AGENTS.md` (default `~/AGENTS.md`; override via `targetOptions.agentsMd.path`) that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read natively. AGENTS.md emission is automatic when `agents-md` is in `targets` — no extra knobs. As of v2.1, large knowledge corpora auto-compile into a TOC pointing into the materialized knowledge dir rather than inlined-and-truncated prose; small corpora stay inline. Force compile-shape rendering with `compile.progressive: true` if you want it for a small corpus.
 
 This is useful when:
 

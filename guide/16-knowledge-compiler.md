@@ -1,8 +1,8 @@
 # Knowledge compiler
 
-> The v2 knowledge pipeline turns a bundle's `knowledge.sources` block into a tight table-of-contents stanza in the rendered prompt plus on-disk sidecar files the agent reads on demand. This spoke covers the `compile` block, the `agents-md` install target, the optional BM25 retrieval server (`smith knowledge serve`), and the APM importer (`smith agent init --from-apm`). Read this when you're enabling progressive disclosure on an existing bundle, deciding whether to emit AGENTS.md, or wiring the retrieval MCP server.
+> The v2 knowledge pipeline turns a bundle's `knowledge.sources` block into a tight table-of-contents stanza in the rendered prompt plus on-disk sidecar files the agent reads on demand. This spoke covers the smart-default compile heuristic (v2.1), the `compile` block overrides, the `agents-md` install target, the optional BM25 retrieval server (`smith knowledge serve`), the GUI per-source editor + MCP toggle, and the APM importer (`smith agent init --from-apm`). Read this when you're declaring a knowledge-heavy bundle, overriding the smart default, deciding whether to emit AGENTS.md, or wiring the retrieval MCP server.
 
-> **Status.** v2 ships alongside v1 — bundles without a `compile` block render byte-identically to before. The architecture and rationale live in `docs/plans/2026-05-31-knowledge-compiler-v2-design.md`; this spoke is operational reference, not design narrative.
+> **Status.** v2.1 makes progressive disclosure the smart default: small corpora stay v1-inline, large corpora auto-compile. No opt-in flag required. Explicit `compile.progressive: true/false` overrides the heuristic; explicit `delivery: "inline"` on any source pins the bundle to v1 mode. The architecture and rationale live in `docs/plans/2026-05-31-knowledge-compiler-v2-design.md`; this spoke is operational reference, not design narrative.
 
 ---
 
@@ -12,13 +12,23 @@ The v1 default was: materialize every source, concatenate the bytes into the pro
 
 The cross-tool consensus has moved on. The Linux Foundation's AGENTS.md spec (~28+ runtimes, ~60k repos as of 2026-05-31) and Anthropic's `code-execution-with-mcp` work converged on the same shape: a structured pointer index in the system prompt, plus on-demand fetch when the agent needs the bytes. Anthropic measured 150K → 2K token reductions; Augment's 2,500-repo study found AGENTS.md-listed files are read ~100% of the time vs. <10% for orphan files.
 
-`smith knowledge` v2 implements that pattern as a **compile stage** that runs after the existing `materialize` stage. Bundles opt in by adding a `compile` block. Materialization, sidecar emission, and refresh hooks are unchanged; the new stage rewrites the prompt body's `## Knowledge` section as a TOC and lets the agent fetch on demand.
+`smith knowledge` v2 implements that pattern as a **compile stage** that runs after the existing `materialize` stage. As of v2.1, bundles auto-compile when their materialized corpus would overflow the inline budget, and stay v1-inline otherwise — no opt-in flag required. The compile stage rewrites the prompt body's `## Knowledge` section as a TOC and lets the agent fetch on demand.
 
 ---
 
-## The `compile` block
+## Smart default and overrides
 
-Add `compile` to the `knowledge` block in `agent.config.json`:
+**Default behaviour (v2.1).** The pipeline picks compile vs. v1-inline automatically. Threshold: total materialized corpus exceeds `knowledge.inlineBudget.totalTokens` (default 8000, capped at 16000 — the same v1 knob that gates inline truncation). Below the threshold, the bundle stays v1-inline (cheap, always-resident); above it, the compile stage runs and the agent fetches on demand instead of getting silently truncated. Estimated as `manifest.totals.bytes / 4` (a 4-bytes-per-token heuristic). See `shouldAutoCompile` in `src/core/knowledge/pipeline.ts`.
+
+**Two overrides.** Both live in the `knowledge` block:
+
+| Override | Effect |
+|---|---|
+| `compile.progressive: true` | Force compile regardless of corpus size. Useful when you want the TOC pointer shape even for a small corpus, or to lock the rendering shape so a smaller corpus doesn't silently flip back to v1. |
+| `compile.progressive: false` | Pin v1-inline even for a large corpus. The validator's hard-limit warning still fires when an inline source overflows its share of the budget. |
+| any source with explicit `delivery: "inline"` | Pins the **whole bundle** to v1 mode (author intent wins; the validator's hard-limit check is the right place to surface overflow). |
+
+The `compile` block:
 
 ```jsonc
 {
@@ -37,19 +47,19 @@ Add `compile` to the `knowledge` block in `agent.config.json`:
 
 | Field | Type | Default | Effect |
 |---|---|---|---|
-| `progressive` | boolean | `true` | Enable the compile stage. When omitted (no `compile` block at all), the pipeline runs in v1 mode. When set to `false`, the block is parsed but the stage is a no-op. |
+| `progressive` | boolean | smart-default (auto) | When omitted, the pipeline picks based on the threshold above. `true` forces compile; `false` pins v1-inline. |
 | `tocMaxLines` | integer (1–400) | `150` | Hard cap on the TOC stanza. Sources beyond the cap are dropped from the rendered prompt with a warning naming the dropped ids. The cap of 150 is anchored on Augment's read-rate cliff. |
 | `emitAgentsMd` | boolean | `false` | Shorthand: when `true` and the `agents-md` target isn't already declared, the importer adds it. Most authors set this directly in `targets`; the flag exists for the APM importer (see below). |
 
-Schema: `src/core/knowledge/schema.ts` (`KnowledgeBlockSchema`). Every field is optional; bundles without a `compile` block parse green and render in v1 mode.
+Schema: `src/core/knowledge/schema.ts` (`KnowledgeBlockSchema`). Every field is optional; bundles without a `compile` block route through the smart default.
 
-**When to enable.** Any bundle whose materialized knowledge would exceed the v1 inline budget — a `dir` source pointed at `docs/`, a `git` source over a real repo, a Confluence space, or any URL that returns more than ~30KB of content. **When NOT to enable** — see the last section of this spoke.
+**When to override.** Most bundles don't need to. Reach for `compile.progressive: true` only if you want compile-shape rendering for a small corpus (e.g. you're prototyping on a small `dir` and want to see the TOC stanza without padding it). Reach for `compile.progressive: false` or explicit `delivery: "inline"` only when the corpus is small enough to live in working memory and you want every byte resident every turn — see [When NOT to compile](#when-not-to-compile).
 
 ---
 
 ## Per-source fields: `summary`, `toc`, `retrieval`
 
-Three optional fields layer on top of every source variant when `compile.progressive` is on:
+Three optional fields layer on top of every source variant. They only affect rendering when the bundle compiles (smart default or explicit `compile.progressive: true`); they parse cleanly in v1 mode but are ignored. Edit them by hand in `agent.config.json` or via the GUI per-source editor (see [GUI](#gui-per-source-editor-and-mcp-toggle)).
 
 ```jsonc
 {
@@ -106,24 +116,24 @@ Sources are emitted in declared order. The truncation warning is `compile: TOC t
 ## `smith knowledge compile`
 
 ```bash
-smith knowledge compile <name>      # one bundle
-smith knowledge compile --all       # every bundle with compile.progressive=true
+smith knowledge compile <name>      # force compile for one bundle
+smith knowledge compile --all       # force compile for every bundle with knowledge sources
 ```
 
-Runs the compile stage offline (no acquire, no network). Reads the materialized cache produced by the most recent `smith agent install`, builds the TOC stanza, and writes `compile-manifest.json` next to the materialized cache:
+Forces a compile regardless of opt-in or smart-default thresholds — the user explicitly asked for it. Reads the materialized cache produced by the most recent `smith agent install`, builds the TOC stanza, and writes `compile-manifest.json` next to the materialized cache:
 
 ```
 ~/.config/agent-smith/knowledge/<agent>/
 ├── _manifest.json            # v1 materialization manifest (unchanged)
-├── compile-manifest.json     # v2 compile manifest (new)
+├── compile-manifest.json     # v2 compile manifest (written)
 └── sources/<id>/...          # materialized files (unchanged)
 ```
 
 `compile-manifest.json` records per-source TOC line, on-disk path, retrieval mode, and a content sha; `contentHash` over the sorted manifest is what `doctor` will diff for drift detection.
 
-`smith agent install` runs compile **automatically** when `compile.progressive: true` is set — manual invocation is for offline iteration (you're editing summaries and want to re-render the TOC without paying for a network refetch) and CI checks. Schema reference for the command lives in [CLI reference — `smith knowledge compile`](./14-cli-reference.md#smith-knowledge-compile-name).
+`smith agent install` runs compile under the smart default (or honours the explicit `compile.progressive` override). Manual invocation of `smith knowledge compile` is for offline iteration (you're editing summaries and want to re-render the TOC without paying for a network refetch), CI checks, or pre-warming the manifest. Schema reference for the command lives in [CLI reference — `smith knowledge compile`](./14-cli-reference.md#smith-knowledge-compile-name).
 
-`--all` skips bundles without a compile block (one warn line per skipped bundle) and only exits non-zero when every bundle was skipped (`2`, usage hint to add the block to at least one).
+The command exits `2` only when the named bundle has no `knowledge` block or no sources to compile — i.e. there's nothing to do regardless of mode. `--all` skips bundles without sources (one warn line per skipped bundle) and only exits non-zero when every bundle was skipped.
 
 ---
 
@@ -156,6 +166,19 @@ args: [knowledge, serve, <agent>, --stdio]
 **Why BM25, not embeddings.** Cognition's SWE-grep, Anthropic's Tool Search Tool work, and Augment's read-rate study all converge on lexical retrieval being the right shape for coding agents — the bottleneck is *discoverability* (does the agent know the file exists?), not similarity matching. BM25 fits in <200 lines, has no model dependency, and re-indexes in milliseconds. The `retrieval.mode = "external-mcp"` escape hatch lets you point a source at any embedding-based MCP server (Recall, Captain, DeepWiki) without changes to the compile stage.
 
 **Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. There is no daemon-managed multi-agent serving in v2; cold-start latency is on the order of milliseconds because BM25 indexes the file tree at spawn time.
+
+---
+
+## GUI: per-source editor and MCP toggle
+
+The browser GUI's `/knowledge/:agent` route (Knowledge tab) is the pointing-and-clicking equivalent of editing `agent.config.json` by hand:
+
+- **Edit** button per source row — opens a modal exposing every v1+v2 field: `delivery` (auto / inline / file), `retrieval` (off / bm25 / external-mcp + `mcpUrl`), `summary`, `toc`, `materialize`, `extractor`, `refresh.mode` / `refresh.ttl` / `refresh.timeout`, `optional`, `inlineBudgetTokens`. Save writes the whole `knowledge` block back via `PUT /api/agents/:name/config` (server re-validates against the canonical schema). Confirm-on-cancel guards dirty state.
+- **MCP wiring toggle** at the top of the tab — adds or removes `"agent-smith-knowledge"` from the bundle's `mcpServers: string[]`. The toggle's banner explains the **two-step wiring** every author needs to do once: (1) `smith agent install <agent>` to rebuild the bundle so the rendered output advertises the dependency, (2) add the spawn config to the AI client's own MCP settings (per-platform paths in the banner). Smith's `mcpServers` field is documentation-only — agent-smith does **not** write spawn configs into platform MCP files.
+
+The same `PUT /api/agents/:name/config` endpoint accepts `knowledge` and `mcpServers` patches alongside the existing `targets` and `modelTier` arms. Source: `gui/web/src/panels/KnowledgeSources/`.
+
+There is no "Serve" button in v2.1 — the v2.0-era fire-and-forget GUI Serve was removed because it spawned a debug process unrelated to how AI clients actually consume the MCP server. The CLI `smith knowledge serve <agent> --stdio` still exists for AI clients to spawn directly.
 
 ---
 
@@ -194,17 +217,20 @@ Reads a Microsoft APM (`microsoft/apm`) `apm.yml` once and produces a normal smi
 
 ## Migration recipe
 
-Flip an existing v1 bundle to v2:
+There is no migration step for v2.1. Existing v1 bundles continue to render byte-identically when their corpus fits in the inline budget, and auto-flip to compile mode the next time they overflow it. Re-running `smith agent install <agent>` is enough — no config edit required.
 
-```bash
-# 1. Edit agent.config.json: add `"compile": { "progressive": true }` to the knowledge block.
-# 2. Compile the TOC stanza + manifest.
-smith knowledge compile <agent>
-# 3. Re-render the agent file with the compiled TOC stanza in the body.
-smith agent install <agent>
+If you want to force compile-shape rendering for a small corpus (e.g. you're prototyping the TOC layout), add the explicit override:
+
+```jsonc
+{
+  "knowledge": {
+    "sources": [...],
+    "compile": { "progressive": true }
+  }
+}
 ```
 
-Adding the `agents-md` target afterwards is a one-line edit to `targets`:
+To reach every AGENTS.md-aware runtime in one install, add `agents-md` to `targets`:
 
 ```jsonc
 {
@@ -212,23 +238,21 @@ Adding the `agents-md` target afterwards is a one-line edit to `targets`:
 }
 ```
 
-Re-run `smith agent install <agent>`; AGENTS.md lands at `~/AGENTS.md` (override with `targetOptions.agentsMd.path`) and CLAUDE.md becomes a 1-line pointer.
-
-The first install after the flip rewrites every rendered file. `installed-agents.json` hash refusal then keeps subsequent installs idempotent — a re-run with no upstream changes is a no-op.
+Re-run `smith agent install <agent>`; AGENTS.md lands at `~/AGENTS.md` (override with `targetOptions.agentsMd.path`) and CLAUDE.md becomes a 1-line pointer. `installed-agents.json` hash refusal keeps subsequent installs idempotent — a re-run with no upstream changes is a no-op.
 
 ---
 
-## When NOT to use compile
+## When NOT to compile
 
-`compile.progressive` is the right answer for sources whose bytes don't fit comfortably in working memory. It is the wrong answer for:
+The smart default already keeps small corpora out of compile mode. Use the **explicit inline** escape hatch — `delivery: "inline"` on the relevant sources, or `compile.progressive: false` on the block — only when:
 
-- **Short style guides.** A 50-line "we use 2-space indents and TS-strict" rubric belongs inline, in working memory, on every turn. Set `delivery: "inline"` explicitly. The compile stage respects it — `inline` sources still inline when `compile.progressive` is on.
+- **Short style guides.** A 50-line "we use 2-space indents and TS-strict" rubric belongs inline, in working memory, on every turn. Set `delivery: "inline"` explicitly. **Any source with explicit `delivery: "inline"` pins the whole bundle to v1 mode** (author intent wins; the smart default does not auto-flip the bundle to compile in this case — the validator's hard-limit check is the right place to surface overflow).
 - **Single-page glossaries.** Domain vocabulary the agent needs to disambiguate user input. Same as above: `delivery: "inline"`.
 - **One-shot rubrics.** A code-review rubric the agent applies on every PR. Inline. The cost of a tool-call round trip to fetch a 200-token file every turn is silly.
 
 The general rule: if a source is *consulted on every turn anyway*, inline beats compile. If a source is *occasionally relevant*, compile (TOC pointer + on-demand fetch) wins by an order of magnitude on tokens. The Augment / Anthropic / Cognition data is about what wins **by default** — not about banning inline.
 
-`auto` delivery does the wrong thing here under v1: it falls back to inline once the budget is hit, silently truncating. Under v2 (`compile.progressive: true`), `auto` resolves to `file` instead of inline, fixing the silent failure mode. Explicit `inline` still inlines.
+`auto` delivery is the v1 mode that silently truncates once the budget is hit. Under compile mode, `auto` resolves to `file` instead of inline, fixing the silent failure mode. Explicit `inline` still inlines, regardless of mode.
 
 ---
 
@@ -240,6 +264,8 @@ The general rule: if a source is *consulted on every turn anyway*, inline beats 
 |---|---|
 | `missing-manifest` | The bundle declares progressive compile but `<agentSmithHome>/knowledge/<agent>/compile-manifest.json` is absent — or present but unparseable / off-schema (corrupt manifests are conflated with missing because the remedy is identical). |
 | `drift` | The persisted `contentHash` in `compile-manifest.json` does not match a fresh `compile()` over the agent's current `_manifest.json` materialized sources. Means the bundle's knowledge has changed since the last compile and the TOC stanza in the rendered prompt is stale. |
+
+> **Known limitation.** Drift detection currently runs only for bundles that explicitly set `compile.progressive: true`. Bundles that auto-compile under the v2.1 smart default (large corpora without an explicit override) are not yet drift-checked here. Extending the section to cover auto-compiled bundles is tracked as follow-up.
 
 Both findings are informational only — the section never affects doctor's exit code. Repair runs through `--fix-knowledge-compile`:
 

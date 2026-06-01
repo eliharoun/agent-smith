@@ -1773,14 +1773,17 @@ $ smith knowledge fetch my-agent --source runbook
 
 **Synopsis:** `smith knowledge compile [name] [--all]`
 
-**Description:** Re-runs the knowledge pipeline for one or every bundle
-that opts in to progressive compile (`knowledge.compile.progressive: true`
-in `agent.config.json`) and persists `compile-manifest.json` under the
-agent's knowledge dir. Reads the materialized cache produced by the
-last `smith agent install`; offline (no acquire, no network). Manual
-invocation is for offline iteration on summaries / TOC tuning and for
-CI checks — `smith agent install` runs compile automatically when the
-block is set. Source: `src/cli/commands/knowledge/compile.ts`.
+**Description:** Forces the v2 compile stage for one or every registered
+bundle that has knowledge sources, regardless of v2.1 smart-default
+thresholds or the explicit `compile.progressive` opt-in/opt-out. The
+user explicitly typed the command; honour that. Persists
+`compile-manifest.json` under the agent's knowledge dir. Reads the
+materialized cache produced by the last `smith agent install`; offline
+(no acquire, no network). Use this for offline iteration on summaries /
+TOC tuning, CI drift checks, or pre-warming the manifest. The smart
+auto-compile default in `runKnowledgeStage` governs `smith agent install`'s
+implicit decisions, not this command. Source:
+`src/cli/commands/knowledge/compile.ts`.
 
 **Arguments:**
 
@@ -1789,18 +1792,18 @@ block is set. Source: `src/cli/commands/knowledge/compile.ts`.
 
 **Flags:**
 
-- `--all` — compile every registered bundle that has
-  `compile.progressive=true`. Bundles without the block are skipped
-  (one warn line per skipped bundle); the command only exits non-zero
-  when every targeted bundle was skipped.
+- `--all` — force compile for every registered bundle that has at
+  least one knowledge source. Bundles with no knowledge block / no
+  sources are skipped (one warn line per skipped bundle); the command
+  only exits non-zero when every targeted bundle was skipped.
 
 **Exit codes:**
 
 - `0` — every targeted bundle compiled successfully.
 - `1` — runtime error inside a compile.
 - `2` — usage error: neither `[name]` nor `--all` given; both given;
-  named bundle has no `compile.progressive=true`; or `--all` matched no
-  compile-enabled bundles.
+  named bundle has no `knowledge` block or no sources; or `--all`
+  matched no bundles with sources.
 
 **Examples:**
 
@@ -1810,7 +1813,7 @@ compiled my-agent: 7 source(s), 7 TOC line(s), hash 3a1f9c0e
 
 $ smith knowledge compile --all
 compiled my-agent: 7 source(s), 7 TOC line(s), hash 3a1f9c0e
-skip other-agent: no knowledge.compile.progressive=true
+skip other-agent: no knowledge sources to compile
 ```
 
 **See also:** [Knowledge compiler](./16-knowledge-compiler.md).
@@ -2244,7 +2247,10 @@ The `knowledgeCompile` section of `smith doctor` (v2) audits every
 registered agent that opts in to progressive compile
 (`knowledge.compile.progressive: true`) and reports two kinds of drift
 between the persisted `compile-manifest.json` and a fresh `compile()`
-over the agent's current materialized sources:
+over the agent's current materialized sources. Bundles that
+auto-compile under the v2.1 smart default (large corpora without an
+explicit override) are not yet drift-checked here; extending coverage
+is tracked as follow-up.
 
 | Finding | Meaning | Auto-fixable by `--fix-knowledge-compile`? |
 |---|---|---|

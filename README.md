@@ -34,7 +34,7 @@ Define a bundle:
 
 Then `smith agent install` emits the right native config for every platform you target.
 
-A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool standard that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read. Pair it with the v2 knowledge compiler (`compile.progressive: true`) and one bundle reaches every AGENTS.md-aware runtime with progressive-disclosure pointers instead of inlined-and-truncated prose. See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
+A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool standard that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read. Bundles whose materialized knowledge would overflow the inline budget auto-compile into a TOC stanza + on-demand fetch (smart default since v2.1; smith decides, you can override). One bundle reaches every AGENTS.md-aware runtime with progressive-disclosure pointers instead of inlined-and-truncated prose. See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 > "Me. Me. Me too." — Agent Smith
 

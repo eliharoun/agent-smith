@@ -68,14 +68,14 @@ Array of `{ catalog?, name }` entries declaring skills that must be installed fo
 
 Object with `packs?`, `inlineBudget?: { totalTokens }`, `sources?` array, and an optional `compile?` block. The `inlineBudget.totalTokens` defaults to 8000 and is capped at 16000 (`src/core/knowledge/schema.ts`). For the full source-type taxonomy (`file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`), materializer rules, and per-source schemas, see [Knowledge sources](./04-knowledge.md).
 
-The optional `compile` block opts the bundle into v2 progressive disclosure:
+The optional `compile` block overrides the v2.1 smart default:
 
 ```jsonc
 {
   "knowledge": {
     "sources": [...],
     "compile": {
-      "progressive": true,    // default true; gate for the compile stage
+      "progressive": true,    // override smart default; force compile (or false to pin v1)
       "tocMaxLines": 150,     // 1–400; truncates the TOC stanza
       "emitAgentsMd": false   // shorthand used by the APM importer
     }
@@ -83,7 +83,7 @@ The optional `compile` block opts the bundle into v2 progressive disclosure:
 }
 ```
 
-When `compile` is absent the pipeline runs in v1 mode (byte-identical rendering). Per-source `summary`, `toc`, and `retrieval` fields layer on every source variant when the block is present. Full reference: [Knowledge compiler](./16-knowledge-compiler.md).
+When `compile` is absent the pipeline picks compile vs. v1-inline based on the corpus size against `inlineBudget.totalTokens` (default 8000) — see [Smart default and overrides](./16-knowledge-compiler.md#smart-default-and-overrides). Per-source `summary`, `toc`, and `retrieval` fields layer on every source variant; they parse cleanly in v1 mode but only affect rendering when the bundle compiles. Full reference: [Knowledge compiler](./16-knowledge-compiler.md).
 
 ### `thresholds`
 

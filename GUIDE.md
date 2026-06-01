@@ -51,7 +51,7 @@ The 16 spokes are grouped by intent. Each one is a self-contained reference for 
 
 - [02 — Bundle anatomy](./guide/02-bundle-anatomy.md). The five files inside a bundle, the complete `agent.config.json` schema, validation rules.
 - [04 — Knowledge](./guide/04-knowledge.md). Per-agent knowledge sources: file, dir, glob, url, git, confluence, jira. Delivery (inline / file / auto), inline budget, sidecar `knowledge.json`, Atlassian credential resolution.
-- [16 — Knowledge compiler](./guide/16-knowledge-compiler.md). Progressive disclosure: `compile` block, `agents-md` target, `smith knowledge compile` / `smith knowledge serve`, APM import. v1 inline/file behaviour unchanged when `compile` is absent.
+- [16 — Knowledge compiler](./guide/16-knowledge-compiler.md). Progressive disclosure: smart-default compile (v2.1) + overrides, `agents-md` target, `smith knowledge compile` / `smith knowledge serve`, GUI per-source editor + MCP toggle, APM import.
 - [05 — Skills](./guide/05-skills.md). The skill catalog model, the eleven `smith skill` subcommands, `requires.skills` semantics (canonical home), drift detection.
 - [06 — Permissions and platforms](./guide/06-permissions-and-platforms.md). Permission presets and JSON, per-platform translator behavior, capability gaps, MCP server declarations.
 - [07 — Models](./guide/07-models.md). Tier resolution (`balanced|fast|high|inherit`; legacy aliases `opus|sonnet|haiku`), per-platform handling, OpenCode live-resolution opt-out.

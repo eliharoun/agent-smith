@@ -1,5 +1,7 @@
 # How agent-smith works — a visual tour
 
+> **Last comprehensive update: v1.0.** v2.0 (knowledge compiler, AGENTS.md target, BM25 retrieval MCP server) and v2.1 (smart-default compile, GUI per-source editor + MCP toggle) are described in `docs/plans/2026-05-31-knowledge-compiler-v2-design.md` and the v2 spoke ([guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md)). A refresh of this architecture doc to add the compile pipeline, agents-md translator, and retrieval server to the component diagrams is tracked as future work.
+
 You author one bundle. Smith renders four platform-specific outputs. The diagrams below show where each step lives, what data moves between the parts, and what happens when you run the single most important command in the system.
 
 > **30-second mental model**
