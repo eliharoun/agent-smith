@@ -77,7 +77,11 @@ export async function handleRpc(
       id,
       result: {
         protocolVersion: "2024-11-05",
-        capabilities: { tools: {} },
+        // `listChanged: false` is explicit-no-change rather than the bare `{}`.
+        // Kiro CLI interprets `tools: {}` as "no tools supported" and skips
+        // tools/list entirely; explicit `listChanged: false` makes the
+        // capability assertion unambiguous. Claude Code accepts either.
+        capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "agent-smith-knowledge", version: "1.0.0" },
       },
     };
