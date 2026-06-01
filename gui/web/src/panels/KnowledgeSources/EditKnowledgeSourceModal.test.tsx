@@ -290,6 +290,114 @@ describe("EditKnowledgeSourceModal", () => {
     });
   });
 
+  it("static type (dir): refresh-mode dropdown only offers install", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "notes",
+      type: "dir",
+      path: "/notes",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const select = screen.getByLabelText(/^\/\/ refresh mode$/i) as HTMLSelectElement;
+    const offered = Array.from(select.options).map((o) => o.value);
+    // Only the empty-default and "install" options are valid for static types.
+    expect(offered).toEqual(["", "install"]);
+    expect(offered).not.toContain("ttl");
+    expect(offered).not.toContain("session");
+    expect(offered).not.toContain("always");
+  });
+
+  it("dynamic type (url): refresh-mode dropdown offers all four modes", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const select = screen.getByLabelText(/^\/\/ refresh mode$/i) as HTMLSelectElement;
+    const offered = Array.from(select.options).map((o) => o.value);
+    expect(offered).toEqual(["", "install", "ttl", "session", "always"]);
+  });
+
+  it("static type with invalid loaded refresh.mode: resets on save and shows warning", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    // Hand-edited config that bypassed validation: type=dir + refresh.mode=session.
+    const src = {
+      id: "notes",
+      type: "dir",
+      path: "/notes",
+      delivery: "auto",
+      refresh: { mode: "session" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // A warning should be visible above the refresh group.
+    expect(
+      screen.getByText(/only `install` mode is allowed|will be cleared on save/i),
+    ).toBeInTheDocument();
+    // Without further edits, the editor should be dirty (auto-reset)
+    // and Save should be enabled, then write a corrected refresh value.
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    // Either refresh is gone entirely or it's been reset to {mode:"install"}.
+    if (written.refresh !== undefined) {
+      expect(written.refresh).toEqual({ mode: "install" });
+    }
+    // Specifically NOT the invalid loaded value.
+    expect(written.refresh?.mode).not.toBe("session");
+  });
+
+  it("does not render an extractor form control", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x.pdf",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText(/extractor/i)).not.toBeInTheDocument();
+  });
+
   it("shows server error inline when PUT fails", async () => {
     globalThis.fetch = mockFetch(calls, { putStatus: 400 }) as unknown as typeof fetch;
     const src: KnowledgeSource = {

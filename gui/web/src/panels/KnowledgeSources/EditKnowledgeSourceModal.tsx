@@ -30,6 +30,16 @@ type RefreshMode = "install" | "ttl" | "session" | "always";
 type Materialize = "markdown" | "text" | "html-to-md" | "json" | "passthrough";
 type Extractor = "pdf-parse" | "mupdf";
 
+// Mirrors STATIC_TYPES in src/core/knowledge/refresh-spec.ts. Static types
+// (local file/dir/glob/npm) cannot be live-refreshed because there's nothing
+// to re-fetch — they're read from disk on each install. Only `install` mode
+// (default; refresh at install time only) is permitted.
+const STATIC_TYPES = ["file", "dir", "glob", "npm"] as const;
+
+function isStaticType(type: string): boolean {
+  return (STATIC_TYPES as readonly string[]).includes(type);
+}
+
 interface KnowledgeBlock {
   packs?: string[];
   inlineBudget?: { totalTokens: number };
@@ -80,7 +90,16 @@ interface DraftState {
   retrievalMcpUrl: string;
 }
 
-function initialDraft(s: KnowledgeSource): DraftState {
+interface InitialDraft {
+  draft: DraftState;
+  /** True when the loaded source has a refresh.mode that's invalid for its
+   *  type (e.g., a static type with mode != "install"). The editor shows a
+   *  warning and the in-memory state is auto-reset to "install" so saving
+   *  writes the corrected value. */
+  invalidRefreshMode?: { type: SourceType; loadedMode: RefreshMode };
+}
+
+function initialDraft(s: KnowledgeSource): InitialDraft {
   // Helpers — narrow the union without losing strict-mode safety.
   const anySrc = s as Record<string, unknown>;
   const refreshObj =
@@ -92,7 +111,19 @@ function initialDraft(s: KnowledgeSource): DraftState {
     typeof anySrc.retrieval === "object" && anySrc.retrieval !== null
       ? (anySrc.retrieval as { mode?: RetrievalMode; mcpUrl?: string })
       : undefined;
-  return {
+  // Detect static type with invalid loaded refresh.mode (e.g., hand-edited
+  // config that bypassed validation). Reset to "install" and surface a warning.
+  let invalidRefreshMode: InitialDraft["invalidRefreshMode"];
+  let resolvedRefreshMode: "" | RefreshMode = refreshObj?.mode ?? (refreshStr ? "" : "");
+  if (
+    isStaticType(s.type) &&
+    resolvedRefreshMode !== "" &&
+    resolvedRefreshMode !== "install"
+  ) {
+    invalidRefreshMode = { type: s.type, loadedMode: resolvedRefreshMode };
+    resolvedRefreshMode = "install";
+  }
+  const draft: DraftState = {
     path: s.type === "file" || s.type === "dir" || s.type === "glob" ? (s.path as string) : "",
     url: s.type === "url" || s.type === "git" ? (s.url as string) : "",
     pkg: s.type === "npm" ? (s.package as string) : "",
@@ -118,7 +149,7 @@ function initialDraft(s: KnowledgeSource): DraftState {
       s.materialize && s.materialize !== "pdf-extract" ? (s.materialize as Materialize) : "",
     extractor: s.extractor ?? "",
     inlineBudgetTokens: s.inlineBudgetTokens != null ? String(s.inlineBudgetTokens) : "",
-    refreshMode: refreshObj?.mode ?? (refreshStr ? "" : ""),
+    refreshMode: resolvedRefreshMode,
     refreshTtl: refreshObj?.ttl ?? "",
     refreshTimeout: refreshObj?.timeout != null ? String(refreshObj.timeout) : "",
     delivery: (s.delivery as Delivery | undefined) ?? "auto",
@@ -132,6 +163,7 @@ function initialDraft(s: KnowledgeSource): DraftState {
     retrievalMode: retrieval?.mode ?? "off",
     retrievalMcpUrl: retrieval?.mcpUrl ?? "",
   };
+  return invalidRefreshMode ? { draft, invalidRefreshMode } : { draft };
 }
 
 function validateDraft(draft: DraftState, type: SourceType): Record<string, string> {
@@ -292,12 +324,19 @@ export function EditKnowledgeSourceModal({
   onClose,
 }: Props) {
   const initial = useMemo(() => initialDraft(existingSource), [existingSource]);
-  const [draft, setDraft] = useState<DraftState>(initial);
+  const [draft, setDraft] = useState<DraftState>(initial.draft);
   const [advancedOpen, setAdvancedOpen] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const save = useSaveAgentConfig(agent);
   const formId = "knowledge-edit-form";
-  const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initial), [draft, initial]);
+  // When the loaded source has an invalid refresh.mode for its type, the
+  // initial draft is auto-reset — the editor should treat that as dirty so
+  // Save is enabled and the corrected value gets persisted.
+  const dirty = useMemo(
+    () =>
+      JSON.stringify(draft) !== JSON.stringify(initial.draft) || !!initial.invalidRefreshMode,
+    [draft, initial],
+  );
   const errors = useMemo(
     () => validateDraft(draft, existingSource.type),
     [draft, existingSource.type],
@@ -585,17 +624,34 @@ export function EditKnowledgeSourceModal({
                     { v: "passthrough", l: "passthrough" },
                   ]}
                 />
+                {initial.invalidRefreshMode && (
+                  <div
+                    className="font-mono text-[10px] text-matrix-amber border border-matrix-amber/40 px-2 py-1"
+                    role="status"
+                  >
+                    // This source is `type: {initial.invalidRefreshMode.type}` — only
+                    `install` mode is allowed; the existing `
+                    {initial.invalidRefreshMode.loadedMode}` value will be cleared on save.
+                  </div>
+                )}
                 <Select
                   label="refresh mode"
                   value={draft.refreshMode}
                   onChange={(v) => update("refreshMode", v as DraftState["refreshMode"])}
-                  options={[
-                    { v: "", l: "(default — install only)" },
-                    { v: "install", l: "install" },
-                    { v: "ttl", l: "ttl" },
-                    { v: "session", l: "session" },
-                    { v: "always", l: "always" },
-                  ]}
+                  options={
+                    isStaticType(t)
+                      ? [
+                          { v: "", l: "(default — install only)" },
+                          { v: "install", l: "install" },
+                        ]
+                      : [
+                          { v: "", l: "(default — install only)" },
+                          { v: "install", l: "install" },
+                          { v: "ttl", l: "ttl" },
+                          { v: "session", l: "session" },
+                          { v: "always", l: "always" },
+                        ]
+                  }
                 />
                 {draft.refreshMode === "ttl" && (
                   <FormField
