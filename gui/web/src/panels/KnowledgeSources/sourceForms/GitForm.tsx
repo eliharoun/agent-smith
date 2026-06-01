@@ -30,6 +30,7 @@ export function GitForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="git url"
+        fieldId="knowledge.url"
         required
         value={url}
         onChange={(e) => setUrl(e.target.value)}

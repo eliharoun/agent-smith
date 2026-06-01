@@ -30,6 +30,7 @@ export function NpmForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="package"
+        fieldId="knowledge.npm.package"
         required
         value={pkg}
         onChange={(e) => setPkg(e.target.value)}

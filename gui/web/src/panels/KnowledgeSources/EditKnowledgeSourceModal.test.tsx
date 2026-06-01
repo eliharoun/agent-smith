@@ -398,6 +398,29 @@ describe("EditKnowledgeSourceModal", () => {
     expect(screen.queryByLabelText(/extractor/i)).not.toBeInTheDocument();
   });
 
+  it("adopts FieldHelp: renders an info-icon trigger next to known fields", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // FieldHelp renders the icon as a button with aria-label "help: <label>".
+    expect(screen.getByRole("button", { name: /help: delivery/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /help: retrieval mode/i })).toBeInTheDocument();
+    // The url field also has its own help.
+    expect(screen.getByRole("button", { name: /help: url/i })).toBeInTheDocument();
+  });
+
   it("shows server error inline when PUT fails", async () => {
     globalThis.fetch = mockFetch(calls, { putStatus: 400 }) as unknown as typeof fetch;
     const src: KnowledgeSource = {

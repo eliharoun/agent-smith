@@ -108,6 +108,15 @@ describe("sourceForms", () => {
     });
   }
 
+  it("FieldHelp icon appears next to id and the type-specific field", () => {
+    wrap(<FileForm existingIds={[]} onSubmit={vi.fn()} formId="t-form" />);
+    // Common fields (id, description) have help.
+    expect(screen.getByRole("button", { name: /help: id/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /help: description/i })).toBeInTheDocument();
+    // Type-specific (path) has help.
+    expect(screen.getByRole("button", { name: /help: path/i })).toBeInTheDocument();
+  });
+
   it("blocks submit when id collides with existingIds", () => {
     const onSubmit = vi.fn();
     wrap(<FileForm existingIds={["dupe"]} onSubmit={onSubmit} formId="t-form" />);

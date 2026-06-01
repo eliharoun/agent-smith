@@ -30,6 +30,7 @@ export function GlobForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="glob"
+        fieldId="knowledge.path"
         required
         value={path}
         onChange={(e) => setPath(e.target.value)}

@@ -23,6 +23,7 @@ export function commonFields(
     <>
       <FormField
         label="id"
+        fieldId="knowledge.id"
         required
         value={c.id}
         onChange={(e) => setC((p) => ({ ...p, id: e.target.value }))}
@@ -31,6 +32,7 @@ export function commonFields(
       />
       <FormField
         label="description"
+        fieldId="knowledge.description"
         value={c.description}
         onChange={(e) => setC((p) => ({ ...p, description: e.target.value }))}
         placeholder="optional one-line summary"

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSaveAgentConfig } from "@/hooks/useAgents";
 import { Button } from "@/ui/Button";
 import { ConfirmModal } from "@/ui/ConfirmModal";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
 
 /**
@@ -411,6 +412,7 @@ export function EditKnowledgeSourceModal({
             {(t === "file" || t === "dir" || t === "glob") && (
               <FormField
                 label={t === "glob" ? "glob" : t === "dir" ? "directory" : "path"}
+                fieldId="knowledge.path"
                 required
                 value={draft.path}
                 onChange={(e) => update("path", e.target.value)}
@@ -421,11 +423,13 @@ export function EditKnowledgeSourceModal({
               <>
                 <TextArea
                   label="include (one glob per line)"
+                  fieldId="knowledge.include"
                   value={draft.includeStr}
                   onChange={(v) => update("includeStr", v)}
                 />
                 <TextArea
                   label="exclude (one glob per line)"
+                  fieldId="knowledge.exclude"
                   value={draft.excludeStr}
                   onChange={(v) => update("excludeStr", v)}
                 />
@@ -434,6 +438,7 @@ export function EditKnowledgeSourceModal({
             {(t === "url" || t === "git") && (
               <FormField
                 label={t === "git" ? "git url" : "url"}
+                fieldId="knowledge.url"
                 required
                 value={draft.url}
                 onChange={(e) => update("url", e.target.value)}
@@ -443,6 +448,7 @@ export function EditKnowledgeSourceModal({
             {t === "url" && (
               <Select
                 label="auth"
+                fieldId="knowledge.url.auth"
                 value={draft.auth}
                 onChange={(v) => update("auth", v as DraftState["auth"])}
                 options={[
@@ -456,16 +462,19 @@ export function EditKnowledgeSourceModal({
               <>
                 <FormField
                   label="ref (branch / tag / sha)"
+                  fieldId="knowledge.git.ref"
                   value={draft.ref}
                   onChange={(e) => update("ref", e.target.value)}
                 />
                 <FormField
                   label="subpath"
+                  fieldId="knowledge.git.subpath"
                   value={draft.subpath}
                   onChange={(e) => update("subpath", e.target.value)}
                 />
                 <TextArea
                   label="include (one glob per line)"
+                  fieldId="knowledge.include"
                   value={draft.includeStr}
                   onChange={(v) => update("includeStr", v)}
                 />
@@ -474,6 +483,7 @@ export function EditKnowledgeSourceModal({
             {t === "npm" && (
               <FormField
                 label="package"
+                fieldId="knowledge.npm.package"
                 required
                 value={draft.pkg}
                 onChange={(e) => update("pkg", e.target.value)}
@@ -484,6 +494,7 @@ export function EditKnowledgeSourceModal({
               <>
                 <FormField
                   label="space key"
+                  fieldId="knowledge.confluence.space"
                   required
                   value={draft.space}
                   onChange={(e) => update("space", e.target.value)}
@@ -491,11 +502,13 @@ export function EditKnowledgeSourceModal({
                 />
                 <TextArea
                   label="pages (one per line; numeric IDs as `id:12345`)"
+                  fieldId="knowledge.confluence.pages"
                   value={draft.pagesStr}
                   onChange={(v) => update("pagesStr", v)}
                 />
                 <FormField
                   label="max pages"
+                  fieldId="knowledge.confluence.maxPages"
                   type="number"
                   min={1}
                   max={100}
@@ -505,11 +518,13 @@ export function EditKnowledgeSourceModal({
                 />
                 <Checkbox
                   label="include children"
+                  fieldId="knowledge.confluence.includeChildren"
                   checked={draft.includeChildren}
                   onChange={(v) => update("includeChildren", v)}
                 />
                 <Select
                   label="format"
+                  fieldId="knowledge.confluence.format"
                   value={draft.format}
                   onChange={(v) => update("format", v as DraftState["format"])}
                   options={[
@@ -525,6 +540,7 @@ export function EditKnowledgeSourceModal({
               <>
                 <FormField
                   label="jql"
+                  fieldId="knowledge.jira.jql"
                   required
                   value={draft.jql}
                   onChange={(e) => update("jql", e.target.value)}
@@ -532,11 +548,13 @@ export function EditKnowledgeSourceModal({
                 />
                 <FormField
                   label="fields (comma-separated)"
+                  fieldId="knowledge.jira.fields"
                   value={draft.fieldsStr}
                   onChange={(e) => update("fieldsStr", e.target.value)}
                 />
                 <FormField
                   label="max results"
+                  fieldId="knowledge.jira.maxResults"
                   type="number"
                   min={1}
                   max={500}
@@ -550,6 +568,7 @@ export function EditKnowledgeSourceModal({
             {/* ─── Common: description ─────────────────────────────── */}
             <FormField
               label="description"
+              fieldId="knowledge.description"
               value={draft.description}
               onChange={(e) => update("description", e.target.value)}
             />
@@ -568,6 +587,7 @@ export function EditKnowledgeSourceModal({
               <div id="adv-section" className="space-y-3 pl-2 border-l border-matrix-line">
                 <Select
                   label="delivery"
+                  fieldId="knowledge.delivery"
                   value={draft.delivery}
                   onChange={(v) => update("delivery", v as Delivery)}
                   options={[
@@ -578,12 +598,14 @@ export function EditKnowledgeSourceModal({
                 />
                 <FormField
                   label="summary (compile TOC, max 280 chars)"
+                  fieldId="knowledge.summary"
                   value={draft.summary}
                   onChange={(e) => update("summary", e.target.value)}
                   error={errors.summary}
                 />
                 <Select
                   label="include in compile TOC"
+                  fieldId="knowledge.toc"
                   value={draft.toc}
                   onChange={(v) => update("toc", v as DraftState["toc"])}
                   options={[
@@ -594,6 +616,7 @@ export function EditKnowledgeSourceModal({
                 />
                 <Select
                   label="retrieval mode"
+                  fieldId="knowledge.retrieval.mode"
                   value={draft.retrievalMode}
                   onChange={(v) => update("retrievalMode", v as RetrievalMode)}
                   options={[
@@ -605,6 +628,7 @@ export function EditKnowledgeSourceModal({
                 {draft.retrievalMode === "external-mcp" && (
                   <FormField
                     label="retrieval.mcpUrl"
+                    fieldId="knowledge.retrieval.mcpUrl"
                     required
                     value={draft.retrievalMcpUrl}
                     onChange={(e) => update("retrievalMcpUrl", e.target.value)}
@@ -613,6 +637,7 @@ export function EditKnowledgeSourceModal({
                 )}
                 <Select
                   label="materialize"
+                  fieldId="knowledge.materialize"
                   value={draft.materialize}
                   onChange={(v) => update("materialize", v as DraftState["materialize"])}
                   options={[
@@ -636,6 +661,7 @@ export function EditKnowledgeSourceModal({
                 )}
                 <Select
                   label="refresh mode"
+                  fieldId="knowledge.refresh.mode"
                   value={draft.refreshMode}
                   onChange={(v) => update("refreshMode", v as DraftState["refreshMode"])}
                   options={
@@ -656,6 +682,7 @@ export function EditKnowledgeSourceModal({
                 {draft.refreshMode === "ttl" && (
                   <FormField
                     label="refresh ttl (e.g. 30m, 2h, 1d)"
+                    fieldId="knowledge.refresh.ttl"
                     required
                     value={draft.refreshTtl}
                     onChange={(e) => update("refreshTtl", e.target.value)}
@@ -664,6 +691,7 @@ export function EditKnowledgeSourceModal({
                 )}
                 <FormField
                   label="refresh timeout (seconds, 1–60)"
+                  fieldId="knowledge.refresh.timeout"
                   type="number"
                   min={1}
                   max={60}
@@ -674,11 +702,13 @@ export function EditKnowledgeSourceModal({
                 />
                 <Checkbox
                   label="optional (treat fetch errors as warnings)"
+                  fieldId="knowledge.optional"
                   checked={draft.optional}
                   onChange={(v) => update("optional", v)}
                 />
                 <FormField
                   label="inline budget tokens (1–16000)"
+                  fieldId="knowledge.inlineBudgetTokens"
                   type="number"
                   min={1}
                   max={16000}
@@ -726,24 +756,47 @@ export function EditKnowledgeSourceModal({
 
 // ─── Tiny presentational helpers (keep parity with the Add modal's look) ──
 
+function HelpLabel({
+  label,
+  htmlFor,
+  fieldId,
+}: {
+  label: string;
+  htmlFor: string;
+  fieldId?: string | undefined;
+}) {
+  if (fieldId) {
+    return (
+      <FieldHelp fieldId={fieldId} htmlFor={htmlFor}>
+        {label}
+      </FieldHelp>
+    );
+  }
+  return (
+    <label
+      htmlFor={htmlFor}
+      className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted"
+    >
+      // {label}
+    </label>
+  );
+}
+
 function TextArea({
   label,
+  fieldId,
   value,
   onChange,
 }: {
   label: string;
+  fieldId?: string | undefined;
   value: string;
   onChange: (v: string) => void;
 }) {
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div className="flex flex-col gap-1">
-      <label
-        htmlFor={id}
-        className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted"
-      >
-        // {label}
-      </label>
+      <HelpLabel label={label} htmlFor={id} fieldId={fieldId} />
       <textarea
         id={id}
         value={value}
@@ -757,11 +810,13 @@ function TextArea({
 
 function Select({
   label,
+  fieldId,
   value,
   onChange,
   options,
 }: {
   label: string;
+  fieldId?: string | undefined;
   value: string;
   onChange: (v: string) => void;
   options: { v: string; l: string }[];
@@ -769,12 +824,7 @@ function Select({
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div className="flex flex-col gap-1">
-      <label
-        htmlFor={id}
-        className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted"
-      >
-        // {label}
-      </label>
+      <HelpLabel label={label} htmlFor={id} fieldId={fieldId} />
       <select
         id={id}
         value={value}
@@ -793,23 +843,36 @@ function Select({
 
 function Checkbox({
   label,
+  fieldId,
   checked,
   onChange,
 }: {
   label: string;
+  fieldId?: string | undefined;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
+  // Checkboxes don't use the FieldHelp wrapper because the click target needs
+  // to remain the label+input pair. Instead we render a sibling FieldHelp
+  // span when a fieldId is supplied so the icon appears next to the label
+  // without breaking the click semantics.
   return (
-    <label htmlFor={id} className="flex items-center gap-2 font-mono text-sm text-matrix-body">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
+    <div className="flex items-center gap-2 font-mono text-sm text-matrix-body">
+      <label htmlFor={id} className="flex items-center gap-2 cursor-pointer">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+      {fieldId && (
+        <FieldHelp fieldId={fieldId} htmlFor={id} iconOnly>
+          {`${label} help`}
+        </FieldHelp>
+      )}
+    </div>
   );
 }

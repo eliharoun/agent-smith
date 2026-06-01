@@ -36,6 +36,7 @@ export function UrlForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="url"
+        fieldId="knowledge.url"
         required
         value={url}
         onChange={(e) => setUrl(e.target.value)}

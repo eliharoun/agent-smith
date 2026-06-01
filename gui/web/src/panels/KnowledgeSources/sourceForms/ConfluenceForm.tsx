@@ -3,6 +3,7 @@ import { useAtlassianEnv } from "@/hooks/useAtlassianEnv";
 import { useParseKnowledgeUrl } from "@/hooks/useParseKnowledgeUrl";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
 import { Toggle } from "@/ui/Toggle";
 import { type CommonFields, commonFields, validateId } from "./common";
@@ -112,6 +113,7 @@ export function ConfluenceForm({ existingIds, onSubmit, formId }: SourceFormProp
 
       <FormField
         label="space key"
+        fieldId="knowledge.confluence.space"
         required
         value={space}
         onChange={(e) => setSpace(e.target.value)}
@@ -119,33 +121,45 @@ export function ConfluenceForm({ existingIds, onSubmit, formId }: SourceFormProp
       />
       <FormField
         label="pages (csv of page ids)"
+        fieldId="knowledge.confluence.pages"
         value={pages}
         onChange={(e) => setPages(e.target.value)}
         placeholder="12345,67890"
       />
       <div className="flex gap-4 items-center">
-        <Toggle label="include children" checked={includeChildren} onChange={setIncludeChildren} />
+        <div className="inline-flex items-center gap-1">
+          <Toggle
+            label="include children"
+            checked={includeChildren}
+            onChange={setIncludeChildren}
+          />
+          <FieldHelp fieldId="knowledge.confluence.includeChildren" iconOnly>
+            include children help
+          </FieldHelp>
+        </div>
         <FormField
           label="max pages"
+          fieldId="knowledge.confluence.maxPages"
           value={maxPages}
           onChange={(e) => setMaxPages(e.target.value.replace(/\D/g, ""))}
           placeholder="100"
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted">
-          // format
-          <select
-            value={format}
-            onChange={(e) => setFormat(e.target.value as typeof format)}
-            className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green"
-          >
-            <option value="">(default)</option>
-            <option value="markdown">markdown</option>
-            <option value="storage">storage</option>
-            <option value="view">view</option>
-          </select>
-        </label>
+        <FieldHelp fieldId="knowledge.confluence.format" htmlFor="confluence-format">
+          format
+        </FieldHelp>
+        <select
+          id="confluence-format"
+          value={format}
+          onChange={(e) => setFormat(e.target.value as typeof format)}
+          className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green"
+        >
+          <option value="">(default)</option>
+          <option value="markdown">markdown</option>
+          <option value="storage">storage</option>
+          <option value="view">view</option>
+        </select>
       </div>
     </form>
   );

@@ -30,6 +30,7 @@ export function DirForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="directory"
+        fieldId="knowledge.path"
         required
         value={path}
         onChange={(e) => setPath(e.target.value)}

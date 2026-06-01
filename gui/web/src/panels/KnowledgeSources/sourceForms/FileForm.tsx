@@ -30,6 +30,7 @@ export function FileForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       {commonFields(c, setC, idErr)}
       <FormField
         label="path"
+        fieldId="knowledge.path"
         required
         value={path}
         onChange={(e) => setPath(e.target.value)}

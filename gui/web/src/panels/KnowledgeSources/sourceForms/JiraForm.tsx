@@ -3,6 +3,7 @@ import { useAtlassianEnv } from "@/hooks/useAtlassianEnv";
 import { useParseKnowledgeUrl } from "@/hooks/useParseKnowledgeUrl";
 import { Button } from "@/ui/Button";
 import { Chip } from "@/ui/Chip";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
 import { type CommonFields, commonFields, validateId } from "./common";
 import type { SourceFormProps } from "./types";
@@ -100,12 +101,9 @@ export function JiraForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label
-          htmlFor="f-jql"
-          className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted"
-        >
-          // jql (required)
-        </label>
+        <FieldHelp fieldId="knowledge.jira.jql" htmlFor="f-jql">
+          jql (required)
+        </FieldHelp>
         <textarea
           id="f-jql"
           value={jql}
@@ -117,12 +115,14 @@ export function JiraForm({ existingIds, onSubmit, formId }: SourceFormProps) {
       </div>
       <FormField
         label="fields (csv)"
+        fieldId="knowledge.jira.fields"
         value={fields}
         onChange={(e) => setFields(e.target.value)}
         placeholder="summary,status,priority"
       />
       <FormField
         label="max results"
+        fieldId="knowledge.jira.maxResults"
         value={maxResults}
         onChange={(e) => setMaxResults(e.target.value.replace(/\D/g, ""))}
         placeholder="50"
