@@ -18,15 +18,19 @@ export function defaultAgentSmithHome(): string {
 
 /**
  * Read the platforms array from
- * `<agentSmithHome>/agents/<agent>/refresh-manifest.json`. Returns `[]` when
+ * `<agentSmithHome>/refresh/<agent>/refresh-manifest.json`. Returns `[]` when
  * the manifest is absent (ENOENT). Surfaces other I/O errors. Defensively
  * narrows the platforms array to known Platform values.
+ *
+ * The path lives at the sibling `refresh/` root (NOT under `agents/`)
+ * since the writer in `src/core/knowledge/refresh-manifest.ts` was moved
+ * there to avoid creating phantom bundle dirs.
  */
 export async function readRefreshManifestPlatforms(
   agentSmithHome: string,
   agent: string,
 ): Promise<Platform[]> {
-  const path = join(agentSmithHome, "agents", agent, "refresh-manifest.json");
+  const path = join(agentSmithHome, "refresh", agent, "refresh-manifest.json");
   try {
     const raw = await readFile(path, "utf8");
     const json = JSON.parse(raw) as {

@@ -130,7 +130,7 @@ describe("buildRefreshHooksMap", () => {
     try {
       // Hand-write malformed JSON so readRefreshManifest's parse step
       // throws a SmithError. The helper must NOT swallow it.
-      const agentDir = join(dir, "agents", "broken");
+      const agentDir = join(dir, "refresh", "broken");
       await mkdir(agentDir, { recursive: true });
       await writeFile(join(agentDir, "refresh-manifest.json"), "{ not json", "utf8");
       await expect(

@@ -10,8 +10,9 @@ import type { KnowledgePaths } from "../../src/io/knowledge-paths";
 import { fakeBundle } from "../_helpers/fakeBundle";
 
 // Verify Task 6: removeBundle deletes the per-agent refresh-manifest.json
-// at <agentSmithHome>/agents/<name>/refresh-manifest.json after platform
-// files and knowledge dir are removed.
+// at <agentSmithHome>/refresh/<name>/refresh-manifest.json after platform
+// files and knowledge dir are removed. (Pre-fix this lived under agents/,
+// which created phantom bundle dirs — see refresh-manifest.ts header.)
 //
 // The uninstaller takes positional args (bundle, installPaths, knowledgePaths,
 // deps) — the agent-smith home is already available via knowledgePaths.agentSmithHome,
@@ -59,7 +60,7 @@ describe("removeBundle: refresh-manifest cleanup", () => {
       },
     });
 
-    const manifestPath = join(agentSmithHome, "agents", "alpha", "refresh-manifest.json");
+    const manifestPath = join(agentSmithHome, "refresh", "alpha", "refresh-manifest.json");
     // Sanity: manifest exists before uninstall.
     expect(await stat(manifestPath).then(() => true).catch(() => false)).toBe(true);
 
@@ -74,7 +75,7 @@ describe("removeBundle: refresh-manifest cleanup", () => {
     await mkdir(installPaths.opencode, { recursive: true });
     await writeFile(join(installPaths.opencode, "beta.md"), "x");
 
-    const manifestPath = join(agentSmithHome, "agents", "beta", "refresh-manifest.json");
+    const manifestPath = join(agentSmithHome, "refresh", "beta", "refresh-manifest.json");
     expect(await stat(manifestPath).then(() => true).catch(() => false)).toBe(false);
 
     const result = await removeBundle(bundle, installPaths, knowledgePaths);

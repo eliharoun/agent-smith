@@ -18,7 +18,7 @@ describe("loadRefreshConsent", () => {
   });
 
   it("loads a manifest", async () => {
-    const dir = join(home, "agents", "x");
+    const dir = join(home, "refresh", "x");
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, "refresh-manifest.json"),

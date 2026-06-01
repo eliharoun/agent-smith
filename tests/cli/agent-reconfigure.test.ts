@@ -211,7 +211,7 @@ describe("reconfigureAgent — grant", () => {
     await seedClaudeAgent(t, true);
     await writeRefreshManifest(t.home, AGENT, manifestFixture(["claude-code"]));
     const before = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
 
@@ -220,7 +220,7 @@ describe("reconfigureAgent — grant", () => {
     const m = await readRefreshManifest(t.home, AGENT);
     expect(m!.refresh_consent.platforms).toEqual(["claude-code"]);
     const after = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
     // Idempotent grants must not rewrite the manifest. (If we did rewrite,
@@ -276,14 +276,14 @@ describe("reconfigureAgent — revoke", () => {
   test("revoke is idempotent — revoking a not-granted platform is a no-op", async () => {
     await writeRefreshManifest(t.home, AGENT, manifestFixture(["claude-code"]));
     const before = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
 
     await reconfigureAgent(AGENT, { grant: [], revoke: ["opencode"] }, t.deps);
 
     const after = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
     expect(after).toBe(before);
@@ -304,7 +304,7 @@ describe("reconfigureAgent — validation", () => {
     await seedOpencodeAgent(t);
     await writeRefreshManifest(t.home, AGENT, manifestFixture([]));
     const before = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
 
@@ -314,7 +314,7 @@ describe("reconfigureAgent — validation", () => {
 
     // Manifest unchanged (no partial side effects).
     const after = await readFile(
-      join(t.home, "agents", AGENT, "refresh-manifest.json"),
+      join(t.home, "refresh", AGENT, "refresh-manifest.json"),
       "utf8",
     );
     expect(after).toBe(before);

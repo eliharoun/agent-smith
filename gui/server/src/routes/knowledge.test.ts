@@ -62,7 +62,7 @@ async function setup() {
     }),
   );
   // Refresh consent manifest.
-  const refreshManifestDir = join(smithHome, "agents", "myagent");
+  const refreshManifestDir = join(smithHome, "refresh", "myagent");
   await mkdir(refreshManifestDir, { recursive: true });
   await writeFile(
     join(refreshManifestDir, "refresh-manifest.json"),

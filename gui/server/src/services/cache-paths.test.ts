@@ -63,7 +63,7 @@ describe("cache-paths", () => {
   });
 
   it("manifest paths apply the same strict sanitizer", () => {
-    expect(refreshManifestPathFor("a/b", "/s")).toBe("/s/agents/a-b/refresh-manifest.json");
+    expect(refreshManifestPathFor("a/b", "/s")).toBe("/s/refresh/a-b/refresh-manifest.json");
     expect(knowledgeManifestPathFor("a/b", "/s")).toBe("/s/knowledge/a-b/_manifest.json");
   });
 });

@@ -171,7 +171,7 @@ describe("runDoctor: knowledgeRefresh section (orchestrator + renderer)", () => 
   });
 
   test("ok path: no consented agents → status ok, renderer prints clean section", async () => {
-    // Pristine agent-smith home (no agents/<x>/refresh-manifest.json) →
+    // Pristine agent-smith home (no refresh/<x>/refresh-manifest.json) →
     // detector finds nothing.
     const report = await runDoctor({
       vendoredSchema,

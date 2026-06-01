@@ -169,7 +169,7 @@ export const RefreshCacheEntry = z.object({
 });
 export type RefreshCacheEntry = z.infer<typeof RefreshCacheEntry>;
 
-// ─── Refresh-consent manifest (`<home>/agents/<agent>/refresh-manifest.json`) ─
+// ─── Refresh-consent manifest (`<home>/refresh/<agent>/refresh-manifest.json`) ─
 export const RefreshConsentManifest = z.object({
   agent: z.string().min(1),
   refresh_consent: z.object({

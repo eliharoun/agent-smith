@@ -113,6 +113,22 @@ describe("sniffPath", () => {
     expect(result.skillBundles).toBe(2);
     expect(result.emptyBundleDirs).toEqual([]);
   });
+
+  // Bug B defense in depth: pre-fix, writeRefreshManifest mkdir'd a
+  // subdir under <stateHome>/agents/<name>/ even when the bundle source
+  // was the synthetic self-source. That left phantom dirs containing
+  // ONLY refresh-manifest.json — which the doctor sniff misclassified as
+  // "leftover from aborted `smith agent init`". The path move makes this
+  // unreachable for new installs, but the sniff must still recognise
+  // legacy state and NOT flag it.
+  test("does not flag a subdir whose only content is refresh-manifest.json (Bug B legacy)", async () => {
+    await mkdir(join(dir, "ghost"), { recursive: true });
+    await writeFile(join(dir, "ghost", "refresh-manifest.json"), "{}");
+    const result = await sniffPath(dir);
+    expect(result.emptyBundleDirs).toEqual([]);
+    expect(result.agentBundles).toBe(0);
+    expect(result.skillBundles).toBe(0);
+  });
 });
 
 describe("verifyGitRemote", () => {

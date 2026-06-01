@@ -2,7 +2,7 @@
  * Doctor's read-only knowledge-refresh detection.
  *
  * For each agent that has a persisted refresh-manifest.json under
- * `<agentSmithHome>/agents/<agent>/`, this module verifies that the
+ * `<agentSmithHome>/refresh/<agent>/`, this module verifies that the
  * on-disk hook config for each consented platform actually agrees with
  * what the manifest claims:
  *
@@ -51,7 +51,7 @@ export interface RefreshHooksReport {
 }
 
 export interface CheckRefreshHooksInput {
-  /** Root containing `agents/<agent>/refresh-manifest.json`. */
+  /** Root containing `refresh/<agent>/refresh-manifest.json`. */
   agentSmithHome: string;
   /** Root containing `agents/<agent>/sources/<sourceId>.meta.json`. */
   cacheRoot?: string;
@@ -77,10 +77,12 @@ export async function checkRefreshHooks(
 ): Promise<RefreshHooksReport> {
   const findings: Finding[] = [];
 
-  // Enumerate consented agents from the manifest tree. Missing dir = no
-  // agents consented yet (a normal state on a fresh checkout).
-  const agentsDir = join(input.agentSmithHome, "agents");
-  const agentNames = await listSubdirs(agentsDir);
+  // Enumerate consented agents from the refresh-manifest tree. Missing dir
+  // = no agents consented yet (a normal state on a fresh checkout).
+  // (Pre-fix this read from `<home>/agents/` which conflated bundle state
+  // with refresh consent — see refresh-manifest.ts header.)
+  const refreshDir = join(input.agentSmithHome, "refresh");
+  const agentNames = await listSubdirs(refreshDir);
 
   for (const agent of agentNames) {
     const manifest = await readRefreshManifest(input.agentSmithHome, agent).catch(

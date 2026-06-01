@@ -87,10 +87,22 @@ export async function sniffPath(path: string): Promise<SniffResult> {
       continue;
     }
     // Subdirectory has neither agent nor skill marker (even recursively).
-    // If it's also entirely empty, surface it as a likely leftover from
-    // an aborted `agent init` or manual scaffolding.
+    // Surface it as "empty" (likely leftover from an aborted `agent init`
+    // or manual scaffolding) ONLY when:
+    //   - it is literally empty, OR
+    //   - it is a pre-Bug-B legacy refresh-manifest holder (a dir whose
+    //     only content is `refresh-manifest.json`). The writer used to
+    //     mkdir `<stateHome>/agents/<name>/` even when the bundle was
+    //     the synthetic self-source; the path was moved to
+    //     `<stateHome>/refresh/<name>/refresh-manifest.json`, but a user
+    //     may still have leftover state. Skipping the legacy case here
+    //     prevents the doctor from misreporting it as "leftover from
+    //     aborted init" — defense in depth on top of the path move in
+    //     `src/core/knowledge/refresh-manifest.ts`.
     if (await directoryIsEmpty(sub)) {
       emptyBundleDirs.push(entry.name);
+    } else if (await directoryIsLegacyRefreshOnly(sub)) {
+      // Intentionally do nothing — recognise and ignore.
     }
   }
   return {
@@ -107,6 +119,21 @@ async function directoryIsEmpty(p: string): Promise<boolean> {
   try {
     const entries = await readdir(p);
     return entries.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pre-Bug-B legacy probe: returns true when `p` contains exactly one
+ * entry, `refresh-manifest.json`. Such dirs were created by the old
+ * writer at `<stateHome>/agents/<name>/`. The path was moved to
+ * `<stateHome>/refresh/<name>/`, so this only fires on legacy state.
+ */
+async function directoryIsLegacyRefreshOnly(p: string): Promise<boolean> {
+  try {
+    const entries = await readdir(p);
+    return entries.length === 1 && entries[0] === "refresh-manifest.json";
   } catch {
     return false;
   }

@@ -44,10 +44,10 @@ describe("RefreshManifest schemaVersion [v1-task B11.5]", () => {
       await writeRefreshManifest(dir, "my-agent", manifest);
       const round = await readRefreshManifest(dir, "my-agent");
       expect(round?.schemaVersion).toBe(1);
-      // Writer emits schemaVersion on disk.
+      // Writer emits schemaVersion on disk at the new sibling path.
       const raw = JSON.parse(
         await readFile(
-          join(dir, "agents", "my-agent", "refresh-manifest.json"),
+          join(dir, "refresh", "my-agent", "refresh-manifest.json"),
           "utf8",
         ),
       );
@@ -60,8 +60,8 @@ describe("RefreshManifest schemaVersion [v1-task B11.5]", () => {
   test("readRefreshManifest tolerates legacy manifest with no schemaVersion (injects 1)", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rm-sv-legacy-"));
     try {
-      const path = join(dir, "agents", "legacy", "refresh-manifest.json");
-      await mkdir(join(dir, "agents", "legacy"), { recursive: true });
+      const path = join(dir, "refresh", "legacy", "refresh-manifest.json");
+      await mkdir(join(dir, "refresh", "legacy"), { recursive: true });
       await writeFile(
         path,
         JSON.stringify({

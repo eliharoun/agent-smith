@@ -81,7 +81,7 @@ describe("removeBundle partialRemoval", () => {
     });
 
     const raw = await readFile(
-      join(agentSmithHome, "agents", "foo", "refresh-manifest.json"),
+      join(agentSmithHome, "refresh", "foo", "refresh-manifest.json"),
       "utf8",
     );
     const m = JSON.parse(raw) as { refresh_consent: { platforms: string[] } };
@@ -117,7 +117,7 @@ describe("removeBundle partialRemoval", () => {
     let stillThere = false;
     try {
       await readFile(
-        join(agentSmithHome, "agents", "foo", "refresh-manifest.json"),
+        join(agentSmithHome, "refresh", "foo", "refresh-manifest.json"),
         "utf8",
       );
       stillThere = true;
@@ -156,7 +156,7 @@ describe("removeBundle partialRemoval", () => {
     let manifestStillThere = false;
     try {
       await readFile(
-        join(agentSmithHome, "agents", "foo", "refresh-manifest.json"),
+        join(agentSmithHome, "refresh", "foo", "refresh-manifest.json"),
         "utf8",
       );
       manifestStillThere = true;
@@ -199,7 +199,7 @@ describe("removeBundle partialRemoval", () => {
     let manifestStillThere = false;
     try {
       await readFile(
-        join(agentSmithHome, "agents", "foo", "refresh-manifest.json"),
+        join(agentSmithHome, "refresh", "foo", "refresh-manifest.json"),
         "utf8",
       );
       manifestStillThere = true;
@@ -238,7 +238,7 @@ describe("removeBundle partialRemoval", () => {
     });
 
     const raw = await readFile(
-      join(agentSmithHome, "agents", "foo", "refresh-manifest.json"),
+      join(agentSmithHome, "refresh", "foo", "refresh-manifest.json"),
       "utf8",
     );
     const m = JSON.parse(raw) as { refresh_consent: { platforms: string[] } };

@@ -12,10 +12,10 @@ describe("GET /api/agents/:name/refresh-manifest", () => {
   it("returns granted platforms when manifest exists", async () => {
     const home = setupHome();
     try {
-      // CLI convention: <agentSmithHome>/agents/<agent>/refresh-manifest.json
-      mkdirSync(join(home, "agents", "alpha"), { recursive: true });
+      // CLI convention: <agentSmithHome>/refresh/<agent>/refresh-manifest.json
+      mkdirSync(join(home, "refresh", "alpha"), { recursive: true });
       writeFileSync(
-        join(home, "agents", "alpha", "refresh-manifest.json"),
+        join(home, "refresh", "alpha", "refresh-manifest.json"),
         JSON.stringify({
           agent: "alpha",
           refresh_consent: {

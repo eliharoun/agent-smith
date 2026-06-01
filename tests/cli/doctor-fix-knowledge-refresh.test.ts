@@ -145,7 +145,7 @@ describe("runDoctorCli --fix-knowledge-refresh", () => {
 
     // Manifest still consents zephyr for claude-code (no change).
     const manifestRaw = await readFile(
-      join(ctx.agentSmithHome, "agents", "zephyr", "refresh-manifest.json"),
+      join(ctx.agentSmithHome, "refresh", "zephyr", "refresh-manifest.json"),
       "utf8",
     );
     const manifest = JSON.parse(manifestRaw) as {
@@ -209,7 +209,7 @@ describe("runDoctorCli --fix-knowledge-refresh", () => {
 
     // Manifest no longer consents to codex.
     const manifestRaw = await readFile(
-      join(ctx.agentSmithHome, "agents", "xander", "refresh-manifest.json"),
+      join(ctx.agentSmithHome, "refresh", "xander", "refresh-manifest.json"),
       "utf8",
     );
     const manifest = JSON.parse(manifestRaw) as {

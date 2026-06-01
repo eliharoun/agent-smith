@@ -4,7 +4,7 @@
  * frontmatter.
  *
  * The map is populated from each bundle's persisted refresh-manifest.json
- * (under `<agentSmithHome>/agents/<bundle.config.name>/`), which records
+ * (under `<agentSmithHome>/refresh/<bundle.config.name>/`), which records
  * the user's prior `smith agent knowledge install` consent.
  *
  * Why only `"claude-code"`: it is the only currently-supported platform

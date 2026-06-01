@@ -46,7 +46,12 @@ export function refreshManifestPathFor(
   agent: string,
   agentSmithHome = defaultAgentSmithHome(),
 ): string {
-  return join(agentSmithHome, "agents", safeFsName(agent), "refresh-manifest.json");
+  // Sibling of `<agentSmithHome>/agents/`. Mirrors the CLI writer in
+  // `src/core/knowledge/refresh-manifest.ts`. Prior layout was
+  // `<home>/agents/<agent>/refresh-manifest.json`, which created a
+  // phantom bundle dir under user-global when the source was synthetic
+  // self.
+  return join(agentSmithHome, "refresh", safeFsName(agent), "refresh-manifest.json");
 }
 
 export function knowledgeManifestPathFor(

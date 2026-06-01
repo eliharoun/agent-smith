@@ -703,6 +703,119 @@ describe("PUT /api/agents/:name/config", () => {
   });
 });
 
+// ─── Bug A: synthetic self-source visibility ──────────────────────────
+//
+// The agent-smith bundle ships from a synthetic self-source — the running
+// CLI's bundled `agents/` dir at `<workspaceRoot>/agents/`. Without the
+// GUI's parseRegistry surfacing it, /api/agents would miss agent-smith
+// and PUT /api/agents/agent-smith/config would 404 (or, worse, operate
+// on the user-global phantom dir created by writeRefreshManifest).
+//
+// These tests pin a fixture workspace via SMITH_SELF_SOURCE_WORKSPACE so
+// the assertions don't depend on the running repo.
+describe("Bug A: synthetic self-source visibility", () => {
+  let workspaceRoot: string;
+  let bundlePath: string;
+  let prevDisable: string | undefined;
+  let prevWorkspace: string | undefined;
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(join(tmpdir(), "self-src-fixture-"));
+    // Mark this temp dir as an agent-smith workspace.
+    await writeFile(
+      join(workspaceRoot, "package.json"),
+      JSON.stringify({ name: "agent-smith" }),
+      "utf8",
+    );
+    // Stage the bundled agent-smith inside agents/.
+    bundlePath = join(workspaceRoot, "agents", "agent-smith");
+    await mkdir(bundlePath, { recursive: true });
+    for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md", "USER.md"]) {
+      await writeFile(join(bundlePath, f), `# ${f}\nbody\n`);
+    }
+    await writeFile(
+      join(bundlePath, "agent.config.json"),
+      JSON.stringify({
+        name: "agent-smith",
+        description: "self bundle",
+        model: "sonnet",
+        targets: ["opencode"],
+      }),
+    );
+    // Persisted registry contains NO agent-smith entry. The synthetic
+    // source must surface it on its own.
+    await writeFile(
+      registryPath,
+      JSON.stringify({ schemaVersion: 2, sources: [] }),
+    );
+    // Suppress test preload's blanket disable; pin our fixture.
+    prevDisable = process.env.SMITH_DISABLE_SELF_SOURCE;
+    prevWorkspace = process.env.SMITH_SELF_SOURCE_WORKSPACE;
+    delete process.env.SMITH_DISABLE_SELF_SOURCE;
+    process.env.SMITH_SELF_SOURCE_WORKSPACE = workspaceRoot;
+  });
+
+  afterEach(async () => {
+    if (prevDisable !== undefined) process.env.SMITH_DISABLE_SELF_SOURCE = prevDisable;
+    else delete process.env.SMITH_DISABLE_SELF_SOURCE;
+    if (prevWorkspace !== undefined) process.env.SMITH_SELF_SOURCE_WORKSPACE = prevWorkspace;
+    else delete process.env.SMITH_SELF_SOURCE_WORKSPACE;
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  function appWith() {
+    const jm = new JobManager({ spawner: fakeSpawner });
+    return createApp({
+      token: "t",
+      jobs: jm,
+      registryPath,
+      installPathsFor: () => ({ opencode: "/x", "claude-code": "/y", codex: "/z" }),
+    });
+  }
+
+  it("GET /api/agents lists agent-smith via the synthetic self-source even when the registry has no entry for it", async () => {
+    const res = await appWith().request("/api/agents", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ name: string; catalog: string; path: string }>;
+    const self = body.find((a) => a.name === "agent-smith");
+    expect(self).toBeDefined();
+    expect(self?.catalog).toBe("agent-smith-self");
+    expect(self?.path).toBe(bundlePath);
+  });
+
+  it("GET /api/agents/agent-smith resolves to the synthetic source's bundle path", async () => {
+    const res = await appWith().request("/api/agents/agent-smith", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { name: string; catalog: string; path: string };
+    expect(body.name).toBe("agent-smith");
+    expect(body.catalog).toBe("agent-smith-self");
+    expect(body.path).toBe(bundlePath);
+  });
+
+  it("PUT /api/agents/agent-smith/config writes to the synthetic source's bundle path (not user-global)", async () => {
+    const res = await appWith().request("/api/agents/agent-smith/config", {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer t",
+        "content-type": "application/json",
+        origin: "http://localhost.test",
+      },
+      body: JSON.stringify({ targets: ["opencode", "claude-code"], modelTier: "high" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const written = JSON.parse(
+      await readFile(join(bundlePath, "agent.config.json"), "utf8"),
+    );
+    expect(written.targets).toEqual(["opencode", "claude-code"]);
+    expect(written.modelTier).toBe("high");
+  });
+});
+
 describe("agent-name validation guard (:name routes)", () => {
   function appWith() {
     const jm = new JobManager({ spawner: fakeSpawner });

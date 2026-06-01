@@ -98,8 +98,27 @@ export async function resolveSelfSource(
       }
     }
   } else {
-    const startDir = dirname(fileURLToPath(import.meta.url));
-    workspaceRoot = await findAgentSmithWorkspace(startDir);
+    // Tests pin a fixture workspace via SMITH_SELF_SOURCE_WORKSPACE so
+    // route-level assertions can drive the synthetic self-source through
+    // a deterministic on-disk layout without depending on the real
+    // running workspace's `agents/` dir.
+    const fixtureRoot = process.env.SMITH_SELF_SOURCE_WORKSPACE;
+    if (fixtureRoot && fixtureRoot.length > 0) {
+      workspaceRoot = (await pathExists(fixtureRoot)) ? fixtureRoot : null;
+      if (workspaceRoot !== null) {
+        const pkgPath = join(workspaceRoot, "package.json");
+        try {
+          const raw = await Bun.file(pkgPath).text();
+          const pkg = JSON.parse(raw) as { name?: string };
+          if (!pkg.name || !WORKSPACE_PKG_NAMES.has(pkg.name)) workspaceRoot = null;
+        } catch {
+          workspaceRoot = null;
+        }
+      }
+    } else {
+      const startDir = dirname(fileURLToPath(import.meta.url));
+      workspaceRoot = await findAgentSmithWorkspace(startDir);
+    }
   }
 
   if (!workspaceRoot) return null;

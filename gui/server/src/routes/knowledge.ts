@@ -45,7 +45,7 @@ interface ConsentInput {
 }
 
 /**
- * Writes a RefreshManifest to <agentSmithHome>/agents/<agent>/refresh-manifest.json
+ * Writes a RefreshManifest to <agentSmithHome>/refresh/<agent>/refresh-manifest.json
  * via a dynamic cross-rootDir import. The writer in
  * src/core/knowledge/refresh-manifest.ts handles all the assertWithin /
  * mkdir-recursive details. We wrap it here so the route stays unaware of

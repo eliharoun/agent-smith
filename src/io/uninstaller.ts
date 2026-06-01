@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { defaultCodexHome, defaultOpencodeConfigHome } from "../cli/install-paths";
 import {
   readRefreshManifest,
+  refreshManifestPath,
   removeRefreshManifest,
   writeRefreshManifest,
 } from "../core/knowledge/refresh-manifest";
@@ -511,12 +512,7 @@ export async function removeBundle(
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     result.errors.push({
-      path: join(
-        knowledgePaths.agentSmithHome,
-        "agents",
-        bundle.config.name,
-        "refresh-manifest.json",
-      ),
+      path: refreshManifestPath(knowledgePaths.agentSmithHome, bundle.config.name),
       message: e?.message ?? String(err),
     });
   }

@@ -1,6 +1,14 @@
 /**
  * Per-agent knowledge-refresh manifest at
- * `<agentSmithHome>/agents/<agent>/refresh-manifest.json`.
+ * `<agentSmithHome>/refresh/<agent>/refresh-manifest.json`.
+ *
+ * The path lives at the sibling `refresh/` root — NOT under `agents/` —
+ * so the manifest writer never creates a phantom bundle directory under
+ * the user-global agents catalog. This matters when the bundle's source
+ * is the synthetic "agent-smith-self" source (whose `agents/` lives in
+ * the running CLI's repo, not under `<stateHome>/agents/`); writing to
+ * `<stateHome>/agents/<name>/` would manifest as an empty bundle dir
+ * the doctor sniff later flagged as "leftover from aborted init."
  *
  * Records which platforms have refresh hooks installed and which knowledge
  * sources the user opted in for. Written by `smith agent knowledge install`
@@ -50,9 +58,20 @@ export type RefreshConsent = z.infer<typeof RefreshConsentSchema>;
 export type RefreshManifest = z.infer<typeof RefreshManifestSchema>;
 
 const MANIFEST_FILENAME = "refresh-manifest.json";
+const REFRESH_DIR = "refresh";
+
+/**
+ * Canonical absolute path to the per-agent refresh manifest, sibling of
+ * `<agentSmithHome>/agents/`. Exported so callers (uninstaller, doctor,
+ * reconfigure, GUI server) reuse the same path policy and so tests can
+ * assert the layout directly.
+ */
+export function refreshManifestPath(agentSmithHome: string, agent: string): string {
+  return join(agentSmithHome, REFRESH_DIR, agent, MANIFEST_FILENAME);
+}
 
 function manifestPath(agentSmithHome: string, agent: string): string {
-  return join(agentSmithHome, "agents", agent, MANIFEST_FILENAME);
+  return refreshManifestPath(agentSmithHome, agent);
 }
 
 /**
