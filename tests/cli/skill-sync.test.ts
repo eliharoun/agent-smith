@@ -18,6 +18,18 @@ import {
 } from "../../src/io/skill-registry";
 import { createBareRemote } from "../fixtures/git-remote-helper";
 
+// Per-test timeout (ms). Bun's default is 5000ms, which is too tight for
+// the heavy git work these tests do. Each `createBareRemote()` issues
+// ~12 git child-process spawns; each `commitFile()` issues ~4 more
+// (add, commit, push, rev-parse); and the actual `runSkillSync()` runs
+// a fetch + reset + rev-parse against the bare remote. The `--all`
+// case spins up two remotes back-to-back. Under parallel test-worker
+// load on macOS, that easily blows past 5s — verified empirically by
+// stress-running this file with 5 parallel `bun test` invocations:
+// 5/5 hit 5000ms timeouts on the `--all` case. 30s gives ~6× headroom
+// at the 95th percentile observed wall time.
+const HEAVY_GIT_TIMEOUT_MS = 30_000;
+
 const SKILL_BODY = (name: string) =>
   `---\nname: ${name}\ndescription: Use proactively to test the skill sync flow.\n---\n\n# ${name}\n\nbody\n`;
 
@@ -77,7 +89,7 @@ describe("smith skill sync [v1-task C3.12]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("sync --check updates lastRemoteSha but leaves lastPulledSha untouched", async () => {
     const remote = await createBareRemote();
@@ -105,7 +117,7 @@ describe("smith skill sync [v1-task C3.12]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("sync --all syncs every remote-backed skill catalog; partial failures don't abort", async () => {
     const remoteOk = await createBareRemote();
@@ -136,7 +148,7 @@ describe("smith skill sync [v1-task C3.12]", () => {
     } finally {
       await remoteOk.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("sync <name> errors when no remote-backed catalog matches", async () => {
     let stderr = "";
