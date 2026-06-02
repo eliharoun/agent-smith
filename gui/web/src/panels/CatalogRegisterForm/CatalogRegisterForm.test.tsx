@@ -32,14 +32,16 @@ describe("CatalogRegisterForm", () => {
 
   it("defaults kind based on registry and switches kinds when registry flips", () => {
     renderForm("agent");
-    // Agent kinds shown.
-    const select = screen.getByLabelText(/kind/i) as HTMLSelectElement;
+    // Agent kinds shown. The select has id=f-kind; bypass the matrix `// kind`
+    // label decoration (also used by the FieldHelp aria-label) by querying
+    // the element by id.
+    const select = document.getElementById("f-kind") as HTMLSelectElement;
     const optionValues = Array.from(select.options).map((o) => o.value);
     expect(optionValues).toEqual(["user-global", "project", "registered"]);
 
     // Flip to Skill.
     fireEvent.click(screen.getByRole("button", { name: /^Skill$/ }));
-    const select2 = screen.getByLabelText(/kind/i) as HTMLSelectElement;
+    const select2 = document.getElementById("f-kind") as HTMLSelectElement;
     const opts2 = Array.from(select2.options).map((o) => o.value);
     expect(opts2).toEqual(["user-global", "user-local", "team-shared"]);
   });
@@ -55,7 +57,8 @@ describe("CatalogRegisterForm", () => {
     expect(register.hasAttribute("disabled")).toBe(true);
 
     // Toggle skip-git-check on.
-    fireEvent.click(screen.getByLabelText(/skip git check/i));
+    // Match the toggle, not the FieldHelp icon (whose label is `help: skip git check`).
+    fireEvent.click(screen.getByLabelText(/^skip git check$/i));
     await waitFor(() => expect(register.hasAttribute("disabled")).toBe(false));
   });
 
@@ -120,7 +123,8 @@ describe("CatalogRegisterForm", () => {
     expect(register.hasAttribute("disabled")).toBe(true);
 
     // Toggle skip-git-check to allow dispatch.
-    fireEvent.click(screen.getByLabelText(/skip git check/i));
+    // Match the toggle, not the FieldHelp icon (whose label is `help: skip git check`).
+    fireEvent.click(screen.getByLabelText(/^skip git check$/i));
     await waitFor(() => expect(register.hasAttribute("disabled")).toBe(false));
     fireEvent.click(register);
     await waitFor(() => {

@@ -4,6 +4,7 @@ import { useModelConfig, useUpdateModelConfig } from "@/hooks/useModelConfig";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Chip } from "@/ui/Chip";
+import { FieldHelp } from "@/ui/FieldHelp";
 
 const PLATFORMS: Platform[] = ["opencode", "claude-code", "codex", "kiro"];
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -136,8 +137,10 @@ export function ModelConfigPage() {
     <>
       {/* Card 1: Platform readiness */}
       <Card>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
-          // platforms — installed and authenticated?
+        <div className="mb-3">
+          <FieldHelp fieldId="model.platformStatus">
+            platforms — installed and authenticated?
+          </FieldHelp>
         </div>
         <div className="font-mono text-xs text-matrix-body mb-3">
           Each row is one of the four agent runtimes smith can render to. `authenticated`
@@ -173,8 +176,10 @@ export function ModelConfigPage() {
       {/* Card 2: OpenCode provider preference (advanced; only meaningful for OpenCode) */}
       {visiblePlatforms.includes("opencode") && (
         <Card>
-          <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
-            // opencode: which provider is tried first
+          <div className="mb-3">
+            <FieldHelp fieldId="model.providerPreference">
+              opencode: which provider is tried first
+            </FieldHelp>
           </div>
           <div className="font-mono text-xs text-matrix-body mb-3 leading-relaxed">
             OpenCode aggregates models from multiple providers (anthropic, github-copilot,
@@ -255,8 +260,8 @@ export function ModelConfigPage() {
 
       {/* Card 4: Per-platform tier overrides */}
       <Card>
-        <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
-          // pin a specific model
+        <div className="mb-3">
+          <FieldHelp fieldId="model.tierOverride">pin a specific model</FieldHelp>
         </div>
         <div className="font-mono text-xs text-matrix-body mb-3 leading-relaxed">
           Override what each (platform, tier) pair resolves to. The placeholder text in

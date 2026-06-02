@@ -8,6 +8,7 @@ import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Chip } from "@/ui/Chip";
 import { CliPreview } from "@/ui/CliPreview";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
 import { Toggle } from "@/ui/Toggle";
 
@@ -120,12 +121,9 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       />
 
       <div className="mt-3 flex flex-col gap-1">
-        <label
-          htmlFor="f-kind"
-          className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted"
-        >
-          // kind
-        </label>
+        <FieldHelp fieldId="catalog.kind" htmlFor="f-kind">
+          kind
+        </FieldHelp>
         <select
           id="f-kind"
           value={kind}
@@ -156,8 +154,18 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-4">
-        <Toggle label="skip git check" checked={skipGitCheck} onChange={setSkipGitCheck} />
-        <Toggle label="allow empty" checked={allowEmpty} onChange={setAllowEmpty} />
+        <span className="inline-flex items-center gap-1">
+          <Toggle label="skip git check" checked={skipGitCheck} onChange={setSkipGitCheck} />
+          <FieldHelp fieldId="catalog.skipGitCheck" iconOnly>
+            skip git check
+          </FieldHelp>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Toggle label="allow empty" checked={allowEmpty} onChange={setAllowEmpty} />
+          <FieldHelp fieldId="catalog.allowEmpty" iconOnly>
+            allow empty
+          </FieldHelp>
+        </span>
       </div>
 
       <div className="mt-4 flex items-center gap-2">

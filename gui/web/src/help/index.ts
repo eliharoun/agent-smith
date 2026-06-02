@@ -1,4 +1,12 @@
+import { agentHelp } from "./agent";
+import { catalogHelp } from "./catalog";
+import { daemonHelp } from "./daemon";
+import { installHelp } from "./install";
 import { knowledgeHelp } from "./knowledge";
+import { modelHelp } from "./model";
+import { permissionHelp } from "./permission";
+import { refreshConsentHelp } from "./refreshConsent";
+import { wizardHelp } from "./wizard";
 
 /**
  * Field-help registry. Keys are canonical paths (e.g. `knowledge.delivery`,
@@ -16,6 +24,14 @@ export interface FieldHelpEntry {
 
 const REGISTRY: Record<string, FieldHelpEntry> = {
   ...knowledgeHelp,
+  ...agentHelp,
+  ...modelHelp,
+  ...refreshConsentHelp,
+  ...catalogHelp,
+  ...permissionHelp,
+  ...installHelp,
+  ...daemonHelp,
+  ...wizardHelp,
 };
 
 export function getFieldHelp(fieldId: string): FieldHelpEntry | undefined {
