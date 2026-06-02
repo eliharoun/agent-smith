@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,10 @@ import type {
   FileSource,
   GitSource,
   GlobSource,
+  UrlSource,
 } from "../../../src/core/knowledge/types";
+import { McpClientPool } from "../../../src/io/mcp-client-pool";
+import { SmithError } from "../../../src/core/smith-error";
 
 async function makeTmp(label: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `acquire-source-${label}-`));
@@ -198,4 +201,86 @@ describe("runMaterializer", () => {
     };
     expect(() => runMaterializer("pdf-extract", art)).toThrow();
   });
+});
+
+const ECHO_FIXTURE = join(import.meta.dir, "..", "..", "_fixtures", "echo-mcp-server.ts");
+
+describe("acquire-source: via routing", () => {
+  let pool: McpClientPool | null = null;
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "as-via-"));
+    pool = null;
+  });
+  afterEach(async () => {
+    if (pool) await pool.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("routes through MCP when via is set and pool injected", async () => {
+    pool = new McpClientPool();
+    const src: UrlSource = {
+      type: "url",
+      id: "x",
+      delivery: "file",
+      url: "https://example.com/x",
+      via: { server: "echo", tool: "Fetch" },
+    };
+    const r = await acquireSource(src, {
+      bundleDir: dir,
+      cacheDir: dir,
+      mcpPool: pool,
+      spawnOptsFor: () => ({ command: "bun", args: [ECHO_FIXTURE] }),
+    });
+    expect(r.artifacts[0]?.bytes.toString("utf8")).toContain("example.com");
+  }, 30_000);
+
+  it("throws internal-error when via is set but mcpPool missing", async () => {
+    const src: UrlSource = {
+      type: "url",
+      id: "x",
+      delivery: "file",
+      url: "https://example.com/x",
+      via: { server: "echo", tool: "Fetch" },
+    };
+    let caught: unknown;
+    try {
+      await acquireSource(src, { bundleDir: dir, cacheDir: dir });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(SmithError);
+    const e = caught as SmithError;
+    expect(e.payload.code).toBe("internal-error");
+    // The payload message must explain the missing wire-up — case-
+    // insensitive contains for `internal-error` (the code) or `mcpPool`
+    // (the missing field name).
+    const detail =
+      e.payload.code === "internal-error" ? e.payload.message : "";
+    expect(`${e.payload.code} ${detail}`).toMatch(/internal-error|mcpPool/i);
+  });
+
+  it("falls through to acquireUrl when via is absent (existing behavior)", async () => {
+    // Without via:, dispatch reaches the existing acquireUrl path. We don't
+    // want to make a real network call, so we assert that the failure is a
+    // network/HTTP error from acquireUrl — NOT an internal-error from the
+    // missing-pool guard, and NOT a routing-via-MCP error.
+    const src: UrlSource = {
+      type: "url",
+      id: "x",
+      delivery: "file",
+      url: "https://127.0.0.1:1/definitely-not-listening",
+    };
+    let caught: unknown;
+    try {
+      await acquireSource(src, { bundleDir: dir, cacheDir: dir });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    const msg = caught instanceof Error ? caught.message : String(caught);
+    expect(msg).not.toMatch(/internal-error/i);
+    expect(msg).not.toMatch(/mcpPool/i);
+  }, 30_000);
 });

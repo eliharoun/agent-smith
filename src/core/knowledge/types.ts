@@ -94,6 +94,10 @@ interface KnowledgeSourceBase {
   toc?: boolean;
   /** v2.0: per-source retrieval mode for the optional MCP server. */
   retrieval?: RetrievalSpec;
+  /** v1.2: optional MCP routing override. When set, smith calls
+   *  `via.server.via.tool(args)` at acquire/refresh time instead of (or
+   *  in addition to) the type-specific acquirer. See `Via` below. */
+  via?: Via;
 }
 
 export interface FileSource extends KnowledgeSourceBase {

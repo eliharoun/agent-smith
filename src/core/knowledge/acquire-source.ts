@@ -1,5 +1,7 @@
 // src/core/knowledge/acquire-source.ts
 import { isAbsolute, resolve } from "node:path";
+import type { McpClientOpts } from "../../io/mcp-client";
+import type { McpClientPool } from "../../io/mcp-client-pool";
 import { SmithError } from "../smith-error";
 import {
   type AcquiredArtifact,
@@ -12,6 +14,7 @@ import {
   acquireUrl,
   type GitSpawner,
 } from "./acquire";
+import { acquireViaMcp } from "./acquire-via";
 import {
   inferMaterializer,
   materializeHtmlToMarkdown,
@@ -27,6 +30,14 @@ export interface AcquireSourceOpts {
   cacheDir: string;
   /** Optional DI for git invocations (tests). */
   gitSpawner?: GitSpawner;
+  /** v1.2: pool for via-routed URL sources. Required when any source has
+   *  an explicit `via:` declaration; absence triggers a fail-loud
+   *  `internal-error` rather than a silent HTTP fall-through that would
+   *  misroute auth-coupled URLs. */
+  mcpPool?: McpClientPool;
+  /** v1.2: resolver for spawn opts of a named MCP server. Required when
+   *  `mcpPool` is set. */
+  spawnOptsFor?: (server: string) => McpClientOpts;
 }
 
 /** Returns true if `acquireSource` has a real dispatch case for this source
@@ -86,10 +97,26 @@ async function dispatch(
     }
     case "glob":
       return acquireGlob(src.path, opts.bundleDir);
-    case "url":
+    case "url": {
+      // v1.2 routing: only EXPLICIT `via:` routes through MCP at
+      // acquire/refresh time. The curated registry is suggestion-only
+      // (used by `knowledge add`, NOT here).
+      if (src.via) {
+        if (!opts.mcpPool || !opts.spawnOptsFor) {
+          throw new SmithError({
+            code: "internal-error",
+            message: `URL source '${src.id}' has via:${src.via.server}.${src.via.tool} but acquireSource was called without mcpPool/spawnOptsFor. Caller must inject these.`,
+          });
+        }
+        return acquireViaMcp(src.via, src.url, {
+          pool: opts.mcpPool,
+          spawnOptsFor: opts.spawnOptsFor,
+        });
+      }
       return acquireUrl(src.url, opts.cacheDir, {
         ...(src.auth ? { auth: src.auth } : {}),
       });
+    }
     case "git": {
       const gitOpts: import("./acquire").AcquireGitOpts = {
         url: src.url,
