@@ -341,6 +341,20 @@ export interface RenderedAgentBase {
    * the same (target, relativePath) appears in multiple sources.
    */
   bundlePath?: string;
+  /**
+   * Optional sibling files emitted alongside the main render. Each
+   * sidecar's relativePath is resolved against the same install root
+   * as the main file (i.e. joined with paths[target]). Used by the
+   * Codex translator to emit `<name>/agents/openai.yaml` next to
+   * `<name>/SKILL.md` for the install-prompt UX. Other translators
+   * may add sidecars later; the installer/uninstaller are
+   * sidecar-aware and don't care which translator produced them.
+   */
+  sidecars?: Array<{
+    relativePath: string;
+    /** UTF-8 string contents. The installer atomic-writes verbatim. */
+    content: string;
+  }>;
 }
 
 /**
