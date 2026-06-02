@@ -430,10 +430,223 @@ Notes:
 
 ---
 
+## 6. Compile stage internals
+
+§5 named `compile()` as a transformation between materialize and translate. This section covers what that transformation actually does: when it runs, what shape its output takes, and what `compile-manifest.json` records for downstream consumers.
+
+### 6.1 When compile runs (the smart-default heuristic)
+
+`shouldAutoCompile` (in `src/core/knowledge/pipeline.ts`) is the predicate that decides v1-inline vs. v2-compiled at install time. It folds three signals into a single boolean:
+
+| Signal | Effect |
+|---|---|
+| Any source declares `delivery: "inline"` | Returns `false` unconditionally. Explicit author intent ("keep this in working memory") pins the whole bundle to v1, even if the corpus is large — the validator's hard-limit check is the right place to surface overflow when the user explicitly asks for it. |
+| `compile.progressive: true` (explicit) | Bypasses the heuristic — pipeline forces compile on. |
+| `compile.progressive: false` (explicit) | Bypasses the heuristic — pipeline forces compile off, even for huge corpora. |
+| Otherwise (`delivery: "auto"` everywhere, no explicit `progressive`) | Compile runs iff `ceil(manifest.totals.bytes / 4) > inlineBudget.totalTokens` (default 8000). |
+
+The bytes/4 estimator is a deliberate choice over the materialized `tokensInline` field: `tokensInline` only counts sources that *would* inline, so a corpus declared entirely as `delivery: "file"` reads as 0 tokens and would never auto-compile. Bytes/4 is the cheapest unbiased proxy for the full corpus and reuses the v1 inline-budget knob exactly so there's no new tunable.
+
+### 6.2 TOC line shape and summary fallback
+
+Each renderable source contributes one bullet to the `## Knowledge` stanza. `tocLineFor` (in `compile.ts`) builds the line as:
+
+```
+- `<id>` [<type>]<summary?> → `<target>`<retrievalHint?>
+```
+
+- **`<summary>`** — fallback chain: explicit `summary` field on the source → the materialized `description` → empty string (the `— ` separator is suppressed). The pipeline's `summarize()` helper extracts a fallback from the first markdown heading or the first 200 chars of normalized whitespace; that text lands in `description` upstream of compile and is reused here.
+- **`<target>`** — multi-file vs. single-file split. Sources of type `dir` / `glob` / `git` / `confluence` / `jira` render as `sources/<id>/ (N files)` so the agent doesn't anchor on the first file's path; `file` / `url` / `npm` sources render the materialized file's `relPath` directly (e.g. `sources/<id>/page.md`).
+- **`<retrievalHint>`** — appended as ` (searchable: <mode>)` when `retrieval.mode != "off"` (i.e. `bm25` or `external-mcp`). The TOC preamble tells the agent to prefer the matching MCP tool over scanning files when this hint is present, which is how compile coordinates with §5.3's retrieval server.
+
+A source with `toc: false` opts out of the bullet list entirely but still appears in the manifest with `tocLine: null` — useful for sidecars meant to be retrievable via BM25 but not advertised inline.
+
+### 6.3 Truncation
+
+`compile()` applies `tocMaxLines` (default 150) only to lines that would actually render (i.e. after `toc: false` filtering). When `renderable.length > tocMaxLines`, the head `tocMaxLines` lines win and the tail is dropped, with a single warning emitted:
+
+```
+compile: TOC truncated at 150 lines; dropped ids: <id1>, <id2>, ...
+```
+
+Truncation is deterministic in source-declaration order — same input always drops the same tail. The dropped sources still exist on disk (sidecars are written by §5.2's `Side` step, which runs before compile) and remain reachable via the BM25 retrieval server, just not advertised in the inline TOC.
+
+### 6.4 `compile-manifest.json` shape and `contentHash` semantics
+
+`writeCompileManifest` lands the manifest at `<stateHome>/knowledge/<agent>/compile-manifest.json`:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "contentHash": "<sha256>",
+  "sources": [
+    {
+      "id": "...",
+      "type": "file" | "dir" | "glob" | "git" | "url" | "confluence" | "jira" | "npm",
+      "relPath": "sources/<id>/page.md" | null,
+      "tocLine": "- `<id>` [...] ..." | null,
+      "retrievalMode": "off" | "bm25" | "external-mcp",
+      "contentSha": "<first-file-sha256>"   // optional
+    }
+  ],
+  "totals": { "tocLines": N, "sourcesIndexed": M, "sourcesShown": N }
+}
+```
+
+**`contentHash` is the drift signal**, computed deterministically: sources are sorted by `id`, then JSON-folded (the same hash input regardless of declaration order), then SHA-256'd. This gives doctor's `knowledge-compile` check a stable fingerprint per agent — when a refresh re-materializes sources and the rebuilt manifest hash matches the on-disk one, the rendered prompt and sidecars are still in sync; mismatch means a `smith agent install --force` is needed. The GUI's per-source preview reads `tocLine` directly so what the user sees in the editor is byte-identical to what landed in the rendered prompt.
+
+### 6.5 Inputs, outputs, consumers
+
+```mermaid
+flowchart LR
+    subgraph Inputs["Compile inputs"]
+        Mat["MaterializedSource[]<br/><sub>id, type, files[], retrieval, summary, toc</sub>"]
+        Opts["CompileOptions<br/><sub>progressive, tocMaxLines (150),<br/>emitAgentsMd</sub>"]
+        Env["CompileEnv<br/><sub>rootDir = stateHome/knowledge/agent</sub>"]
+    end
+
+    Compile(("compile()<br/><sub>compile.ts</sub>"))
+    Inputs --> Compile
+
+    subgraph Outputs["CompiledKnowledge"]
+        TOC["tocStanza<br/><sub>## Knowledge<br/>+ preamble + bullets</sub>"]
+        Manifest["manifest<br/><sub>schemaVersion, contentHash,<br/>sources[], totals</sub>"]
+        Warn["warnings[]<br/><sub>truncation notices</sub>"]
+    end
+
+    Compile --> TOC
+    Compile --> Manifest
+    Compile --> Warn
+
+    subgraph Consumers["Downstream consumers"]
+        Asm["assembler<br/><sub>splices tocStanza into body</sub>"]
+        Pipe["pipeline.ts<br/><sub>writeCompileManifest()</sub>"]
+        Doc["doctor knowledge-compile<br/><sub>contentHash drift check</sub>"]
+        GUI["GUI per-source preview<br/><sub>reads manifest.sources[].tocLine</sub>"]
+    end
+
+    TOC --> Asm
+    Manifest --> Pipe
+    Manifest -.-> Doc
+    Manifest -.-> GUI
+    Warn -.-> Pipe
+
+    classDef in fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+    classDef core fill:#fff8e1,stroke:#f57c00,color:#e65100
+    classDef out fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
+    classDef cons fill:#fce4ec,stroke:#c2185b,color:#880e4f
+    class Mat,Opts,Env in
+    class Compile core
+    class TOC,Manifest,Warn out
+    class Asm,Pipe,Doc,GUI cons
+```
+
+The compile function is **pure**: same `(sources, options, env)` triple always produces the same `(tocStanza, manifest, warnings)` triple. The pipeline (`pipeline.ts`) is the only side-effecting caller — it materializes sources, runs `shouldAutoCompile`, calls `compile()`, then `writeCompileManifest()`s the result and threads `tocStanza` through to the assembler.
+
+> **Want detail?** [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md#smart-default-v21) walks through the v2.1 smart-default rationale and the `compile` block knobs end-to-end.
+
+---
+
+## 7. AGENTS.md target deep dive
+
+The four runtime targets (OpenCode / Claude Code / Codex / Kiro) install a *summoned subagent* — a discrete persona the user invokes by name. **AGENTS.md is different**: it's *ambient project context*, the markdown an AI client reads automatically when it opens a workspace. Cursor, Windsurf, Aider, Copilot, Codex CLI, Junie, Roo, Zed, Warp, and Gemini CLI all consume the convention without needing per-agent registration. The Linux Foundation's AGENTS.md spec (under the Agentic AI Foundation steward) listed ~28+ runtimes as of 2026-05-31, with the convention popularized by [agents.md](https://agents.md). For smith, this means the same bundle that installs four discrete agents can also seed one shared file every other AI tool will pick up — but the placement rules and the CLAUDE.md interaction need understanding.
+
+### 7.1 Placement resolution
+
+The relative path comes from config; the install root is global. The resolution order is:
+
+| Step | Source | Default | Notes |
+|---|---|---|---|
+| 1 | `--agents-md-path` CLI flag | — | **Not wired today.** No flag exists in `agent install` (verified against `src/cli/commands/install.ts` and `agent/register-commands.ts`). The only path override is config-side. |
+| 2 | `targetOptions.agentsMd.path` (config) | `"AGENTS.md"` | Relative or absolute. Wired in `translateAgentsMd` (`src/core/translators/agents-md.ts:21`). |
+| 3 | Install root for the `agents-md` target | `homedir()` | From `defaultInstallPaths()["agents-md"]` in `src/cli/install-paths.ts`. **Currently global, not bundle-aware** — every bundle's AGENTS.md lands under `$HOME` regardless of source kind. The TODO at line 18 of that file tracks per-bundle root resolution as follow-up. |
+
+Practical consequence: a `user-global` bundle with the default config writes to `~/AGENTS.md` naturally; a `project` or `registered` bundle that wants AGENTS.md at the repo root must set `targetOptions.agentsMd.path` to an absolute path (or a path resolving below `$HOME` but pointing at the project subtree). The installer's `assertWithin` check guarantees the resolved path stays below the install root.
+
+### 7.2 CLAUDE.md pointer interaction
+
+When both `claude-code` and `agents-md` appear in `targets`, the claude-code translator (`src/core/translators/claude-code.ts:107`) replaces the assembled body with the literal string `See AGENTS.md.` — frontmatter (model, permissions, hooks) is preserved, only prose changes. The default kicks in when both targets are present (`bothTargeted` at line 105–106); authors opt out per-bundle by setting `targetOptions.claudeCode.deferToAgentsMd: false`, which keeps the full claude-code body and accepts the duplication.
+
+The reason for the default: AGENTS.md is the cross-tool publishing surface, so the canonical body should live there. Two near-identical files for the same agent invite drift — every prompt edit becomes two writes the user has to keep in sync. The pointer makes Claude Code defer to its sibling without losing claude-specific frontmatter (which AGENTS.md doesn't carry).
+
+### 7.3 Per-runtime read patterns
+
+AGENTS.md doesn't replace each runtime's native config — it sits alongside. How each runtime composes the two:
+
+| Runtime | Native config | AGENTS.md interaction |
+|---|---|---|
+| Cursor | `.cursor/rules/*.mdc` | Reads AGENTS.md as ambient context; `.cursor/rules` for rule-style directives. AGENTS.md wins for prose context, rules win for trigger-based behavior. |
+| Windsurf | `.windsurfrules` (legacy), `.windsurf/rules/` | Same composition pattern — AGENTS.md for context, rules for behavior. |
+| Aider | `CONVENTIONS.md` (legacy) and AGENTS.md | Auto-reads AGENTS.md when present; conventional fallback heuristics still apply for non-AGENTS.md repos. |
+| GitHub Copilot | `.github/copilot-instructions.md` | Reads AGENTS.md as additional context; the `.github/` file remains the workspace-instruction primary. |
+| Codex CLI | `AGENTS.md` (first-class) | The runtime that originated the `AGENTS.md` pattern; reads it directly with no separate native config required. |
+| Junie / Roo / Zed / Warp / Gemini CLI | varies | All consume AGENTS.md per the Linux Foundation spec; per-tool config files (where they exist) are orthogonal. |
+
+The smith bundle stays platform-neutral: smith renders AGENTS.md from the same canonical body the four runtime translators consume, so changing prose in one place (the bundle's persona files) propagates to every runtime that reads the file.
+
+### 7.4 Implication for "all five targets"
+
+A bundle that targets `["opencode", "claude-code", "codex", "kiro", "agents-md"]` produces six rendered files: four discrete subagents (under each platform's agents/skills dir) plus AGENTS.md at `$HOME` (or the configured path) plus the 1-line CLAUDE.md pointer. The four subagents remain summonable by name within their own runtimes; AGENTS.md picks up every other AGENTS.md-aware tool the user happens to be running on the same workspace. The pointer keeps Claude Code from drifting against its sibling. This is the v2.1 "render once, reach everyone" story — see §1's component map and §3's concrete trace for the on-disk layout.
+
+> **Want detail?** [`guide/16 — The agents-md target`](./guide/16-knowledge-compiler.md#the-agents-md-target) covers the publish-surface use case and the `emitAgentsMd` shorthand.
+
+---
+
+## 8. APM import
+
+A user with a Microsoft APM (Agent Package Manager) bundle (`apm.yml`) can migrate to smith with `smith agent init <name> --from-apm <path>`. The import is one-way and best-effort: the importer translates what maps cleanly and surfaces the rest as honest TODOs in the rendered persona files.
+
+### 8.1 The mapping
+
+Per-field translation (`src/core/apm-import.ts`):
+
+| `apm.yml` field | smith bundle | Notes |
+|---|---|---|
+| `name` | `agent.config.json.name` | Required. Importer throws `validation-failed` if missing. |
+| `description` | `agent.config.json.description` | Required. Padded with `" (imported)"` when shorter than 10 chars to keep the bundle past the schema's hard minimum; the action-phrase regex still applies, so short or non-action-phrased descriptions surface at `smith agent validate` time, not import time. |
+| `runtimes[]` | `targets[]` | See §8.2. |
+| `references[]` (`url` or `file`) | `knowledge.sources[]` | Type inference: `r.url` → `{ type: "url", url, delivery: "file", summary: <url> }`; `r.file` → `{ type: "file", path: r.file, delivery: "file" }`. IDs are auto-assigned `ref-1`, `ref-2`, … in declaration order. |
+| `instructions` | `EXPERTISE.md` body | Used verbatim when present; otherwise EXPERTISE is stubbed with a "TBD — flesh out" placeholder pointing at the source apm.yml path. |
+
+The importer also writes `IDENTITY.md` (header + description) and `SOUL.md` (TBD stub) so the rendered bundle satisfies the four-persona-file contract immediately. `USER.md` is left for the standard `smith agent init` path to symlink/stub.
+
+### 8.2 Runtime → target mapping
+
+```
+claude-code → claude-code     opencode → opencode
+codex       → codex           kiro     → kiro
+copilot     → agents-md       cursor   → agents-md
+gemini      → agents-md       windsurf → agents-md
+<unknown>   → silently dropped
+```
+
+Four AGENTS.md-aware runtimes collapse to the single `agents-md` target. Unknown runtimes are dropped without warning — the importer is best-effort and smith bundles must stay schema-valid even if the source declares runtimes smith doesn't render. If the union of mapped + agents-md targets is empty (e.g. `runtimes: ["unknown-tool"]`), the importer throws `validation-failed` rather than producing a target-less bundle.
+
+### 8.3 Smart defaults
+
+The importer pre-populates fields APM doesn't carry:
+
+- `modelTier: "balanced"` — APM has no model-tier concept; balanced is the safe default when not derivable from the source.
+- `knowledge.compile: { progressive: true, tocMaxLines: 150, emitAgentsMd: true }` — APM bundles ship references, and APM users already expect a TOC-style index. Forcing `progressive: true` ensures the TOC stanza emits even for small corpora; `emitAgentsMd: true` documents intent (the actual `agents-md` target inclusion is driven by §8.2's runtime mapping).
+
+### 8.4 What's NOT mapped
+
+Documented honestly so users know what to redo by hand after import:
+
+- **`apm.yml.references[].mcp`** entries are dropped silently. smith MCP servers live in a separate `mcpServers` field on `agent.config.json`; the user wires those up post-import.
+- **`apm.yml.policy.allow_implicit_invocation`** and any other policy fields are not consumed. smith has no policy-level concept that maps cleanly; permission-preset choice is the user's call after import.
+- **Author metadata, version history, signing fields** — APM's package-management metadata has no smith equivalent and is dropped.
+
+### 8.5 One-way only
+
+There is no `smith agent export --to-apm`. Smith → APM export is not implemented and not on the roadmap — APM and smith have different ownership (Microsoft vs. agent-smith), different runtime ambitions, and different bundle shapes. The import path exists to ease migration *into* smith; users who need to move work back out can fork the bundle's persona files and rebuild the apm.yml by hand from the canonical config.
+
+> **Want detail?** [`guide/16 — APM import`](./guide/16-knowledge-compiler.md#apm-import-smith-agent-init---from-apm) covers the user-facing CLI flow and the post-import editing checklist.
+
+---
+
 ## Future work
 
-This refresh updates the diagrams and glossary for v2/v2.1 factual accuracy and adds Section 5 covering knowledge loading end-to-end. Remaining follow-up work, not in this refresh:
+This refresh updates the diagrams and glossary for v2/v2.1 factual accuracy, adds Section 5 (knowledge loading end-to-end), and Sections 6–8 (compile internals, AGENTS.md target deep dive, APM import).
 
-- **Compile stage — progressive disclosure deep dive** — the TOC algorithm internals, truncation rules, summary fallback chain, multi-file source handling. Section 5 names the entry points; deep behavior lives in [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md) and `docs/plans/2026-05-31-knowledge-compiler-v2-design.md`.
-- **AGENTS.md as a fifth target** — placement rules, the CLAUDE.md pointer interaction, per-runtime read patterns. See [`guide/16 — AGENTS.md target`](./guide/16-knowledge-compiler.md#the-agents-md-target).
-- **APM import** — the `apm.yml` → smith bundle mapping (runtimes, references, defaults applied). See [`guide/16 — APM import`](./guide/16-knowledge-compiler.md#apm-import-smith-agent-init---from-apm).
+No major architecture topics are deferred at this time. Operational depth that genuinely belongs in user-facing docs (per-platform install troubleshooting, daemon tuning, model-resolution edge cases) lives in the [`guide/`](./guide/) spokes — this doc stays the system-level overview.
