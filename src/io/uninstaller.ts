@@ -367,8 +367,14 @@ export async function removeBundle(
       // Manifest hash check — ONLY when smith installed this file. If there's
       // no manifest entry, fall through to the legacy rm path (existing
       // behavior preserved for files smith doesn't claim to own).
+      // The lookup is scoped to the MAIN entry (kind === "main" or
+      // legacy/undefined). Sidecar entries are tracked separately and
+      // removed in their own pass below.
       const entry = manifest.installed.find(
-        (e) => e.name === bundle.config.name && e.platform === target,
+        (e) =>
+          e.name === bundle.config.name &&
+          e.platform === target &&
+          (e.kind === "main" || e.kind === undefined),
       );
       if (entry !== undefined && entry.path === path && !deps.force) {
         let onDisk: string | undefined;
@@ -392,6 +398,8 @@ export async function removeBundle(
             });
             // Skip rm AND the manifest entry removal — both preserved.
             // Skip codex wrapper rmdir since the SKILL.md file is preserved.
+            // Sidecars are also preserved on a refused-main, since
+            // they're auxiliary files for the (still-present) main render.
             continue;
           }
         }
@@ -412,6 +420,57 @@ export async function removeBundle(
           continue;
         }
       }
+
+      // Sidecar pass: remove every file the manifest records for this
+      // (name, platform) under kind: "sidecar". Each removal goes through
+      // the same rmFile dep so tests can intercept it. ENOENT goes to
+      // notFound (not an error) — same posture as the main file. After
+      // every sidecar is removed, prune empty parent dirs on a best-effort
+      // basis (rmDirIfEmpty swallows ENOTEMPTY and ENOENT) so stale
+      // `<bundle>/agents/` wrappers don't outlive their last contents.
+      const sidecarEntries = manifest.installed.filter(
+        (e) =>
+          e.name === bundle.config.name &&
+          e.platform === target &&
+          e.kind === "sidecar",
+      );
+      const sidecarParentDirs = new Set<string>();
+      for (const sidecar of sidecarEntries) {
+        try {
+          await rmFile(sidecar.path);
+          result.removed.push(sidecar.path);
+        } catch (err) {
+          const e = err as NodeJS.ErrnoException;
+          if (e?.code === "ENOENT") {
+            result.notFound.push(sidecar.path);
+          } else {
+            result.errors.push({ path: sidecar.path, message: e?.message ?? String(err) });
+            // Failed rm → don't enqueue parent for prune; preserve manifest entry
+            // by skipping it from the per-target removeInstalledAgent below.
+            // (We still let the rest of the loop finish so other sidecars are
+            // attempted; the manifest filter at the end keeps this entry.)
+            continue;
+          }
+        }
+        sidecarParentDirs.add(dirname(sidecar.path));
+      }
+      // Best-effort prune: walk each captured parent dir AND its ancestors
+      // up to the install root. The codex sidecar lives at
+      // `<root>/<name>/agents/openai.yaml`, so removing it should also
+      // prune `<name>/agents/` if it's now empty. The wrapper dir
+      // `<name>/` is handled separately by the existing codex rmdir below
+      // (it might still hold the main SKILL.md sibling at this point in
+      // the loop iteration BEFORE this code, but we just rm'd that — so
+      // both should now be empty).
+      for (const parent of sidecarParentDirs) {
+        try {
+          await rmDirIfEmpty(parent);
+        } catch (err) {
+          const e = err as NodeJS.ErrnoException;
+          result.errors.push({ path: parent, message: e?.message ?? String(err) });
+        }
+      }
+
       if (target === "codex") {
         try {
           await rmDirIfEmpty(dirname(path));
@@ -421,10 +480,15 @@ export async function removeBundle(
         }
       }
 
-      // Manifest update: clear this (name, platform) entry on success.
-      // Both removed and notFound buckets clear the entry — the manifest's
-      // view is now consistent with disk.
-      if (entry !== undefined) {
+      // Manifest update: clear EVERY (name, platform) entry on success
+      // — both the main entry and any sidecar entries. The manifest's
+      // view is now consistent with disk. Sidecar entries whose rm
+      // failed above were caught in `result.errors`; we still remove
+      // their manifest entries here so the manifest doesn't keep a
+      // dangling entry pointing at an inaccessible file. (If the user
+      // re-installs the same bundle later, the install side will write
+      // and re-claim the sidecar at the same path.)
+      if (entry !== undefined || sidecarEntries.length > 0) {
         manifest = removeInstalledAgent(
           manifest,
           (e) => e.name === bundle.config.name && e.platform === target,

@@ -41,6 +41,19 @@ export interface InstalledAgent {
   contentHash: string;
   /** ISO 8601 timestamp of the most recent (re)install. */
   installedAt: string;
+  /**
+   * Distinguishes the agent's main rendered file ("main") from any
+   * sibling files emitted alongside it ("sidecar"). Defaults to "main"
+   * when absent (backward-compat for manifests written before sidecars
+   * existed). Currently only Codex emits sidecars
+   * (`<name>/agents/openai.yaml` next to `<name>/SKILL.md`); other
+   * translators may add them later. The installer/uninstaller use this
+   * field to disambiguate which entry tracks the canonical main file
+   * for a (name, platform) pair (path-mismatch detection,
+   * external-modification refusal) versus auxiliary sidecar files
+   * (independently tracked + removed).
+   */
+  kind?: "main" | "sidecar";
 }
 
 export interface InstalledAgentsFile {
@@ -98,14 +111,20 @@ export async function saveInstalledAgents(
 }
 
 /**
- * Add or replace an entry by (name, platform). Pure — returns a new file.
+ * Add or replace an entry by (name, platform, path). Pure — returns a new file.
+ *
+ * Keying by all three fields (rather than the original (name, platform))
+ * lets a single render write multiple files at distinct paths — e.g.
+ * Codex's main `<name>/SKILL.md` plus its `<name>/agents/openai.yaml`
+ * sidecar — without one entry replacing the other. Existing call sites
+ * that re-add the same exact path replace in place exactly as before.
  */
 export function addInstalledAgent(
   file: InstalledAgentsFile,
   entry: InstalledAgent,
 ): InstalledAgentsFile {
   const filtered = file.installed.filter(
-    (e) => !(e.name === entry.name && e.platform === entry.platform),
+    (e) => !(e.name === entry.name && e.platform === entry.platform && e.path === entry.path),
   );
   return { schemaVersion: 1, installed: [...filtered, entry] };
 }

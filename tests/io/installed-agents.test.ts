@@ -87,7 +87,11 @@ describe("addInstalledAgent", () => {
     expect(updated.installed[0]).toEqual(entry);
   });
 
-  test("replaces existing entry with same (name, platform)", () => {
+  test("replaces existing entry with same (name, platform, path)", () => {
+    // Keying changed alongside sidecar support: re-adding the SAME path
+    // for a given (name, platform) replaces in place (idempotent
+    // reinstall semantics preserved). Re-adding a DIFFERENT path appends
+    // — see the next test.
     const initial: InstalledAgent = {
       name: "n",
       platform: "codex",
@@ -96,10 +100,38 @@ describe("addInstalledAgent", () => {
       installedAt: "2026-05-27T20:00:00.000Z",
     };
     const file = { schemaVersion: 1 as const, installed: [initial] };
-    const replacement: InstalledAgent = { ...initial, path: "/p2", contentHash: "sha256:2" };
+    const replacement: InstalledAgent = { ...initial, contentHash: "sha256:2" };
     const updated = addInstalledAgent(file, replacement);
     expect(updated.installed).toHaveLength(1);
     expect(updated.installed[0]?.contentHash).toBe("sha256:2");
+  });
+
+  test("appends additional entry when (name, platform) match but path differs", () => {
+    // A bundle's main render and its sidecar(s) share (name, platform)
+    // but live at distinct paths. Both must coexist in the manifest so
+    // the uninstaller can find and remove every file.
+    const main: InstalledAgent = {
+      name: "n",
+      platform: "codex",
+      path: "/p/main/SKILL.md",
+      contentHash: "sha256:1",
+      installedAt: "2026-05-27T20:00:00.000Z",
+      kind: "main",
+    };
+    const sidecar: InstalledAgent = {
+      name: "n",
+      platform: "codex",
+      path: "/p/main/agents/openai.yaml",
+      contentHash: "sha256:2",
+      installedAt: "2026-05-27T20:00:00.000Z",
+      kind: "sidecar",
+    };
+    const file = { schemaVersion: 1 as const, installed: [main] };
+    const updated = addInstalledAgent(file, sidecar);
+    expect(updated.installed).toHaveLength(2);
+    expect(updated.installed.map((e) => e.path).sort()).toEqual(
+      ["/p/main/SKILL.md", "/p/main/agents/openai.yaml"].sort(),
+    );
   });
 });
 

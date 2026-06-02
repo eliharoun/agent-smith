@@ -519,6 +519,91 @@ describe("io/uninstaller manifest-aware removeBundle", () => {
     expect(result.refused).toEqual([]);
   });
 
+  async function seedCodexInstallWithSidecar(name: string): Promise<{
+    mainPath: string;
+    sidecarPath: string;
+  }> {
+    const { installRendered } = await import("../../src/io/installer");
+    const r = {
+      target: "codex" as const,
+      format: "markdown-frontmatter" as const,
+      relativePath: `${name}/SKILL.md`,
+      frontmatter: { name, description: "x" },
+      body: "BODY",
+      sidecars: [
+        {
+          relativePath: `${name}/agents/openai.yaml`,
+          content: "dependencies:\n  tools:\n    - type: mcp\n      value: foo\n",
+        },
+      ],
+    };
+    await installRendered([r], realPaths, { homeDir });
+    return {
+      mainPath: join(realPaths.codex, name, "SKILL.md"),
+      sidecarPath: join(realPaths.codex, name, "agents", "openai.yaml"),
+    };
+  }
+
+  test("removes both main file and sidecar; prunes empty agents/ wrapper dir", async () => {
+    const seeded = await seedCodexInstallWithSidecar("withcar");
+    const { loadInstalledAgents } = await import("../../src/io/installed-agents");
+
+    // Sanity: both files were planted.
+    expect((await stat(seeded.mainPath)).isFile()).toBe(true);
+    expect((await stat(seeded.sidecarPath)).isFile()).toBe(true);
+
+    const result = await removeBundle(
+      fakeBundle("withcar", { targets: ["codex"] }),
+      realPaths,
+      realKnowledge,
+      { homeDir },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.refused).toEqual([]);
+    // Both files appear in `removed`.
+    expect(result.removed).toContain(seeded.mainPath);
+    expect(result.removed).toContain(seeded.sidecarPath);
+    // Both files actually gone from disk.
+    await expect(stat(seeded.mainPath)).rejects.toThrow();
+    await expect(stat(seeded.sidecarPath)).rejects.toThrow();
+    // The empty `<bundle>/agents/` dir was pruned (dirname of sidecar) and
+    // the `<bundle>/` wrapper dir as well (existing codex behavior).
+    await expect(stat(join(realPaths.codex, "withcar", "agents"))).rejects.toThrow();
+    await expect(stat(join(realPaths.codex, "withcar"))).rejects.toThrow();
+    // Manifest cleared of both entries.
+    const manifest = await loadInstalledAgents({ homeDir });
+    const lingering = manifest.installed.filter(
+      (e) => e.name === "withcar" && e.platform === "codex",
+    );
+    expect(lingering).toHaveLength(0);
+  });
+
+  test("missing sidecar on disk: classified as notFound, manifest still cleared", async () => {
+    const seeded = await seedCodexInstallWithSidecar("missingcar");
+    const { loadInstalledAgents } = await import("../../src/io/installed-agents");
+    // Hand-delete the sidecar BEFORE uninstall. Uninstaller should still
+    // succeed: notFound for the sidecar, removed for the main file.
+    await rm(seeded.sidecarPath);
+
+    const result = await removeBundle(
+      fakeBundle("missingcar", { targets: ["codex"] }),
+      realPaths,
+      realKnowledge,
+      { homeDir },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.removed).toContain(seeded.mainPath);
+    expect(result.notFound).toContain(seeded.sidecarPath);
+    // Manifest cleared (both main and sidecar entries gone).
+    const manifest = await loadInstalledAgents({ homeDir });
+    const lingering = manifest.installed.filter(
+      (e) => e.name === "missingcar" && e.platform === "codex",
+    );
+    expect(lingering).toHaveLength(0);
+  });
+
   test("removeAllBundles aggregates refused[] across bundles", async () => {
     const a = await seedInstall("a");
     const b = await seedInstall("b");

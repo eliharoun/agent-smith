@@ -268,3 +268,65 @@ describe("io/installer manifest behavior", () => {
     expect(onDisk).toContain("description: Use to demo");
   });
 });
+
+describe("io/installer sidecar emission", () => {
+  test("writes both main file and sidecar; manifest tracks each independently", async () => {
+    const codex: RenderedAgent = {
+      target: "codex",
+      format: "markdown-frontmatter",
+      relativePath: "demo/SKILL.md",
+      frontmatter: { name: "demo", description: "Use to demo" },
+      body: "BODY",
+      sidecars: [
+        {
+          relativePath: "demo/agents/openai.yaml",
+          content: "dependencies:\n  tools:\n    - type: mcp\n      value: foo\n",
+        },
+      ],
+    };
+    const result = await installRendered([codex], paths, { homeDir });
+    expect(result.installed.length).toBeGreaterThanOrEqual(1);
+
+    // Main file written
+    const mainPath = join(paths.codex, "demo", "SKILL.md");
+    expect(await readFile(mainPath, "utf8")).toContain("name: demo");
+
+    // Sidecar written verbatim
+    const sidecarPath = join(paths.codex, "demo", "agents", "openai.yaml");
+    expect(await readFile(sidecarPath, "utf8")).toContain("value: foo");
+
+    // Manifest carries TWO entries with the same (name, platform) pair —
+    // one main, one sidecar — distinguished by `kind` and `path`.
+    const manifest = await loadInstalledAgents({ homeDir });
+    const entries = manifest.installed.filter(
+      (e) => e.name === "demo" && e.platform === "codex",
+    );
+    expect(entries).toHaveLength(2);
+    const main = entries.find((e) => e.kind === "main");
+    const sc = entries.find((e) => e.kind === "sidecar");
+    expect(main?.path).toBe(mainPath);
+    expect(sc?.path).toBe(sidecarPath);
+    expect(main?.contentHash).toMatch(/^sha256:/);
+    expect(sc?.contentHash).toMatch(/^sha256:/);
+  });
+
+  test("absent sidecars field: byte-identical to non-sidecar render (no extra writes, no extra entries)", async () => {
+    const codex: RenderedAgent = {
+      target: "codex",
+      format: "markdown-frontmatter",
+      relativePath: "demo/SKILL.md",
+      frontmatter: { name: "demo", description: "Use to demo" },
+      body: "BODY",
+    };
+    await installRendered([codex], paths, { homeDir });
+    const manifest = await loadInstalledAgents({ homeDir });
+    const entries = manifest.installed.filter(
+      (e) => e.name === "demo" && e.platform === "codex",
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kind).toBe("main");
+    // Sidecar dir was NOT created.
+    const sidecarDir = join(paths.codex, "demo", "agents");
+    await expect(readFile(join(sidecarDir, "openai.yaml"), "utf8")).rejects.toThrow();
+  });
+});

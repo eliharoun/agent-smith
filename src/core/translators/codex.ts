@@ -1,3 +1,4 @@
+import { dump } from "js-yaml";
 import { CODEX_TOOL_MAP, expandPermissionToToolList } from "../permission-mapping";
 import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../types";
 
@@ -22,43 +23,17 @@ import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../ty
  * risk register / data/codex-tool-map.json _meta.notes), so groups outside
  * the map are silently skipped by `expandPermissionToToolList`.
  *
- * Per-agent MCP emission: NOT emitted in this iteration. Codex defaults
- * to inheriting all global MCP servers from `~/.codex/config.toml` (so
- * runtime visibility matches user intent), but the idiomatic per-skill
- * "hint" is a sidecar `<name>/agents/openai.yaml` with `dependencies.tools`
- * — used by the install-prompt UX to ask the user about missing servers.
- *
- * Status (verified June 2026 against openai/codex HEAD):
- *   - The feature flag `skill_mcp_dependency_install` is now `Stage::Stable`
- *     with `default_enabled: true` (codex-rs/features/src/lib.rs). So the
- *     flag itself is no longer the gate.
- *   - The BINDING constraint is `is_first_party_originator()` in
- *     codex-rs/login/src/auth/default_client.rs, which only accepts
- *     official OpenAI clients (codex-tui, codex_vscode, codex_atlas,
- *     codex_chatgpt_desktop, "Codex *"). Third-party Codex wrappers —
- *     i.e. most agent-smith user environments — get nothing from the
- *     install-prompt path: it short-circuits early.
- *   - `dependencies.tools` is still purely additive. No subtractive
- *     scoping field has appeared on `SkillToolDependency` or `SkillPolicy`.
- *     So even if the originator gate were lifted, emitting the sidecar
- *     would be a UX hint, not a per-agent MCP boundary like Claude
- *     Code's frontmatter or Kiro's mcpServers map.
- *
- * Implementation cost (revised after concrete read of the codebase): the
- * earlier "multi-day refactor" framing was overstated. Adding an optional
- * `sidecars: Array<{relativePath, content}>` to `RenderedAgentBase`
- * (without changing the discriminated union) plus parallel write/dedup/
- * uninstall plumbing is ~150 LOC + tests, ~1 day of focused work.
- *
- * Re-evaluation triggers — if any of these change, ship the sidecar:
- *   1. A `scope`/`expose`/`restrict_to` field appears on
- *      `SkillToolDependency` upstream (subtractive scoping).
- *   2. Per-skill MCP visibility filtering lands in
- *      codex-rs/core/src/mcp_tool_exposure.rs.
- *   3. The first-party originator gate is removed from
- *      `maybe_prompt_and_install_mcp_dependencies`.
- *
- * Until then: tracked as a follow-up; deferred indefinitely.
+ * Per-agent MCP emission: emits `<name>/agents/openai.yaml` as a sibling
+ * sidecar when the bundle declares a non-empty `mcpServers`. The sidecar
+ * follows the canonical `dependencies.tools[]` shape consumed by Codex's
+ * install-prompt UX. The receiving feature
+ * (codex-rs/core/src/mcp_skill_dependencies.rs) remains gated upstream on
+ * `is_first_party_originator()` in codex-rs/login/src/auth/default_client.rs,
+ * so third-party Codex wrappers get nothing from the install-prompt path
+ * today. Emission is still useful as a documentation surface for any tool
+ * inspecting agent bundles, and unlocks the receiving feature for free if
+ * the originator gate is ever lifted. When `mcpServers` is empty/absent
+ * the sidecar field is omitted entirely (byte-identical to prior output).
  */
 export function translateCodex(
   config: CanonicalConfig,
@@ -95,6 +70,33 @@ export function translateCodex(
     }
   }
 
+  // Sidecar emission: `<name>/agents/openai.yaml` listing each declared
+  // MCP server in the canonical `dependencies.tools[]` shape. We emit
+  // ONLY when the bundle has a non-empty `mcpServers` so bundles without
+  // any MCP deps stay byte-identical to their pre-sidecar output.
+  const mcpServers = config.mcpServers ?? [];
+  const sidecars: NonNullable<RenderedAgent["sidecars"]> = [];
+  if (mcpServers.length > 0) {
+    const sidecarDoc = {
+      dependencies: {
+        tools: mcpServers.map((name) => ({
+          type: "mcp",
+          value: name,
+          // No per-server description field exists on CanonicalConfig
+          // today; emit empty string for the schema slot. If/when a
+          // future `mcpServerDescriptions` field lands it can flow in
+          // here without changing the sidecar's wire shape.
+          description: "",
+        })),
+      },
+    };
+    const yaml = dump(sidecarDoc, { lineWidth: 0, noRefs: true });
+    sidecars.push({
+      relativePath: `${config.name}/agents/openai.yaml`,
+      content: yaml,
+    });
+  }
+
   return {
     target: "codex",
     format: "markdown-frontmatter",
@@ -105,5 +107,6 @@ export function translateCodex(
     frontmatter,
     body,
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(sidecars.length > 0 ? { sidecars } : {}),
   };
 }

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { dump } from "js-yaml";
 import { stateHome } from "./state-home";
+import { atomicWriteText } from "./atomic-write";
 import type { InstallPaths, RenderedAgent, Target } from "../core/types";
 import { SmithError } from "../core/smith-error";
 import { assertWithin } from "./assert-within";
@@ -218,8 +219,16 @@ export async function installRendered(
       const newHash = hashContent(next);
       const bundleName = inferBundleName(r);
 
+      // Find the MAIN-file entry for this (name, platform). Sidecar
+      // entries (kind: "sidecar") are independently tracked and don't
+      // participate in path-mismatch / external-modification checks for
+      // the main render. `kind` was added alongside sidecar support;
+      // entries written before that are treated as main (kind === undefined).
       const entry = manifest.installed.find(
-        (e) => e.platform === r.target && e.name === bundleName,
+        (e) =>
+          e.platform === r.target &&
+          e.name === bundleName &&
+          (e.kind === "main" || e.kind === undefined),
       );
 
       // Kiro-specific: scan for same-name-different-filename collisions.
@@ -264,6 +273,12 @@ export async function installRendered(
         if (onDisk !== undefined && onDisk === next) {
           // Byte-identical: no write
           skipped.push({ target: r.target, path, agent: bundleName });
+          // Even when the main file is unchanged, sidecars may have been
+          // added or modified — process them on the same pass so
+          // freshly-declared mcpServers produce a sidecar without forcing
+          // the user to mutate the main render. writeSidecars is itself
+          // hash-idempotent and returns the updated manifest copy.
+          manifest = await writeSidecars(r, paths, bundleName, manifest);
           continue;
         }
         if (onDisk !== undefined) {
@@ -282,7 +297,9 @@ export async function installRendered(
           path,
           contentHash: newHash,
           installedAt: new Date().toISOString(),
+          kind: "main",
         });
+        manifest = await writeSidecars(r, paths, bundleName, manifest);
         installed.push({ target: r.target, path, agent: bundleName });
         continue;
       }
@@ -298,7 +315,24 @@ export async function installRendered(
           });
         }
         // --force: fall through to write at the new path. The old file at
-        // entry.path is NOT cleaned up here — that's an uninstall responsibility.
+        // entry.path is NOT cleaned up here — that's an uninstall
+        // responsibility. The stale main-entry is dropped from the manifest
+        // so the (name, platform) main-entry lookup remains unambiguous;
+        // any sidecar entries the old install recorded are preserved
+        // (they're path-keyed, so a later sidecar emission at the same
+        // relative paths overwrites them in place via addInstalledAgent).
+        manifest = {
+          ...manifest,
+          installed: manifest.installed.filter(
+            (e) =>
+              !(
+                e.name === bundleName &&
+                e.platform === r.target &&
+                e.path === entry.path &&
+                (e.kind === "main" || e.kind === undefined)
+              ),
+          ),
+        };
       }
 
       // Path 3: no manifest entry, no on-disk file → fresh install
@@ -311,7 +345,9 @@ export async function installRendered(
           path,
           contentHash: newHash,
           installedAt: new Date().toISOString(),
+          kind: "main",
         });
+        manifest = await writeSidecars(r, paths, bundleName, manifest);
         installed.push({ target: r.target, path, agent: bundleName });
         continue;
       }
@@ -327,7 +363,9 @@ export async function installRendered(
           path,
           contentHash: currentHash,
           installedAt: new Date().toISOString(),
+          kind: "main",
         });
+        manifest = await writeSidecars(r, paths, bundleName, manifest);
         skipped.push({ target: r.target, path, agent: bundleName });
         continue;
       }
@@ -350,7 +388,9 @@ export async function installRendered(
         path,
         contentHash: newHash,
         installedAt: new Date().toISOString(),
+        kind: "main",
       });
+      manifest = await writeSidecars(r, paths, bundleName, manifest);
       installed.push({ target: r.target, path, agent: bundleName });
     }
 
@@ -368,4 +408,46 @@ async function saveManifest(
     manifest,
     homeDir ? { homeDir } : undefined,
   );
+}
+
+/**
+ * Write each sidecar declared on a render to disk and record one manifest
+ * entry per sidecar (kind: "sidecar"). Idempotent: a sidecar whose on-disk
+ * bytes already match its rendered content skips the write but still
+ * refreshes its manifest entry's timestamp/hash, which is harmless.
+ *
+ * Containment: each sidecar's relativePath is asserted to live under the
+ * target's install root (mirrors the main-file write).
+ *
+ * Atomicity: each sidecar is written via `atomicWriteText` so a crash
+ * mid-write can't leave half-written bytes at the destination — same
+ * guarantee the manifest itself enjoys via `atomicWriteJson`.
+ *
+ * Returns the updated manifest copy; callers must re-bind their local
+ * `manifest` variable.
+ */
+async function writeSidecars(
+  r: RenderedAgent,
+  paths: InstallPaths,
+  bundleName: string,
+  manifest: InstalledAgentsFile,
+): Promise<InstalledAgentsFile> {
+  const sidecars = r.sidecars ?? [];
+  if (sidecars.length === 0) return manifest;
+  let next = manifest;
+  for (const sidecar of sidecars) {
+    const sidecarPath = join(paths[r.target], sidecar.relativePath);
+    await assertWithin(sidecarPath, paths[r.target]);
+    await mkdir(dirname(sidecarPath), { recursive: true });
+    await atomicWriteText(sidecarPath, sidecar.content);
+    next = addInstalledAgent(next, {
+      name: bundleName,
+      platform: r.target,
+      path: sidecarPath,
+      contentHash: hashContent(sidecar.content),
+      installedAt: new Date().toISOString(),
+      kind: "sidecar",
+    });
+  }
+  return next;
 }

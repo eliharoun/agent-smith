@@ -23,6 +23,7 @@ function tcx(...args: Parameters<typeof translateCodex>): {
   body: string;
   warnings?: string[];
   bundlePath?: string;
+  sidecars?: NonNullable<RenderedAgent["sidecars"]>;
 } {
   const out = translateCodex(...args);
   if (out.format !== "markdown-frontmatter") {
@@ -160,13 +161,14 @@ describe("translators/codex: permission → allowed_tools", () => {
   });
 });
 
-describe("translators/codex: per-agent MCP emission (deferred)", () => {
-  test("non-empty mcpServers does NOT add any mcp-related frontmatter field this iteration", () => {
-    // Codex's idiomatic per-skill hint is a sidecar `agents/openai.yaml`
-    // file, which requires extending RenderedAgent + installer. Skipped
-    // for this iteration; tracked as a follow-up. Codex defaults to
-    // inheriting all global MCP servers from `~/.codex/config.toml` so
-    // runtime visibility is unaffected.
+describe("translators/codex: per-agent MCP emission via sidecar", () => {
+  test("non-empty mcpServers leaves frontmatter free of mcp-related fields", () => {
+    // mcpServers is conveyed via the sibling `agents/openai.yaml`
+    // sidecar, NOT via the SKILL.md frontmatter. Codex defaults to
+    // inheriting all global MCP servers from `~/.codex/config.toml`,
+    // so runtime visibility is unchanged by this emission — the
+    // sidecar is purely a documentation surface today, and an
+    // install-prompt input for the future originator-gate lift.
     const out = tcx(
       { ...baseConfig, mcpServers: ["foo", "bar"] },
       "B",
@@ -174,7 +176,66 @@ describe("translators/codex: per-agent MCP emission (deferred)", () => {
     );
     expect("mcpServers" in out.frontmatter).toBe(false);
     expect("mcp" in out.frontmatter).toBe(false);
-    // Single-file render shape unchanged.
+    // Main render path is unchanged regardless of sidecar emission.
     expect(out.relativePath).toBe("code-reviewer/SKILL.md");
+  });
+
+  test("emits agents/openai.yaml sidecar when bundle has mcpServers", () => {
+    const out = tcx(
+      { ...baseConfig, mcpServers: ["agent-smith-knowledge", "github-mcp"] },
+      "BODY",
+      { resolvedModel: undefined },
+    );
+    expect(out.sidecars).toBeDefined();
+    expect(out.sidecars).toHaveLength(1);
+    const sidecar = out.sidecars![0]!;
+    // Path is rooted at the same install root as the main file,
+    // mirroring SKILL.md's `<name>/SKILL.md` shape.
+    expect(sidecar.relativePath).toBe("code-reviewer/agents/openai.yaml");
+    // Both server names should appear in dependencies.tools.
+    expect(sidecar.content).toContain("agent-smith-knowledge");
+    expect(sidecar.content).toContain("github-mcp");
+    expect(sidecar.content).toContain("type: mcp");
+  });
+
+  test("emits no sidecar when bundle has no mcpServers", () => {
+    const out = tcx(
+      { ...baseConfig, mcpServers: [] },
+      "BODY",
+      { resolvedModel: undefined },
+    );
+    expect(out.sidecars).toBeUndefined();
+  });
+
+  test("emits no sidecar when mcpServers is undefined (byte-identical preservation)", () => {
+    const out = tcx(baseConfig, "BODY", { resolvedModel: undefined });
+    expect(out.sidecars).toBeUndefined();
+  });
+
+  test("preserves the main render path regardless of sidecar emission", () => {
+    const withMcp = tcx(
+      { ...baseConfig, mcpServers: ["x"] },
+      "BODY",
+      { resolvedModel: undefined },
+    );
+    const withoutMcp = tcx(baseConfig, "BODY", { resolvedModel: undefined });
+    expect(withMcp.relativePath).toBe(withoutMcp.relativePath);
+  });
+
+  test("sidecar YAML emits the canonical dependencies.tools shape", () => {
+    const out = tcx(
+      { ...baseConfig, mcpServers: ["one"] },
+      "BODY",
+      { resolvedModel: undefined },
+    );
+    const yaml = out.sidecars![0]!.content;
+    // Top-level shape: dependencies → tools array of {type, value, description}.
+    expect(yaml).toMatch(/dependencies:/);
+    expect(yaml).toMatch(/tools:/);
+    expect(yaml).toMatch(/value:\s*one/);
+    // No CanonicalConfig.mcpServerDescriptions field exists today, so
+    // `description: ""` is the placeholder slot. Assert the key is
+    // present so the wire shape stays stable.
+    expect(yaml).toMatch(/description:/);
   });
 });
