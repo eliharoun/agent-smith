@@ -27,10 +27,38 @@ import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../ty
  * runtime visibility matches user intent), but the idiomatic per-skill
  * "hint" is a sidecar `<name>/agents/openai.yaml` with `dependencies.tools`
  * — used by the install-prompt UX to ask the user about missing servers.
- * That UX is currently feature-flagged + first-party-only, and emitting
- * a SECOND file per render requires extending the `RenderedAgent` shape,
- * the installer manifest, and the uninstaller cleanup pass. The cost is
- * high for limited near-term value; tracked as a follow-up.
+ *
+ * Status (verified June 2026 against openai/codex HEAD):
+ *   - The feature flag `skill_mcp_dependency_install` is now `Stage::Stable`
+ *     with `default_enabled: true` (codex-rs/features/src/lib.rs). So the
+ *     flag itself is no longer the gate.
+ *   - The BINDING constraint is `is_first_party_originator()` in
+ *     codex-rs/login/src/auth/default_client.rs, which only accepts
+ *     official OpenAI clients (codex-tui, codex_vscode, codex_atlas,
+ *     codex_chatgpt_desktop, "Codex *"). Third-party Codex wrappers —
+ *     i.e. most agent-smith user environments — get nothing from the
+ *     install-prompt path: it short-circuits early.
+ *   - `dependencies.tools` is still purely additive. No subtractive
+ *     scoping field has appeared on `SkillToolDependency` or `SkillPolicy`.
+ *     So even if the originator gate were lifted, emitting the sidecar
+ *     would be a UX hint, not a per-agent MCP boundary like Claude
+ *     Code's frontmatter or Kiro's mcpServers map.
+ *
+ * Implementation cost (revised after concrete read of the codebase): the
+ * earlier "multi-day refactor" framing was overstated. Adding an optional
+ * `sidecars: Array<{relativePath, content}>` to `RenderedAgentBase`
+ * (without changing the discriminated union) plus parallel write/dedup/
+ * uninstall plumbing is ~150 LOC + tests, ~1 day of focused work.
+ *
+ * Re-evaluation triggers — if any of these change, ship the sidecar:
+ *   1. A `scope`/`expose`/`restrict_to` field appears on
+ *      `SkillToolDependency` upstream (subtractive scoping).
+ *   2. Per-skill MCP visibility filtering lands in
+ *      codex-rs/core/src/mcp_tool_exposure.rs.
+ *   3. The first-party originator gate is removed from
+ *      `maybe_prompt_and_install_mcp_dependencies`.
+ *
+ * Until then: tracked as a follow-up; deferred indefinitely.
  */
 export function translateCodex(
   config: CanonicalConfig,
