@@ -11,7 +11,7 @@ function renderNav(path = "/") {
   );
 }
 
-describe("AppNav — Phase 2", () => {
+describe("AppNav", () => {
   it("renders construct section with Dashboard, Agents, Skills, Catalogs", () => {
     renderNav();
     expect(screen.getByRole("link", { name: /Dashboard/i })).toHaveAttribute("href", "/");

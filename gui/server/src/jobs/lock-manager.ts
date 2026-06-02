@@ -29,9 +29,9 @@ export class LockManager {
   }
 
   tryAcquireMany(keys: string[], jobId: string): boolean {
-    // Phase 3 policy: `all-agents` is a wildcard that conflicts with every
-    // `agent:*` lock (and vice versa). Reject before any partial acquisition
-    // so we can never leave a stale lock around on failure.
+    // `all-agents` is a wildcard that conflicts with every `agent:*` lock
+    // (and vice versa). Reject before any partial acquisition so we can
+    // never leave a stale lock around on failure.
     for (const k of keys) {
       if (k === "all-agents") {
         for (const existing of this.heldBy.keys()) {

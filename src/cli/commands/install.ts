@@ -352,7 +352,6 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // SessionStart blocks but no refresh manifest, firing on every Claude
   // session even when the user passed `--no-refresh-hooks` or declined.
   //
-  // Phase 3 wires Claude Code only; phases 4-5 extend to Codex and OpenCode.
   // We re-derive the set of session/always sources from the canonical config
   // rather than peeking into rendered frontmatter, keeping schema as the
   // source of truth.
@@ -366,8 +365,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     sources: string[];
     platforms: PlatformId[];
   }[] = [];
-  // Phase 4: platforms eligible for the refresh-hook consent flow. Phase 3
-  // shipped claude-code; phase 4 added codex; phase 5 adds opencode.
+  // Platforms eligible for the refresh-hook consent flow.
   const CONSENT_PLATFORMS: PlatformId[] = ["claude-code", "codex", "opencode"];
   if (!o.noRefreshHooks) {
     // Pre-derive the set of session/always sources per bundle (same shape
@@ -546,9 +544,9 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         );
       }
       if (platforms.includes("opencode")) {
-        // Phase 5: register the agent in the shared agent-smith-refresh
-        // OpenCode plugin. Plugin dir + opencode.json entry are created
-        // on first call; subsequent agents are appended to the sentinel.
+        // Register the agent in the shared agent-smith-refresh OpenCode
+        // plugin. Plugin dir + opencode.json entry are created on first
+        // call; subsequent agents are appended to the sentinel.
         await registerAgentInOpencodePlugin(opencodeHome, b.config.name);
         // Symmetric acknowledgment with the codex /hooks advisory above.
         // Opencode plugins load automatically on the next session.created

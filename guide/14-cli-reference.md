@@ -2243,14 +2243,15 @@ $ smith doctor --fix-knowledge-refresh
 
 #### Knowledge-compile drift and auto-repair
 
-The `knowledgeCompile` section of `smith doctor` (v2) audits every
-registered agent that opts in to progressive compile
+The `knowledgeCompile` section of `smith doctor` audits every
+registered agent that has a `compile-manifest.json` on disk OR
+explicitly opts in to progressive compile
 (`knowledge.compile.progressive: true`) and reports two kinds of drift
-between the persisted `compile-manifest.json` and a fresh `compile()`
-over the agent's current materialized sources. Bundles that
-auto-compile under the v2.1 smart default (large corpora without an
-explicit override) are not yet drift-checked here; extending coverage
-is tracked as follow-up.
+between the persisted manifest and a fresh `compile()` over the
+agent's current materialized sources. This covers both bundles with
+an explicit `progressive: true` flag and bundles that auto-compiled
+under the v2.1 smart default (large corpora without an explicit
+override).
 
 | Finding | Meaning | Auto-fixable by `--fix-knowledge-compile`? |
 |---|---|---|

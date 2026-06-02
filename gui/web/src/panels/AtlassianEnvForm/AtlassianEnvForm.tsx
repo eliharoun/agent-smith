@@ -11,7 +11,7 @@ import { FormField } from "@/ui/FormField";
 /**
  * Configure Atlassian credentials for Confluence + Jira knowledge sources.
  *
- * Backed by the existing /api/atlassian-env routes (Phase 1):
+ * Backed by the /api/atlassian-env routes:
  *   - GET  → AtlassianEnvStatus { source, email?, hasToken, baseUrl?, editable }
  *   - PUT  → AtlassianEnvUpdate { email, apiToken, baseUrl? }
  *           returns 409 NOT_EDITABLE when status.source is `env`.

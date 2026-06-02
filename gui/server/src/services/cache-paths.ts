@@ -30,7 +30,7 @@ export function defaultCacheRoot(): string {
 /**
  * State root for daemon/GUI runtime files (PID, heartbeat, job history).
  * `$XDG_STATE_HOME/agent-smith` or `~/.local/state/agent-smith` when unset.
- * Per Phase 3 Amendment M: gui-jobs.jsonl + gui-jobs-output/ live here.
+ * gui-jobs.jsonl + gui-jobs-output/ live here.
  */
 export function defaultStateRoot(): string {
   const xdg = process.env.XDG_STATE_HOME;

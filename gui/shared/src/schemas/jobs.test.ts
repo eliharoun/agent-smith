@@ -123,9 +123,9 @@ describe("AgentInit", () => {
   });
 });
 
-// ─── Phase 2 ─────────────────────────────────────────────────────────────────
+// ─── skill / catalog / knowledge commands ────────────────────────────────────
 
-describe("Phase 2 — skill commands", () => {
+describe("skill commands", () => {
   it("accepts skill.register with minimum fields", () => {
     const r = JobRequest.parse({
       command: "skill.register",
@@ -241,7 +241,7 @@ describe("Phase 2 — skill commands", () => {
   });
 });
 
-describe("Phase 2 — agent catalog commands", () => {
+describe("agent catalog commands", () => {
   it("accepts agent.register with minimum fields", () => {
     const r = JobRequest.parse({
       command: "agent.register",
@@ -283,7 +283,7 @@ describe("Phase 2 — agent catalog commands", () => {
   });
 });
 
-describe("Phase 2 — knowledge commands", () => {
+describe("knowledge commands", () => {
   it("accepts knowledge.add with type+pathOrUrl", () => {
     const r = JobRequest.parse({
       command: "knowledge.add",
@@ -351,7 +351,7 @@ describe("Phase 2 — knowledge commands", () => {
   });
 });
 
-describe("Phase 3 job variants", () => {
+describe("daemon / update / jack-out / migration job variants", () => {
   it("accepts daemon.start with no envOverrides", () => {
     expect(JobRequest.safeParse({ command: "daemon.start" }).success).toBe(true);
   });

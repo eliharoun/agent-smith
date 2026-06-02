@@ -51,9 +51,9 @@ async function readPlatformMcpServers(
     case "codex":
       return readTomlMcpSections(paths.codexConfig);
     case "kiro":
-      // Kiro: per-agent mcpServers field is documented but smith doesn't
-      // emit a global MCP config check today (the design defers per-agent
-      // MCP spec emission to future work — see the design's §12 future work).
+      // Kiro: smith emits per-agent `mcpServers: {}` + `includeMcpJson: true`
+      // so each agent inherits the user's global ~/.kiro/settings/mcp.json,
+      // but smith doesn't probe that global config to verify availability.
       // Return null so the caller treats kiro as "no global MCP config to
       // check" — consistent with how missing config files behave for the
       // other platforms.

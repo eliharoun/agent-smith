@@ -14,7 +14,7 @@ describe("smith gui argv builder", () => {
     expect(args).toEqual({ port: 9000, bind: "0.0.0.0", open: false });
   });
 
-  it("currently permits non-localhost bind (Phase 1 — safety covered by docs)", () => {
+  it("currently permits non-localhost bind (safety covered by docs)", () => {
     expect(() => buildGuiArgs({ bind: "0.0.0.0" })).not.toThrow();
   });
 });

@@ -49,17 +49,17 @@ export interface AppDeps {
   agentSmithHome?: string;
   skillRegistryPath?: string;
   installedSkillsPath?: string;
-  /** Phase 3: XDG_STATE_HOME root for daemon + job-history artifacts. */
+  /** XDG_STATE_HOME root for daemon + job-history artifacts. */
   stateDir?: string;
-  /** Phase 3: override for daemon heartbeat JSON path. */
+  /** Override for daemon heartbeat JSON path. */
   daemonHeartbeatPath?: string;
-  /** Phase 3: override for daemon log path (tailed via SSE). */
+  /** Override for daemon log path (tailed via SSE). */
   daemonLogPath?: string;
-  /** Phase 3: override for the smith .env file (parsed by SmithEnv). */
+  /** Override for the smith .env file (parsed by SmithEnv). */
   smithEnvPath?: string;
-  /** Phase 3: override for the GUI job-history JSONL file. */
+  /** Override for the GUI job-history JSONL file. */
   guiJobsJsonlPath?: string;
-  /** Phase 3: override for the per-job output log directory. */
+  /** Override for the per-job output log directory. */
   guiJobsOutputDir?: string;
   /**
    * v2.1-E: per-platform global MCP config paths used by the wiring routes.
@@ -102,7 +102,7 @@ export function createApp(deps: AppDeps) {
     deps.installedSkillsPath ?? join(agentSmithHome, "installed-skills.json");
   const installPathsFor = deps.installPathsFor ?? defaultInstallPaths;
 
-  // Phase 3: XDG_STATE_HOME for daemon + job-history artifacts. Mirrors
+  // XDG_STATE_HOME for daemon + job-history artifacts. Mirrors
   // defaultStateRoot() but is overridable via deps for tests.
   const stateDir = deps.stateDir ?? defaultStateRoot();
   const daemonPidPath = deps.daemonPidFile ?? join(stateDir, "daemon.pid");
@@ -235,7 +235,7 @@ export function createApp(deps: AppDeps) {
   registerGitVerifyRoute(app);
   registerOnboardingRoute(app, { configRoot, registryPath, detectTool });
 
-  // Phase 3 routes.
+  // Daemon, history, update, jack-out routes.
   registerDaemonRoute(app, {
     daemonPidPath,
     daemonHeartbeatPath,

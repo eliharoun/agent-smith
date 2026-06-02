@@ -7,8 +7,8 @@ interface Props {
 
 /**
  * Read-only YAML key/value view of the skill's frontmatter. The CLI does not
- * (yet) provide a `smith skill edit` command, so editing is out of scope for
- * Phase 2. The "edit on disk" banner makes the constraint explicit.
+ * provide a `smith skill edit` command, so the GUI directs users to edit on
+ * disk. The "edit on disk" banner makes the constraint explicit.
  *
  * Renders all top-level keys, not just `name`/`description`. Object/array
  * values are JSON-stringified for compactness.
