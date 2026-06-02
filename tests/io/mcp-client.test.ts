@@ -25,8 +25,8 @@ describe("McpClient", () => {
     await client.connect();
     const tools = await client.listTools();
     expect(tools).toHaveLength(1);
-    expect(tools[0]?.name).toBe("Echo");
-    const r = await client.callTool("Echo", { url: "https://x.test" });
+    expect(tools[0]?.name).toBe("Fetch");
+    const r = await client.callTool("Fetch", { url: "https://x.test" });
     expect(r.content[0]?.type).toBe("text");
     expect(r.content[0]?.text).toContain("https://x.test");
   }, HEAVY_TIMEOUT);
@@ -46,7 +46,7 @@ describe("McpClient", () => {
     client = new McpClient({ command: "bun", args: [FIXTURE] });
     await client.connect();
     // Fire a call but don't await it — close mid-flight.
-    const pending = client.callTool("Echo", { url: "x" });
+    const pending = client.callTool("Fetch", { url: "x" });
     await client.close();
     await expect(pending).rejects.toThrow(/closed/);
   }, HEAVY_TIMEOUT);

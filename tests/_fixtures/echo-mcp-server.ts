@@ -6,7 +6,7 @@
  *
  * Behaviors:
  *   - initialize → returns protocolVersion + capabilities.tools.listChanged:false + serverInfo
- *   - tools/list → one tool "Echo"
+ *   - tools/list → one tool "Fetch" (read-shaped name so the via-tool guard accepts it)
  *   - tools/call → echoes args back as JSON in a text content block
  *   - notifications/initialized → ignored (no response, per JSON-RPC notification rules)
  *   - any other method → error -32601
@@ -39,15 +39,15 @@ for await (const chunk of stdin) {
       result = {
         tools: [
           {
-            name: "Echo",
-            description: "Echoes args back as JSON in a text content block",
+            name: "Fetch",
+            description: "Fetches a URL and echoes the args back as JSON in a text content block",
             inputSchema: { type: "object", properties: { url: { type: "string" } } },
           },
         ],
       };
     } else if (req.method === "tools/call") {
       const params = req.params as { name?: string; arguments?: unknown } | undefined;
-      if (params?.name === "Echo") {
+      if (params?.name === "Fetch") {
         result = { content: [{ type: "text", text: JSON.stringify(params.arguments ?? {}) }] };
       } else {
         console.log(JSON.stringify({
