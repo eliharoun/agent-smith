@@ -1,4 +1,4 @@
-import type { AgentDetail, ModelTier, Platform } from "gui-shared";
+import type { AgentDetail, ModelTier, Platform, Target } from "gui-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useSaveAgentConfig } from "@/hooks/useAgents";
 import { useInstalledStatuses } from "@/hooks/useInstalledStatuses";
@@ -9,7 +9,12 @@ import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
 
-const ALL_PLATFORMS: Platform[] = ["opencode", "claude-code", "codex", "kiro"];
+const ALL_TARGETS: Target[] = ["opencode", "claude-code", "codex", "kiro", "agents-md"];
+
+// Targets that have a runtime CLI / refresh hook / installed-status. Excludes
+// agents-md, which is an emit-only render target with no runtime.
+const PLATFORM_TARGETS = new Set<Target>(["opencode", "claude-code", "codex", "kiro"]);
+const isPlatform = (t: Target): t is Platform => PLATFORM_TARGETS.has(t);
 const MODEL_TIERS: ModelTier[] = ["high", "balanced", "fast", "inherit"];
 const TIER_LABEL: Record<ModelTier, string> = {
   high: "high — most capable (opus-class)",
@@ -29,11 +34,11 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
   const savedTargets = useMemo(() => [...agent.targets].sort(), [agent.targets]);
   const savedTier = normalizeTier((agent.config as Record<string, unknown>).modelTier);
 
-  const [targets, setTargets] = useState<Set<Platform>>(new Set(agent.targets));
+  const [targets, setTargets] = useState<Set<Target>>(new Set(agent.targets));
   const [tier, setTier] = useState<ModelTier>(savedTier);
   const [reconcile, setReconcile] = useState<{
-    added: Platform[];
-    removed: Platform[];
+    added: Target[];
+    removed: Target[];
     modelChanged: boolean;
   } | null>(null);
 
@@ -53,7 +58,7 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
   const dirty = targetsDirty || tierDirty;
   const noTargets = targets.size === 0;
 
-  function toggleTarget(p: Platform, on: boolean) {
+  function toggleTarget(p: Target, on: boolean) {
     setTargets((prev) => {
       const next = new Set(prev);
       if (on) next.add(p);
@@ -64,11 +69,11 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
 
   function handleSave() {
     if (noTargets || !dirty) return;
-    const patch: { targets?: Platform[]; modelTier?: ModelTier } = {};
+    const patch: { targets?: Target[]; modelTier?: ModelTier } = {};
     if (targetsDirty) patch.targets = [...targets];
     if (tierDirty) patch.modelTier = tier;
     const added = [...targets].filter((p) => !savedTargets.includes(p));
-    const removed = (savedTargets as Platform[]).filter((p) => !targets.has(p));
+    const removed = (savedTargets as Target[]).filter((p) => !targets.has(p));
     save.mutate(patch, {
       onSuccess: () => setReconcile({ added, removed, modelChanged: tierDirty }),
     });
@@ -86,7 +91,7 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
         <FieldHelp fieldId="agent.targets">targets</FieldHelp>
       </div>
       <div className="space-y-1 mb-4">
-        {ALL_PLATFORMS.map((p) => (
+        {ALL_TARGETS.map((p) => (
           <label key={p} className="flex items-center gap-2 font-mono text-sm text-matrix-body">
             <input
               type="checkbox"
@@ -96,7 +101,11 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
             />
             <span>{p}</span>
             <span className="text-[10px] text-matrix-green-muted">
-              {installed[p] ? "• installed" : "• not installed"}
+              {!isPlatform(p)
+                ? "• emit-only"
+                : installed[p]
+                  ? "• installed"
+                  : "• not installed"}
             </span>
           </label>
         ))}
@@ -168,15 +177,18 @@ function ReconcileNudges({
   savedTargets,
 }: {
   agent: string;
-  reconcile: { added: Platform[]; removed: Platform[]; modelChanged: boolean };
+  reconcile: { added: Target[]; removed: Target[]; modelChanged: boolean };
   installed: Partial<Record<Platform, boolean>>;
-  savedTargets: Platform[];
+  savedTargets: Target[];
 }) {
   const start = useStartJob();
-  const installedTargets = savedTargets.filter((p) => installed[p]);
+  // installed-status / install / uninstall jobs only operate on Platform
+  // (agents-md has no runtime CLI). Filter agents-md out before each.
+  const installedTargets = savedTargets.filter(isPlatform).filter((p) => installed[p]);
   const showModel = reconcile.modelChanged && installedTargets.length > 0;
-  const removedInstalled = reconcile.removed.filter((p) => installed[p]);
-  if (!showModel && reconcile.added.length === 0 && removedInstalled.length === 0) return null;
+  const addedPlatforms = reconcile.added.filter(isPlatform);
+  const removedInstalled = reconcile.removed.filter(isPlatform).filter((p) => installed[p]);
+  if (!showModel && addedPlatforms.length === 0 && removedInstalled.length === 0) return null;
   return (
     <div className="mt-3 border-l-2 border-matrix-amber pl-3 space-y-2">
       {showModel && (
@@ -197,7 +209,7 @@ function ReconcileNudges({
           </Button>
         </div>
       )}
-      {reconcile.added.map((p) => (
+      {addedPlatforms.map((p) => (
         <div key={`add-${p}`} className="font-mono text-[11px] text-matrix-amber">
           {p} added — not deployed yet.{" "}
           <Button
@@ -235,20 +247,24 @@ function ReconcileNudges({
 const NETWORK_TYPES = new Set(["url", "git", "confluence", "jira"]);
 const REFRESH_MODES = new Set(["session", "always"]);
 
-function RefreshHooksSection({ agent, targets }: { agent: string; targets: Platform[] }) {
+function RefreshHooksSection({ agent, targets }: { agent: string; targets: Target[] }) {
   const knowledge = useKnowledge(agent);
   const manifest = useRefreshManifest(agent);
   const statuses = useInstalledStatuses();
   const start = useStartJob();
   const [desired, setDesired] = useState<Partial<Record<Platform, boolean>> | null>(null);
 
+  // Refresh hooks are a runtime concern — agents-md has no runtime, so
+  // we drop it from the consent UI entirely.
+  const platformTargets = useMemo(() => targets.filter(isPlatform), [targets]);
+
   useEffect(() => {
     if (!manifest.data || desired !== null) return;
     const granted = new Set(manifest.data.platforms);
     const seed: Partial<Record<Platform, boolean>> = {};
-    for (const p of targets) seed[p] = granted.has(p);
+    for (const p of platformTargets) seed[p] = granted.has(p);
     setDesired(seed);
-  }, [manifest.data, desired, targets]);
+  }, [manifest.data, desired, platformTargets]);
 
   const header = (
     <div className="mb-2">
@@ -297,7 +313,7 @@ function RefreshHooksSection({ agent, targets }: { agent: string; targets: Platf
   function handleSave() {
     const grant: Platform[] = [];
     const revoke: Platform[] = [];
-    for (const p of targets) {
+    for (const p of platformTargets) {
       const want = desired![p] ?? false;
       const have = currentGranted.has(p);
       if (want && !have) grant.push(p);
@@ -314,7 +330,7 @@ function RefreshHooksSection({ agent, targets }: { agent: string; targets: Platf
         Re-pull this agent's knowledge sources inside each platform. Choose per platform.
       </p>
       <div className="space-y-2 mb-3">
-        {targets.map((p) => {
+        {platformTargets.map((p) => {
           const canToggle = installed[p] === true || currentGranted.has(p);
           return (
             <label key={p} className="flex items-center gap-2 font-mono text-sm text-matrix-body">

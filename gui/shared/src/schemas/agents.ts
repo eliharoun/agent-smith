@@ -4,13 +4,20 @@ import { RemoteBlock } from "./remote";
 export const Platform = z.enum(["opencode", "claude-code", "codex", "kiro"]);
 export type Platform = z.infer<typeof Platform>;
 
+// Render target — superset of Platform that adds the cross-tool AGENTS.md
+// emission target. Use for any field that names where smith renders to.
+// Use Platform (no agents-md) for fields about runtime, auth, refresh
+// consent, or installed-status — agents-md has no runtime of its own.
+export const Target = z.enum(["opencode", "claude-code", "codex", "kiro", "agents-md"]);
+export type Target = z.infer<typeof Target>;
+
 export const AgentSummary = z.object({
   name: z.string(),
   description: z.string(),
   catalog: z.string(),
   path: z.string(),
   model: z.string().optional(),
-  targets: z.array(Platform),
+  targets: z.array(Target),
   // C4.1.2: optional remote{} block surfacing registry drift state for
   // catalogs installed via `smith agent install --from <url>`. Absent for
   // locally-authored agents.

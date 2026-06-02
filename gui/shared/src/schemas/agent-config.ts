@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Platform } from "./agents";
+import { Target } from "./agents";
 
 /**
  * Canonical model tiers offered in the GUI dropdown. The CLI's canonical
@@ -46,7 +46,7 @@ const McpServersPatch = z.array(z.string().min(1));
  */
 export const AgentConfigPatch = z
   .object({
-    targets: z.array(Platform).min(1, "at least one target required").optional(),
+    targets: z.array(Target).min(1, "at least one target required").optional(),
     modelTier: ModelTier.optional(),
     knowledge: KnowledgePatch.optional(),
     mcpServers: McpServersPatch.optional(),

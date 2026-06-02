@@ -138,7 +138,21 @@ describe("scanBundle", () => {
     expect(message).toContain("EXPERTISE.md");
   });
 
-  it("rejects unknown Platform values in targets via zod", async () => {
+  it("accepts agents-md as a target (v1.1.1 regression: was 4-value Platform enum)", async () => {
+    const path = await writeBundle("with-agents-md");
+    await writeFile(
+      join(path, "agent.config.json"),
+      JSON.stringify({
+        name: "with-agents-md",
+        description: "test agent",
+        targets: ["opencode", "claude-code", "codex", "kiro", "agents-md"],
+      }),
+    );
+    const detail = await scanBundle({ name: "with-agents-md", catalog: "test", path });
+    expect(detail.targets).toEqual(["opencode", "claude-code", "codex", "kiro", "agents-md"]);
+  });
+
+  it("rejects unknown target values via zod", async () => {
     const path = await writeBundle("bad-target");
     await writeFile(
       join(path, "agent.config.json"),
@@ -152,6 +166,11 @@ describe("scanBundle", () => {
       /invalid agent\.config\.json/,
     );
   });
+
+  // Note: there used to be a separate test named "rejects unknown Platform
+  // values in targets via zod" — renamed in v1.1.1 to "rejects unknown target
+  // values via zod" because the schema is now keyed by Target (5-value),
+  // not Platform (4-value).
 
   it("rejects agent.config.json with missing name field", async () => {
     const path = await writeBundle("no-name");

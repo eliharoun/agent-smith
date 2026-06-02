@@ -4,6 +4,17 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-06-02
+
+Patch release fixing a GUI regression in the `agents-md` render target shipped in v1.1.0.
+
+### Fixed
+
+- GUI no longer drops agents whose `targets` include `agents-md`. The shared `AgentSummary` schema's target enum was a 4-value subset (`opencode | claude-code | codex | kiro`); under v1.1.0's 5-value canonical `Target` (which adds `agents-md`), strict-mode parsing rejected any such agent at registry-walk time and the GUI silently skipped it with `[agents] skip <name>: invalid agent.config.json`.
+- The `targets` checkbox group in the agent editor now offers `agents-md` alongside the four runtime platforms, with an `• emit-only` annotation to signal it has no install/refresh-hook story.
+- Refresh-hook consent UI and per-platform install/uninstall reconcile-nudges correctly skip `agents-md`.
+- New `Target` enum exposed from gui-shared (5-value), distinct from `Platform` (4-value, runtime-only). Parity test (`target.parity.test.ts`) reads `src/core/types.ts` directly and asserts the gui-shared enum matches the canonical union, so the next render target won't drift silently.
+
 ## [1.1.0] — 2026-06-01
 
 Knowledge compiler, AGENTS.md target, MCP retrieval server, and a richer GUI knowledge surface.
@@ -71,5 +82,6 @@ into OpenCode, Claude Code, Codex, and Kiro.
 - Browser GUI (`smith gui`) wrapping every CLI surface with persistent job history.
 - Four bundled example agents: `incident-debugger`, `security-threat-modeler`, `repo-cartographer`, and `knowledge-demo`.
 
+[1.1.1]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.1
 [1.1.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.0
 [1.0.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.0.0
