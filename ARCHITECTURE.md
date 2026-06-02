@@ -133,7 +133,7 @@ flowchart LR
     URLSrc -.->|smith knowledge add url/confluence/jira| KnowledgeData
     GitSrc -.->|catalog pull| RegistryData
 
-    KnowledgeData -->|compile<br/>(smart-default v2.1)| Compiled
+    KnowledgeData -->|"compile<br/>(smart-default v2.1)"| Compiled
 
     BundleData -->|assembler + translator| OCOut
     BundleData -->|assembler + translator| CCOut
@@ -384,8 +384,8 @@ sequenceDiagram
 
     User->>Client: open agent (e.g. /agents agent-smith)
     Client->>Client: read MCP config (per-platform location)<br/>find agent-smith-knowledge entry
-    Client->>Smith: spawn: smith knowledge serve &lt;agent&gt; --stdio
-    Smith->>FS: walk sources/, build BM25 index<br/>(in-memory; no on-disk cache)
+    Client->>Smith: spawn: smith knowledge serve [agent] --stdio
+    Smith->>FS: walk sources/, build BM25 index<br/>(in-memory — no on-disk cache)
     FS-->>Smith: file list + contents
     Client->>Smith: initialize (MCP handshake)
     Smith-->>Client: capabilities: { tools: { listChanged: false } }
@@ -398,7 +398,7 @@ sequenceDiagram
     FS-->>Smith: top-k file paths + score + snippet
     Smith-->>Agent: hits
     Agent->>Smith: tools/call knowledge.fetch("sources/runbook/retries.md")
-    Smith->>FS: read file (range-bounded; 64KB cap)
+    Smith->>FS: read file (range-bounded — 64KB cap)
     FS-->>Smith: content
     Smith-->>Agent: file body
     Agent-->>User: answer (cites the file path)
