@@ -158,8 +158,8 @@ export async function runRefreshSession(input: RunRefreshSessionInput): Promise<
       // concurrent invocations don't race on the same file. Skip on
       // budget-timeout: refreshSource() may still be in flight; recording
       // last_error="exceeded budget" would mislead the daemon's TTL retry
-      // logic (Phase 5 Task 3). Real refresh failures (refreshSource
-      // returned ok:false) and successes always write.
+      // logic. Real refresh failures (refreshSource returned ok:false) and
+      // successes always write.
       if (!("budgetTimeout" in outcome && outcome.budgetTimeout)) {
         try {
           const cacheRoot = input.cacheRoot ?? defaultCacheRoot();

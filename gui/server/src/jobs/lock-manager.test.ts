@@ -41,7 +41,7 @@ describe("LockManager", () => {
     expect(lm.holderOf("agent:bar")).toBeUndefined();
   });
 
-  // ----- Phase 2 key shapes -----
+  // ----- skill / agent / catalog / knowledge key shapes -----
 
   it("treats skill:<name> and agent:<name> as independent", () => {
     const lm = new LockManager();

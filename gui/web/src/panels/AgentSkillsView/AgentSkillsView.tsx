@@ -16,7 +16,6 @@ function isRequiredSkill(v: unknown): v is RequiredSkill {
 /**
  * Read-only view of the agent's required skills (config.requires.skills).
  *
- * Replaces the Phase 1 "Configuration UI ships in Phase 2" placeholder.
  * Pure display — see AgentPermissionsView for the rationale.
  *
  * `requires.skills` is `Array<{ catalog?: string; name: string }>` per

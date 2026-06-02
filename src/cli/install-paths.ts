@@ -40,7 +40,7 @@ export function defaultAgentSmithHome(): string {
  * Default Codex config home — the directory containing `hooks.json` and the
  * other Codex CLI state. Distinct from the install target in
  * `defaultInstallPaths().codex` (which is the *skills* dir, `~/.agents/skills`).
- * This helper exists for the refresh-hook consent flow (Phase 4) where smith
+ * This helper exists for the refresh-hook consent flow where smith
  * registers agents in `<codexHome>/hooks.json`.
  */
 export function defaultCodexHome(): string {
@@ -52,7 +52,7 @@ export function defaultCodexHome(): string {
  * and the `plugins/` subdir. Distinct from the install target in
  * `defaultInstallPaths().opencode` (which is the *agents* dir,
  * `~/.config/opencode/agents`). This helper exists for the refresh-plugin
- * registration flow (Phase 5) where smith writes
+ * registration flow where smith writes
  * `<opencodeHome>/plugins/agent-smith-refresh/` and updates `opencode.json`.
  */
 export function defaultOpencodeConfigHome(): string {

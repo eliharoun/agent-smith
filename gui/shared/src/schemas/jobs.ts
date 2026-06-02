@@ -117,8 +117,7 @@ const AgentDestroy = z
     path: ["confirmName"],
   });
 
-// ─── Phase 2 ──────────────────────────────────────────────────────────────
-// Skill commands
+// ─── Skill commands ───────────────────────────────────────────────────────
 
 const SkillKind = z.enum(["user-global", "user-local", "team-shared"]);
 
@@ -310,7 +309,7 @@ const KnowledgeServe = z.object({
   name: z.string().min(1),
 });
 
-// ─── Phase 3 ──────────────────────────────────────────────────────────────
+// ─── Daemon, update, jack-out, migration ──────────────────────────────────
 
 const DaemonStart = z.object({
   command: z.literal("daemon.start"),
@@ -376,7 +375,7 @@ export const JobRequest = z.discriminatedUnion("command", [
   AgentUninstallAll,
   AgentReconfigure,
   AgentDestroy,
-  // Phase 2: skills
+  // skills
   SkillRegister,
   SkillUnregister,
   SkillList,
@@ -386,21 +385,21 @@ export const JobRequest = z.discriminatedUnion("command", [
   SkillInstall,
   SkillUpdate,
   SkillUninstall,
-  // Phase 2: agent catalogs
+  // agent catalogs
   AgentRegister,
   AgentUnregister,
   AgentCatalogs,
   AgentCatalogRename,
-  // Phase 2: knowledge
+  // knowledge
   KnowledgeAdd,
   KnowledgeRemove,
   KnowledgeList,
   KnowledgeFetch,
   KnowledgeValidate,
-  // T11: progressive compile + MCP serve
+  // progressive compile + MCP serve
   KnowledgeCompile,
   KnowledgeServe,
-  // Phase 3
+  // daemon, update, jack-out, codex migration
   DaemonStart,
   DaemonStop,
   Update,

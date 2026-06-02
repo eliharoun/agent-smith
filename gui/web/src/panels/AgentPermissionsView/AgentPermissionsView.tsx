@@ -19,7 +19,6 @@ function actionTone(a: Action): "green" | "amber" | "red" {
 /**
  * Read-only view of the agent's permission block (config.permission).
  *
- * Replaces the Phase 1 "Configuration UI ships in Phase 2" placeholder.
  * Pure display — no write endpoint exists yet; users are pointed at the
  * JSON file on disk for edits.
  *

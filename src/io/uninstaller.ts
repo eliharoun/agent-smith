@@ -538,10 +538,10 @@ export async function removeBundle(
           await removeAgentFromCodexHooks(codexHome, bundle.config.name);
         }
         if (platform === "opencode") {
-          // Phase 5: tear down the agent's entry in the shared
-          // agent-smith-refresh plugin sentinel. When the last consenting
-          // agent is removed, the plugin dir + opencode.json entry are
-          // deleted entirely (see unregisterAgentFromOpencodePlugin).
+          // Tear down the agent's entry in the shared agent-smith-refresh
+          // plugin sentinel. When the last consenting agent is removed, the
+          // plugin dir + opencode.json entry are deleted entirely (see
+          // unregisterAgentFromOpencodePlugin).
           await unregisterAgentFromOpencodePlugin(opencodeHome, bundle.config.name);
         }
         // claude-code: refresh hook frontmatter lives inside the agent file

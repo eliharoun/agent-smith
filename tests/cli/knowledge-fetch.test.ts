@@ -258,7 +258,7 @@ describe("knowledgeFetch", () => {
   });
 
   // ============================================================
-  // GUI Phase 2 Task 2: post-install per-source refresh-cache writes
+  // post-install per-source refresh-cache writes
   // ============================================================
 
   it("writes .meta.json per acquirable source on successful fetch (last_error=null, timestamps=now)", async () => {

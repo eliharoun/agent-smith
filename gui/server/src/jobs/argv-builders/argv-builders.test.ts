@@ -558,7 +558,7 @@ describe("argv builders", () => {
     expect(r.argv).toEqual(["knowledge", "validate", "x"]);
   });
 
-  // ---- Phase 3, Task 12: daemon + skill.validate ----
+  // ---- daemon + skill.validate ----
 
   it("builds daemon.start (no env overrides)", () => {
     const r = buildArgv({ command: "daemon.start" });
@@ -591,7 +591,7 @@ describe("argv builders", () => {
     expect(r.preview).toBe("smith skill validate foo");
   });
 
-  // ---- Phase 3, Task 13: update, knowledge.migrate-codex, doctor extension ----
+  // ---- update, knowledge.migrate-codex, doctor extension ----
 
   it("builds update (no flags)", () => {
     const r = buildArgv({ command: "update", dryRun: false });
@@ -654,7 +654,7 @@ describe("argv builders", () => {
     ]);
   });
 
-  // ---- Phase 3, Task 14: jack-out ----
+  // ---- jack-out ----
 
   it("builds jack-out --yes with all three locks", () => {
     const r = buildArgv({ command: "jack-out", confirmPhrase: "jack-out" });

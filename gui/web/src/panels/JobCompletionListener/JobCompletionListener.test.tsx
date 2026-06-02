@@ -202,7 +202,7 @@ describe("JobCompletionListener — destroy flow timing", () => {
   });
 });
 
-describe("JobCompletionListener — Phase 2 cache invalidations", () => {
+describe("JobCompletionListener — cache invalidations", () => {
   function probeFor(qc: QueryClient, key: string[]) {
     let fetches = 0;
     function Probe() {

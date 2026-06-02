@@ -26,7 +26,7 @@ const TIER_TO_OPENCODE: Record<Exclude<CanonicalModelTier, "inherit">, string> =
 /**
  * Resolve the OpenCode `model` literal at install time.
  *
- * Layered resolution (Phase 3):
+ * Layered resolution:
  *   1. Explicit `canonical.model` override → verbatim.
  *   2. `canonical.modelTier === "inherit"` → undefined.
  *   3. SMITH_TIER_<TIER> env override → verbatim (warn if not in live list).

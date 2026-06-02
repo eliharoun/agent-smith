@@ -1,14 +1,8 @@
 /**
- * Phase 2 route placeholders — all Phase 2 routes are now real except for
- * the in-editor `KnowledgeAgentRedirect`, which is itself a real component
- * (just lives here historically).
- *
- * Replaced (no longer in this file):
- *   - Skills, SkillNew, SkillEditor       → Task 23
- *   - Catalogs, CatalogRegister           → Task 24
- *   - RefreshHistory, RefreshHistoryIndex → Task 26
- *   - AtlassianSetup                      → Task 27
- *   - KnowledgeIndex                      → Task 28
+ * Historic home of GUI route placeholders. All have shipped as real
+ * components elsewhere; this file remains only as the home of
+ * `KnowledgeAgentRedirect`, which is itself a real (non-placeholder)
+ * component imported from App.tsx by file path.
  */
 import { Navigate, useParams } from "react-router-dom";
 

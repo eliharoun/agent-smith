@@ -127,9 +127,9 @@ export function buildArgv(req: JobRequest): BuiltArgv {
     case "skill.sync":
       return buildSkillSync(req);
     default: {
-      // All Phase 3 commands now have builders. This default exists to give
-      // TypeScript an exhaustiveness anchor and to fail loudly if a new
-      // JobRequest variant is added without a corresponding builder.
+      // All commands have builders. This default exists to give TypeScript
+      // an exhaustiveness anchor and to fail loudly if a new JobRequest
+      // variant is added without a corresponding builder.
       const _exhaustive: never = req;
       throw new Error(
         `buildArgv: no builder registered for command '${(_exhaustive as { command: string }).command}'`,

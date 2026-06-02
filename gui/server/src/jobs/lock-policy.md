@@ -23,7 +23,7 @@ If any single key would conflict (literal collision or wildcard violation),
 the entire batch is rejected before any `Map.set` happens — there is no
 window in which the manager holds a partial subset of the requested keys.
 
-## Other Phase 3 lock keys
+## Other lock keys
 
 - `workspace` — held by `update`, `knowledge.migrate-codex`, and `jack-out`.
   Prevents concurrent git/state mutations against the smith repo + caches.
