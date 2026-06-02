@@ -9,7 +9,7 @@ import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
 import { Toggle } from "@/ui/Toggle";
-import { TypedTokenModal } from "@/ui/TypedTokenModal";
+import { ConfirmModal } from "@/ui/ConfirmModal";
 import { AddKnowledgeSourceModal } from "./AddKnowledgeSourceModal";
 import { EditKnowledgeSourceModal } from "./EditKnowledgeSourceModal";
 import { KnowledgeSourceRow } from "./KnowledgeSourceRow";
@@ -382,13 +382,13 @@ export function KnowledgeSources({ agent }: Props) {
       )}
 
       {pendingRemove && (
-        <TypedTokenModal
+        <ConfirmModal
           title={`Remove knowledge source "${pendingRemove.id}"`}
-          expectedToken={pendingRemove.id}
+          confirmLabel="Remove"
           body={
             <>
               Removes <code>{pendingRemove.id}</code> from <code>{agent}</code>&rsquo;s knowledge
-              manifest. Cached files on disk are not deleted by this command.
+              manifest. Cached files on disk are not deleted, and you can re-add the source later.
             </>
           }
           onCancel={() => setPendingRemove(null)}
@@ -415,9 +415,9 @@ export function KnowledgeSources({ agent }: Props) {
       )}
 
       {refreshAllConfirm && (
-        <TypedTokenModal
+        <ConfirmModal
           title={`Refresh all knowledge for "${agent}"`}
-          expectedToken={agent}
+          confirmLabel="Refresh all"
           body={
             <>
               Refreshes every source. May execute network requests, git fetches, and local file

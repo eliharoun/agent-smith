@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AgentDetail, Platform } from "gui-shared";
+import { AgentDetail, Target } from "gui-shared";
 import { z } from "zod";
 
 const ConfigSchema = z
@@ -15,7 +15,7 @@ const ConfigSchema = z
     // them into the GUI's single `model` summary field via `model ?? modelTier`.
     model: z.string().optional(),
     modelTier: z.string().optional(),
-    targets: z.array(Platform).default([]),
+    targets: z.array(Target).default([]),
   })
   // .passthrough() preserves unknown keys for forward-compat: GUI servers may
   // encounter bundles authored against a newer CLI schema. Strict mode would

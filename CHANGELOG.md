@@ -4,6 +4,18 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-06-02
+
+Patch release fixing GUI regressions in the `agents-md` render target shipped in v1.1.0, plus a knowledge-modal UX fix.
+
+### Fixed
+
+- GUI no longer drops agents whose `targets` include `agents-md`. The shared `AgentSummary` schema's target enum was a 4-value subset (`opencode | claude-code | codex | kiro`); under v1.1.0's 5-value canonical `Target` (which adds `agents-md`), strict-mode parsing rejected any such agent at registry-walk time and the GUI silently skipped it with `[agents] skip <name>: invalid agent.config.json`. The fix covers both the gui-shared schema and the duplicate `ConfigSchema` in `gui/server/src/services/scan-bundle.ts` that actually parses bundles off disk.
+- The `targets` checkbox group in the agent editor now offers `agents-md` alongside the four runtime platforms, with an `• emit-only` annotation to signal it has no install/refresh-hook story.
+- Refresh-hook consent UI and per-platform install/uninstall reconcile-nudges correctly skip `agents-md`.
+- New `Target` enum exposed from gui-shared (5-value), distinct from `Platform` (4-value, runtime-only). Parity tests (`target.parity.test.ts` for the schema; `scan-bundle.test.ts` regression for the bundle parser) read `src/core/types.ts` directly and assert the GUI-side enums match, so the next render target won't drift silently.
+- Knowledge modals — the **Refresh all** and **Remove source** flows used the destructive typed-token modal (red border, "Destroy" button, type-the-agent-name-to-confirm gate), which mismatched the action: refreshing is non-destructive and removing only edits the manifest (cached files stay on disk, source can be re-added). Both now use a regular `ConfirmModal` with action-shaped labels (`Refresh all`, `Remove`). The typed-token modal is reserved for actually destructive ops (`smith jack-out`, catalog unregister).
+
 ## [1.1.0] — 2026-06-01
 
 Knowledge compiler, AGENTS.md target, MCP retrieval server, and a richer GUI knowledge surface.
@@ -71,5 +83,6 @@ into OpenCode, Claude Code, Codex, and Kiro.
 - Browser GUI (`smith gui`) wrapping every CLI surface with persistent job history.
 - Four bundled example agents: `incident-debugger`, `security-threat-modeler`, `repo-cartographer`, and `knowledge-demo`.
 
+[1.1.1]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.1
 [1.1.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.0
 [1.0.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.0.0

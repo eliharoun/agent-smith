@@ -238,7 +238,7 @@ describe("KnowledgeSources", () => {
       expect(body.source).toBe("docs");
     });
 
-    // Remove opens typed-token modal.
+    // Remove opens confirmation modal.
     fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
     expect(screen.getByText(/remove knowledge source/i)).toBeInTheDocument();
   });

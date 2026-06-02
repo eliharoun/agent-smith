@@ -135,7 +135,14 @@ export function AgentList() {
                     </span>
                     <div className="flex gap-1">
                       {a.targets.map((t) => (
-                        <Chip key={t} tone={a.installed[t] ? "green" : "neutral"}>
+                        <Chip
+                          key={t}
+                          tone={
+                            t !== "agents-md" && a.installed[t]
+                              ? "green"
+                              : "neutral"
+                          }
+                        >
                           {t}
                         </Chip>
                       ))}
