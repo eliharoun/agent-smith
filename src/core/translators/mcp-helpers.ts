@@ -11,13 +11,18 @@
  * - OpenCode  → no emission (default-inherit-all matches user intent).
  * - Claude    → `mcpServers:` frontmatter as list of name-strings (subset
  *                scoping, opt-out via targetOptions.claudeCode.scopeMcpServers=false).
- * - Codex     → no emission this iteration. Codex's idiomatic per-skill
- *                hint mechanism is `<skill>/agents/openai.yaml` with
- *                `dependencies.tools`, but that's install-prompt-only and
- *                gated behind a first-party feature flag. The infra to emit
- *                a SECOND file per render (extending `RenderedAgent`,
- *                installer manifest, uninstaller cleanup) is out of scope
- *                for this iteration. Tracked as a follow-up.
+ * - Codex     → emits `<name>/agents/openai.yaml` sidecar with
+ *                `dependencies.tools[]` listing each declared MCP server
+ *                name. Consumed by Codex's install-prompt UX (still
+ *                gated upstream on `is_first_party_originator()` per
+ *                codex-rs/core/src/mcp_skill_dependencies.rs, so
+ *                third-party Codex wrappers see no UX effect today —
+ *                emission is still useful as a documentation surface
+ *                and unlocks the receiving feature if the originator
+ *                gate is ever lifted). Implementation lives in
+ *                `src/core/translators/codex.ts`; sidecar plumbing
+ *                lives in `src/core/types.ts:RenderedAgentBase.sidecars`,
+ *                `src/io/installer.ts`, `src/io/uninstaller.ts`.
  * - Kiro      → `mcpServers: {}` empty + `includeMcpJson: true` +
  *                `tools` and `allowedTools` curated with `@<server>` entries.
  *                Per AWS's SageMaker reference agent pattern.
