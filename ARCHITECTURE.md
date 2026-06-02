@@ -295,11 +295,145 @@ Every term that appears in this document, alphabetized. The first six are summar
 
 ---
 
+## 5. Knowledge loading — from sources to running tools
+
+Knowledge is the most layered subsystem in agent-smith. Three concerns interleave: **delivery** (how content reaches the agent's prompt — inline, sidecar, or both), **retrieval** (whether a search tool is exposed via MCP), and **per-platform shape** (each AI client wires MCP differently). This section maps all three onto a single picture.
+
+### 5.1 The three loading modes
+
+A knowledge source's `delivery` field on `agent.config.json` chooses one of three modes:
+
+| Mode | When | What lands at install time | What the agent does at runtime |
+|---|---|---|---|
+| `inline` | Small, always-relevant content (style guide, glossary). Explicit author choice, never auto-selected. | The materialized text is concatenated into the rendered system prompt as a `## Knowledge` section. | Reads it verbatim every turn. No tool calls. Token-cost is paid on every message. |
+| `file` | Default for most sources. | The materialized files are written to `<stateHome>/knowledge/<agent>/sources/<id>/...`. The rendered prompt gets a permission grant for that dir plus a `## Knowledge Index` listing the files. | Calls `Read` on a file when the index suggests it's relevant. Token-cost is paid only when the agent reads. |
+| `auto` (smart default) | Author leaves `delivery` unset. | At install time, smith totals the materialized bytes. If `total > inlineBudget.totalTokens` (default 8000), routes through the **compile stage**: emits a tight `## Knowledge` TOC stanza + `compile-manifest.json`, sources go to disk like `file` mode. Otherwise routes through `inline` so small bundles stay always-resident. | Same as the chosen leaf mode — TOC + on-demand `Read` for compiled bundles, always-resident text for inlined ones. |
+
+Independently of `delivery`, a source can declare `retrieval.mode: "bm25"` to opt into MCP-tool-based search. This adds a fourth tool-shaped axis on top of the three delivery modes — the agent gets `knowledge.search(query, k)` and `knowledge.fetch(path, range?)` instead of (or in addition to) raw `Read`. The retrieval index is built **at session-start by the AI client**, not at install-time by smith — see §5.3.
+
+### 5.2 The full loading pipeline
+
+```mermaid
+flowchart TB
+    subgraph Author["Author / smith install — install-time"]
+        Cfg[("agent.config.json<br/>knowledge.sources[]<br/>+ delivery + retrieval")]
+        Mat["materialize<br/><sub>fetch / clone / read</sub>"]
+        Heur{{"shouldAutoCompile<br/>(bytes > inlineBudget?)"}}
+        Compile["compile()<br/><sub>TOC + manifest</sub>"]
+        Cfg --> Mat
+        Mat -->|"delivery: auto"| Heur
+        Heur -->|"yes (or progressive: true)"| Compile
+        Heur -->|"no (or progressive: false)"| Inl
+        Mat -->|"delivery: inline (explicit)"| Inl["assemble inline<br/>prompt section"]
+        Mat -->|"delivery: file (explicit)"| Side["write sidecar files<br/>+ Knowledge Index"]
+        Compile --> Side
+    end
+
+    subgraph Disk["smith-owned disk state"]
+        KDir[("&lt;stateHome&gt;/knowledge/&lt;agent&gt;/<br/>sources/&lt;id&gt;/...<br/>_manifest.json<br/>compile-manifest.json")]
+        Side --> KDir
+    end
+
+    subgraph Render["Rendered agent files (per platform)"]
+        Body["assembled prompt body<br/><sub>IDENTITY + EXPERTISE + SOUL + USER<br/>+ inline content (if any)<br/>+ Knowledge Index OR Compiled TOC</sub>"]
+        Inl --> Body
+        Side -.->|TOC stanza| Body
+        Body --> OC[OpenCode .md]
+        Body --> CC[Claude Code .md]
+        Body --> CX[Codex SKILL.md]
+        Body --> KR[Kiro .json]
+        Body --> AM[AGENTS.md]
+    end
+
+    subgraph MCP["MCP wiring (when any source has retrieval: bm25)"]
+        BundleMcp[("agent.config.json<br/>mcpServers: ['agent-smith-knowledge']<br/><sub>declarative — names only</sub>")]
+        Cfg -.->|"if any source has<br/>retrieval.mode: bm25"| BundleMcp
+        ClientCfg[("AI-client MCP config<br/><sub>~/.claude.json<br/>~/.kiro/settings/mcp.json<br/>opencode.json / config.toml</sub>")]
+        BundleMcp -->|"GUI MCP toggle<br/>writes spawn config"| ClientCfg
+        BundleMcp -.->|"per-platform translator<br/>emits per-agent decl"| Render
+    end
+
+    classDef author fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+    classDef disk fill:#fff8e1,stroke:#f57c00,color:#e65100
+    classDef render fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
+    classDef mcp fill:#fce4ec,stroke:#c2185b,color:#880e4f
+    class Cfg,Mat,Heur,Compile,Inl,Side author
+    class KDir disk
+    class Body,OC,CC,CX,KR,AM render
+    class BundleMcp,ClientCfg mcp
+```
+
+**Three things to read off this picture:**
+
+1. **`delivery` is decided at install time, not runtime.** Once the bundle is rendered, the prompt either has the inline text or it has a TOC pointing at sidecar files. The agent has no choice — it does what its prompt directs.
+2. **The compile stage is a *transformation* on the materialized output, not a separate fetch.** Materialize runs once; compile re-shapes the result.
+3. **MCP wiring is a separate axis from delivery.** A bundle can have `delivery: file` *and* `retrieval.mode: bm25` — the sidecar files are still written, AND the agent gets `knowledge.search` over the same files. They're complementary, not exclusive.
+
+### 5.3 Retrieval-server lifecycle (when MCP is wired)
+
+When the bundle's `mcpServers` declares `agent-smith-knowledge` AND the user's AI-client MCP config has the spawn entry, every session opens a fresh `smith knowledge serve` subprocess:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Client as AI client<br/>(Kiro / Claude Code /<br/>OpenCode / Codex)
+    participant Smith as smith knowledge serve<br/><sub>spawned subprocess</sub>
+    participant FS as Materialized cache<br/><sub>stateHome/knowledge/agent/</sub>
+    participant Agent as The agent's<br/>system prompt
+
+    User->>Client: open agent (e.g. /agents agent-smith)
+    Client->>Client: read MCP config (per-platform location)<br/>find agent-smith-knowledge entry
+    Client->>Smith: spawn: smith knowledge serve &lt;agent&gt; --stdio
+    Smith->>FS: walk sources/, build BM25 index<br/>(in-memory; no on-disk cache)
+    FS-->>Smith: file list + contents
+    Client->>Smith: initialize (MCP handshake)
+    Smith-->>Client: capabilities: { tools: { listChanged: false } }
+    Client->>Smith: tools/list
+    Smith-->>Client: [knowledge.search, knowledge.fetch]
+    Note over Client,Agent: At this point the tools appear in the agent's<br/>available toolset. The system prompt's<br/>compiled TOC has a "(searchable: bm25)" hint<br/>so the agent prefers the search tool.
+    User->>Agent: question
+    Agent->>Smith: tools/call knowledge.search("retry policy", k=5)
+    Smith->>FS: BM25 rank over indexed files
+    FS-->>Smith: top-k file paths + score + snippet
+    Smith-->>Agent: hits
+    Agent->>Smith: tools/call knowledge.fetch("sources/runbook/retries.md")
+    Smith->>FS: read file (range-bounded; 64KB cap)
+    FS-->>Smith: content
+    Smith-->>Agent: file body
+    Agent-->>User: answer (cites the file path)
+    User->>Client: end session
+    Client->>Smith: close stdin
+    Smith->>Smith: clean exit (process tree teardown)
+```
+
+Notes:
+
+- **The server is per-session, not per-machine.** Every new session spawns a fresh subprocess. The BM25 index is rebuilt on every spawn. This is fine because rebuild is millisecond-scale (a few thousand markdown files).
+- **The bundle's `mcpServers` is documentation-only — it lists *names*, not spawn configs.** The actual spawn config (`command`, `args`, `env`) lives in the AI client's own MCP config file (`~/.claude.json`, `~/.kiro/settings/mcp.json`, etc.). The GUI's MCP toggle writes both: the bundle's `mcpServers` array AND the spawn entries into each detected AI client's config.
+- **smith launcher must be invocable from a stripped-PATH context** (Spotlight, dock, Finder spawns). `bin/install` writes a wrapper at `~/.local/bin/smith` with hardcoded `bun` and entry-script paths so a `#!/usr/bin/env bun` shebang doesn't fail when the spawning client doesn't inherit the user's shell PATH.
+- **Per-platform per-agent MCP emission differs.** Kiro requires the agent's rendered JSON to declare `mcpServers: {}` + `includeMcpJson: true` + `tools: ["@<server>"]` + `allowedTools: ["@<server>"]` for the agent to *see* the server in its scoped view. Claude Code accepts `mcpServers: [<names>]` in frontmatter for subset scoping (default: inherit-all). OpenCode default-inherit-all needs nothing. Codex default-inherit-all also needs nothing today (the per-skill sidecar feature is gated upstream on a first-party originator check). See `src/core/translators/*` for the per-platform emission code.
+
+### 5.4 Where each piece lives in the codebase
+
+| Concern | Files |
+|---|---|
+| Materialize | `src/core/knowledge/pipeline.ts`, `src/core/knowledge/acquire-source.ts`, `src/io/{git,confluence,jira}.ts` |
+| Smart-default heuristic | `src/core/knowledge/pipeline.ts:shouldAutoCompile` |
+| Compile stage | `src/core/knowledge/compile.ts`, `src/core/knowledge/compile-manifest.ts` |
+| Sidecar emission + Knowledge Index | `src/core/assembler.ts`, `src/core/knowledge/sidecar.ts`, `src/core/knowledge/permission-grant.ts` |
+| Per-platform per-agent MCP emission | `src/core/translators/{kiro,claude-code,opencode,codex,agents-md}.ts`, `src/core/translators/mcp-helpers.ts` |
+| Retrieval server | `src/core/knowledge/serve-mcp.ts` (stdio MCP), `src/core/knowledge/bm25.ts` (pure index) |
+| GUI MCP toggle | `gui/server/src/services/mcp-config.ts` (writes platform configs), `gui/web/src/panels/KnowledgeSources/KnowledgeSources.tsx` (toggle UI) |
+| smith launcher (spawn-context fix) | `bin/install` Step 6, `src/io/launcher.ts` |
+| Doctor drift detection | `src/core/freshness/check-knowledge-compile.ts` (compile manifests), `src/core/freshness/check-mcp-spawn.ts` (fragile bare commands) |
+
+---
+
 ## Future work
 
-This refresh updates the diagrams and glossary for v2/v2.1 factual accuracy but keeps the doc summary-level. Dedicated sections that would deepen coverage — and are tracked as follow-up work, not part of this MVP refresh:
+This refresh updates the diagrams and glossary for v2/v2.1 factual accuracy and adds Section 5 covering knowledge loading end-to-end. Remaining follow-up work, not in this refresh:
 
-- **Compile stage — progressive disclosure** — full walkthrough of the smart-default heuristic, the TOC algorithm, and the `inline` vs. `file` vs. `compile` decision tree. For now: see [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md) and `docs/plans/2026-05-31-knowledge-compiler-v2-design.md`.
-- **Retrieval MCP server lifecycle** — a sequence diagram for `smith knowledge serve` showing index build, `knowledge.search` / `knowledge.fetch`, and how the AI client spawns the server. Operational reference is in [`guide/16`](./guide/16-knowledge-compiler.md#smith-knowledge-serve---stdio).
-- **AGENTS.md as a fifth target** — placement rules, the CLAUDE.md pointer interaction, and the per-runtime read patterns. See [`guide/16 — AGENTS.md target`](./guide/16-knowledge-compiler.md#the-agents-md-target).
+- **Compile stage — progressive disclosure deep dive** — the TOC algorithm internals, truncation rules, summary fallback chain, multi-file source handling. Section 5 names the entry points; deep behavior lives in [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md) and `docs/plans/2026-05-31-knowledge-compiler-v2-design.md`.
+- **AGENTS.md as a fifth target** — placement rules, the CLAUDE.md pointer interaction, per-runtime read patterns. See [`guide/16 — AGENTS.md target`](./guide/16-knowledge-compiler.md#the-agents-md-target).
 - **APM import** — the `apm.yml` → smith bundle mapping (runtimes, references, defaults applied). See [`guide/16 — APM import`](./guide/16-knowledge-compiler.md#apm-import-smith-agent-init---from-apm).
