@@ -185,6 +185,9 @@ function bodyFor(payload: SmithErrorPayload): string {
     }
     case "network-error":
       return `${payload.url}\nCause: ${payload.cause}`;
+    case "internal-error":
+      // Headline + remediation already convey the message; body is empty.
+      return "";
     case "model-resolution-failed":
       return `Agent: ${payload.agent}\nPreferences: ${payload.preferences.join(", ")}\nAuthenticated: ${payload.authenticated.join(", ")}`;
   }

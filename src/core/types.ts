@@ -210,6 +210,18 @@ export interface CanonicalConfig {
    * per-platform MCP config files; smith never writes those.
    */
   mcpServers?: string[];
+  /**
+   * v1.2 bundle-level MCP dependencies. Distinct from per-agent
+   * `mcpServers` (which is a scope hint passed to translators).
+   * `required[]` are dependencies — `smith agent install` refuses if
+   * any are missing in the user's MCP config (unless --allow-missing-mcp).
+   * `peer[]` are expectations — install warns but proceeds. Mirrors
+   * `package.json:dependencies` and `peerDependencies`.
+   */
+  mcp?: {
+    required?: string[];
+    peer?: string[];
+  };
   /** Names of skills this agent should default to using. Surfaced via a `## Default Skills` section appended to the assembled body. */
   skills?: string[];
   /** Domain knowledge sources to attach to this agent. See `src/core/knowledge/`. */

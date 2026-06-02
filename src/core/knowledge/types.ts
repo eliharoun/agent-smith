@@ -267,3 +267,16 @@ export interface KnowledgeManifest {
     bytes: number;
   };
 }
+
+/**
+ * v1.2 routing spec. When present, smith routes acquire/refresh-time
+ * fetches through the named MCP server's tool instead of (or in addition
+ * to) the type-specific acquirer. Args, when present, pass verbatim to
+ * tools/call. Credential-shaped arg keys are rejected at schema level.
+ */
+export interface Via {
+  server: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  allowWriteTool?: boolean;
+}

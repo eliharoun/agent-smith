@@ -99,6 +99,14 @@ export type SmithErrorPayload =
       url: string;
       cause: string;
     }
+  // Internal smith bug: a code path was reached that requires a DI
+  // dependency the caller forgot to inject. NEVER emitted to end-users
+  // as a normal failure mode — always indicates a missing wire-up that
+  // should be fixed in smith itself.
+  | {
+      code: "internal-error";
+      message: string;
+    }
   // Model resolution — layered resolver exhausted all providers for a tier.
   | {
       code: "model-resolution-failed";
@@ -161,6 +169,8 @@ export function formatHeadline(payload: SmithErrorPayload): string {
     }
     case "network-error":
       return `${payload.operation} failed: network error`;
+    case "internal-error":
+      return "smith internal error";
     case "model-resolution-failed":
       return `model resolution failed for tier '${payload.tier}'`;
   }
@@ -253,6 +263,8 @@ export function formatRemediation(payload: SmithErrorPayload): string {
         "Check connectivity, DNS resolution, or proxy settings.",
         "The URL has been redacted; original credentials/tokens are not shown.",
       ].join("\n");
+    case "internal-error":
+      return `${payload.message}\nThis is a bug in smith itself — please report it.`;
     case "model-resolution-failed":
       return payload.hint;
   }
