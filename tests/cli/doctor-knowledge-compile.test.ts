@@ -64,14 +64,29 @@ afterEach(async () => {
 /**
  * Scaffold a bundle on disk with a single file knowledge source. Returns the
  * loaded AgentBundle so tests can hand it to the doctor's bundle loader.
+ *
+ * `withCompile`:
+ *   - `true`              → emit `compile: { progressive: true, ... }`
+ *   - `false` (default)   → omit the compile block entirely (smart-default
+ *                           regime: bundle never opts in, doctor must rely
+ *                           on manifest-presence detection)
+ *   - `"explicit-false"`  → emit `compile: { progressive: false }` (user
+ *                           explicitly opted out; manifest may still be on
+ *                           disk from a prior install)
  */
 async function makeBundle(
   name: string,
-  opts: { withCompile: boolean },
+  opts: { withCompile: boolean | "explicit-false" },
 ): Promise<AgentBundle> {
   const bundleDir = join(ctx.bundlesRoot, name);
   await mkdir(bundleDir, { recursive: true });
   await writeFile(join(bundleDir, "doc.md"), "# Doc\n\nbody body body\n", "utf8");
+  const compileBlock =
+    opts.withCompile === true
+      ? { compile: { progressive: true, tocMaxLines: 100, emitAgentsMd: false } }
+      : opts.withCompile === "explicit-false"
+        ? { compile: { progressive: false } }
+        : {};
   const configRaw: Record<string, unknown> = {
     name,
     description: `Use to test ${name}.`,
@@ -87,9 +102,7 @@ async function makeBundle(
           description: `Doc for ${name}`,
         },
       ],
-      ...(opts.withCompile
-        ? { compile: { progressive: true, tocMaxLines: 100, emitAgentsMd: false } }
-        : {}),
+      ...compileBlock,
     },
   };
   const parsed = parseConfig(configRaw);
@@ -207,11 +220,66 @@ describe("smith doctor knowledge-compile section", () => {
     expect(report.knowledgeCompile.status).toBe("ok");
   });
 
-  test("bundles without compile.progressive are skipped silently (not flagged missing)", async () => {
+  test("bundles without compile.progressive AND no manifest on disk are skipped silently", async () => {
+    // v2.1 smart-default regime: bundle never opted in AND nothing was ever
+    // compiled. Doctor must not surface a finding — that would be a false
+    // positive against every v1-inline bundle on the system.
     const bundle = await makeBundle("delta", { withCompile: false });
     const { report } = await runDoctor({ bundles: [bundle] });
-    // Section runs but produces no findings for non-progressive bundles.
     expect(report.knowledgeCompile.findings).toHaveLength(0);
+  });
+
+  test("audits bundle with no compile.progressive when compile-manifest.json exists on disk (smart-default regime)", async () => {
+    // v2.1 smart-default: bundle didn't opt in, but the install pipeline
+    // auto-compiled because the materialized corpus exceeded the inline
+    // budget. The doctor MUST audit this bundle — that's the dominant case.
+    // We seed a real manifest by forcing a compile (runKnowledgeCompile is
+    // forced regardless of opt-in), then mutate the persisted hash to
+    // introduce drift.
+    const bundle = await makeBundle("smart-default", { withCompile: false });
+    const code = await runKnowledgeCompile({
+      name: "smart-default",
+      paths: { agentSmithHome: ctx.agentSmithHome },
+      loadBundle: async (n) => (n === "smart-default" ? bundle : null),
+    });
+    expect(code).toBe(0);
+    const knowledgeDir = join(ctx.agentSmithHome, "knowledge", "smart-default");
+    const manifestPath = compileManifestPath(knowledgeDir);
+    const persisted = await readCompileManifest(knowledgeDir);
+    if (!persisted) throw new Error("expected manifest to exist after compile");
+    persisted.contentHash = "deadbeef".repeat(8);
+    await writeFile(manifestPath, JSON.stringify(persisted, null, 2), "utf8");
+
+    const { report } = await runDoctor({ bundles: [bundle] });
+    const f = report.knowledgeCompile.findings;
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ kind: "drift", agent: "smart-default" });
+  });
+
+  test("audits bundle with compile.progressive=false when compile-manifest.json exists on disk (stale opt-out)", async () => {
+    // Pre-existing manifest from a prior install when progressive was true,
+    // user later flipped it off. The leftover manifest may be stale; doctor
+    // surfaces it instead of silently ignoring.
+    const bundle = await makeBundle("stale-optout", { withCompile: "explicit-false" });
+    // Seed a real manifest by forcing a compile via runKnowledgeCompile,
+    // which forces progressive=true on the way in regardless of bundle config.
+    const code = await runKnowledgeCompile({
+      name: "stale-optout",
+      paths: { agentSmithHome: ctx.agentSmithHome },
+      loadBundle: async (n) => (n === "stale-optout" ? bundle : null),
+    });
+    expect(code).toBe(0);
+    const knowledgeDir = join(ctx.agentSmithHome, "knowledge", "stale-optout");
+    const manifestPath = compileManifestPath(knowledgeDir);
+    const persisted = await readCompileManifest(knowledgeDir);
+    if (!persisted) throw new Error("expected manifest to exist after compile");
+    persisted.contentHash = "f00dface".repeat(8);
+    await writeFile(manifestPath, JSON.stringify(persisted, null, 2), "utf8");
+
+    const { report } = await runDoctor({ bundles: [bundle] });
+    const f = report.knowledgeCompile.findings;
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ kind: "drift", agent: "stale-optout" });
   });
 
   test("--fix-knowledge-compile re-runs compile and clears missing-manifest", async () => {

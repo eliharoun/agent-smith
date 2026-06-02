@@ -26,6 +26,7 @@ import type { InstallPaths } from "../../core/types";
 import { defaultCacheRoot } from "../../io/cache-root";
 import { hashContent, loadInstalledAgents } from "../../io/installed-agents";
 import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
+import { compileManifestPath } from "../../core/knowledge/compile-manifest";
 import { getOpenCodeModels } from "../../io/opencode-models";
 import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
@@ -139,6 +140,20 @@ async function readCacheFromDisk(path: string): Promise<SchemaCache | null> {
 async function writeCacheToDisk(path: string, value: SchemaCache): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(value));
+}
+
+/**
+ * Tiny helper used by the knowledge-compile candidate filter: returns `true`
+ * iff `path` exists and is a regular file. Any error (ENOENT, permission,
+ * etc.) returns `false` — the candidate filter treats absence and access
+ * failure identically (skip the bundle).
+ */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export interface DoctorCliOptions {
@@ -388,28 +403,48 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     (b.config.knowledge?.sources ?? []).some((s) => s.type === "confluence" || s.type === "jira"),
   );
 
-  // Build knowledge-compile detection candidates from every bundle that
-  // opts in to progressive compile. Tests inject `opts.knowledgeCompile`
-  // with their own bundle list + tmpdir agent-smith home.
+  // Build knowledge-compile detection candidates via manifest-presence
+  // detection: audit any bundle whose `compile-manifest.json` exists on disk
+  // OR whose bundle explicitly declares `compile.progressive: true`. Under
+  // v2.1's smart-default compile, most auto-compiled bundles never set
+  // `progressive: true` — they're auto-compiled when the materialized corpus
+  // exceeds the inline budget. The opt-in filter alone would miss the
+  // dominant case. Manifest presence is also load-bearing for drift-after-
+  // shrink and progressive=false-with-leftover-manifest cases.
+  // Bundles with no knowledge sources are unconditionally skipped (nothing
+  // to audit). Tests inject `opts.knowledgeCompile` with their own bundle
+  // list + tmpdir agent-smith home.
   const knowledgeCompileAgentSmithHome =
     opts.knowledgeCompile?.agentSmithHome ?? defaultAgentSmithHome();
   const knowledgeCompileBundles = opts.knowledgeCompile
     ? await opts.knowledgeCompile.loadAllBundles()
     : bundleResult.bundles;
-  const knowledgeCompileCandidates = knowledgeCompileBundles
-    .filter((b) => b.config.knowledge?.compile?.progressive === true)
-    .map((b) => {
-      const compileBlock = b.config.knowledge?.compile;
-      return {
-        name: b.config.name,
-        knowledgeDir: join(knowledgeCompileAgentSmithHome, "knowledge", b.config.name),
-        compileOptions: {
-          progressive: true,
-          tocMaxLines: compileBlock?.tocMaxLines ?? 150,
-          emitAgentsMd: compileBlock?.emitAgentsMd ?? false,
-        },
-      };
-    });
+  const knowledgeCompileCandidates = (
+    await Promise.all(
+      knowledgeCompileBundles
+        .filter((b) => (b.config.knowledge?.sources?.length ?? 0) > 0)
+        .map(async (b) => {
+          const compileBlock = b.config.knowledge?.compile;
+          const explicitOptIn = compileBlock?.progressive === true;
+          const knowledgeDir = join(
+            knowledgeCompileAgentSmithHome,
+            "knowledge",
+            b.config.name,
+          );
+          const hasManifest = await fileExists(compileManifestPath(knowledgeDir));
+          if (!explicitOptIn && !hasManifest) return null;
+          return {
+            name: b.config.name,
+            knowledgeDir,
+            compileOptions: {
+              progressive: true,
+              tocMaxLines: compileBlock?.tocMaxLines ?? 150,
+              emitAgentsMd: compileBlock?.emitAgentsMd ?? false,
+            },
+          };
+        }),
+    )
+  ).filter((c): c is NonNullable<typeof c> => c !== null);
 
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,

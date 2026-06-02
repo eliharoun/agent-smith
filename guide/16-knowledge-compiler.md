@@ -258,14 +258,14 @@ The general rule: if a source is *consulted on every turn anyway*, inline beats 
 
 ## Doctor: drift detection and auto-repair
 
-`smith doctor` includes a `knowledge-compile` section (v2) that audits every registered agent with `knowledge.compile.progressive: true` and surfaces two finding kinds:
+`smith doctor` includes a `knowledge-compile` section (v2) that audits any agent whose `compile-manifest.json` exists on disk OR whose bundle declares `compile.progressive: true`, and surfaces two finding kinds:
 
 | Finding | Meaning |
 |---|---|
-| `missing-manifest` | The bundle declares progressive compile but `<agentSmithHome>/knowledge/<agent>/compile-manifest.json` is absent — or present but unparseable / off-schema (corrupt manifests are conflated with missing because the remedy is identical). |
+| `missing-manifest` | The bundle is in scope (explicit opt-in) but `<agentSmithHome>/knowledge/<agent>/compile-manifest.json` is absent — or present but unparseable / off-schema (corrupt manifests are conflated with missing because the remedy is identical). |
 | `drift` | The persisted `contentHash` in `compile-manifest.json` does not match a fresh `compile()` over the agent's current `_manifest.json` materialized sources. Means the bundle's knowledge has changed since the last compile and the TOC stanza in the rendered prompt is stale. |
 
-> **Known limitation.** Drift detection currently runs only for bundles that explicitly set `compile.progressive: true`. Bundles that auto-compile under the v2.1 smart default (large corpora without an explicit override) are not yet drift-checked here. Extending the section to cover auto-compiled bundles is tracked as follow-up.
+Manifest-presence detection makes the section correct under v2.1's smart-default compile. Bundles that auto-compiled at install (because the materialized corpus exceeded the inline budget) are audited via their on-disk manifest even though they never set `progressive: true`. The same path catches drift-after-shrink (a bundle that auto-compiled at install but has since had sources trimmed below the threshold — the manifest is now stale) and stale-manifest-after-opt-out (a bundle that flipped `progressive: false` after an earlier compile left a manifest behind). Bundles with no knowledge sources and no `compile-manifest.json` on disk are silently skipped — no false positives against v1-inline bundles.
 
 Both findings are informational only — the section never affects doctor's exit code. Repair runs through `--fix-knowledge-compile`:
 
