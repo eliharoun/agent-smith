@@ -13,6 +13,16 @@ import { join } from "node:path";
 import { install } from "../../src/cli/commands/install";
 import { createBareRemote } from "../fixtures/git-remote-helper";
 
+// Per-test timeout (ms). Bun's default is 5000ms, which is too tight for
+// the heavy git work these tests do: each `seedBundle()` issues 5 commits
+// (= 5 × {add, commit, push, rev-parse} ≈ 20 git child-process spawns)
+// and most cases seed two bundles plus run the install/clone path on
+// top. Under parallel test-worker load on macOS, that easily blows past
+// 5s — verified empirically by stress-running this file with 5 parallel
+// `bun test` invocations: 5/5 hit 5000ms timeouts on different cases.
+// 30s gives ~6× headroom at the 95th percentile observed wall time.
+const HEAVY_GIT_TIMEOUT_MS = 30_000;
+
 let home: string;
 let prevXdg: string | undefined;
 let prevXdgState: string | undefined;
@@ -87,7 +97,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("errors with disambiguation hint when --from URL has >1 bundle and no name", async () => {
     const remote = await createBareRemote();
@@ -112,7 +122,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("installs the named bundle when --from URL has multiple and name is given", async () => {
     const remote = await createBareRemote();
@@ -133,7 +143,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("--all installs every agent from a multi-agent remote (to declared targets)", async () => {
     const remote = await createBareRemote();
@@ -159,7 +169,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("--json prints agent discovery with declared targets and does not install", async () => {
     const remote = await createBareRemote();
@@ -185,7 +195,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("TTY picker selects a subset of agents", async () => {
     const remote = await createBareRemote();
@@ -213,7 +223,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("all-skipped returns exit 1 with message", async () => {
     const remote = await createBareRemote();
@@ -247,7 +257,7 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 
   test("agent skipped with a warning when no selected platform matches its declared targets", async () => {
     const remote = await createBareRemote();
@@ -281,5 +291,5 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     } finally {
       await remote.cleanup();
     }
-  });
+  }, HEAVY_GIT_TIMEOUT_MS);
 });
