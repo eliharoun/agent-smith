@@ -7,6 +7,7 @@ import { useRefreshManifest } from "@/hooks/useRefreshManifest";
 import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { FieldHelp } from "@/ui/FieldHelp";
 
 const ALL_PLATFORMS: Platform[] = ["opencode", "claude-code", "codex", "kiro"];
 const MODEL_TIERS: ModelTier[] = ["high", "balanced", "fast", "inherit"];
@@ -81,8 +82,8 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
 
   return (
     <Card>
-      <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-2">
-        // targets
+      <div className="mb-2">
+        <FieldHelp fieldId="agent.targets">targets</FieldHelp>
       </div>
       <div className="space-y-1 mb-4">
         {ALL_PLATFORMS.map((p) => (
@@ -101,10 +102,13 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
         ))}
       </div>
 
-      <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-2">
-        // model tier
+      <div className="mb-2">
+        <FieldHelp fieldId="agent.modelTier" htmlFor="agent-model-tier">
+          model tier
+        </FieldHelp>
       </div>
       <select
+        id="agent-model-tier"
         aria-label="model tier"
         className="bg-matrix-bg border border-matrix-line text-matrix-body font-mono text-sm p-1 mb-1 w-full max-w-sm"
         value={tier}
@@ -247,8 +251,8 @@ function RefreshHooksSection({ agent, targets }: { agent: string; targets: Platf
   }, [manifest.data, desired, targets]);
 
   const header = (
-    <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-2">
-      // refresh hooks
+    <div className="mb-2">
+      <FieldHelp fieldId="agent.refreshHooksPerPlatform">refresh hooks</FieldHelp>
     </div>
   );
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/ui/Button";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { Toggle } from "@/ui/Toggle";
 
 type Platform = "opencode" | "claude-code" | "codex" | "kiro";
@@ -33,7 +34,12 @@ export function RefreshConsent({
         <ul className="space-y-2 mb-4">
           {platforms.map((p) => (
             <li key={p} className="flex items-center justify-between">
-              <span className="font-mono text-sm text-matrix-body">{p}</span>
+              <span className="font-mono text-sm text-matrix-body inline-flex items-center gap-1">
+                {p}
+                <FieldHelp fieldId="refreshConsent.platform" iconOnly>
+                  {`refresh consent for ${p}`}
+                </FieldHelp>
+              </span>
               <Toggle
                 checked={state[p] === "yes"}
                 onChange={(v) => setState((s) => ({ ...s, [p]: v ? "yes" : "no" }))}

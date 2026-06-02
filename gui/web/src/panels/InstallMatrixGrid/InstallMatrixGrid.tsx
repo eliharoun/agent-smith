@@ -6,6 +6,7 @@ import { useStartJob } from "@/hooks/useStartJob";
 import { RefreshConsent } from "@/panels/RefreshConsent";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { Toggle } from "@/ui/Toggle";
 
 const PLATFORMS: Platform[] = ["opencode", "claude-code", "codex", "kiro"];
@@ -102,6 +103,9 @@ export function InstallMatrixGrid() {
             onChange={(e) => setAllowMissingCli(e.target.checked)}
           />
           Render even if the target platform CLI isn't installed
+          <FieldHelp fieldId="install.allowMissingCli" iconOnly>
+            allow missing cli
+          </FieldHelp>
         </label>
         <Button
           onClick={() => {

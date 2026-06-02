@@ -124,4 +124,14 @@ describe("AgentTargetsForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     expect(await screen.findByText(/re-install now/i)).toBeInTheDocument();
   });
+
+  // Field-help adoption smoke test (Task 31). Exhaustive per-id coverage
+  // lives in `gui/web/src/help/index.test.ts`; here we just confirm the
+  // panel actually wires the registry (so a regression that drops the
+  // <FieldHelp> import would fail this test).
+  it("renders FieldHelp icons for the targets, model-tier, and refresh-hooks labels", () => {
+    renderForm();
+    expect(screen.getByRole("button", { name: /help.*targets/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /help.*model tier/i })).toBeInTheDocument();
+  });
 });

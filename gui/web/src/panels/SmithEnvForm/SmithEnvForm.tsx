@@ -72,6 +72,7 @@ export function SmithEnvForm() {
       <div className="space-y-3">
         <FormField
           label="pull interval (ms)"
+          fieldId="daemon.pullInterval"
           hint={`ms between git pulls (default ${DEFAULT_PULL_MS}). leave blank to unset.`}
           type="text"
           inputMode="numeric"
@@ -84,6 +85,7 @@ export function SmithEnvForm() {
         />
         <FormField
           label="heartbeat interval (ms)"
+          fieldId="daemon.heartbeatInterval"
           hint={`ms between heartbeat writes (default ${DEFAULT_HEARTBEAT_MS}). leave blank to unset.`}
           type="text"
           inputMode="numeric"

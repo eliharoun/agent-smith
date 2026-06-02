@@ -7,6 +7,7 @@ import { useGrantRefreshConsent, useKnowledge } from "@/hooks/useKnowledge";
 import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { Toggle } from "@/ui/Toggle";
 import { TypedTokenModal } from "@/ui/TypedTokenModal";
 import { AddKnowledgeSourceModal } from "./AddKnowledgeSourceModal";
@@ -259,13 +260,18 @@ export function KnowledgeSources({ agent }: Props) {
           >
             compile
           </Button>
-          <Toggle
-            checked={mcpOn}
-            disabled={chainStep !== null}
-            onChange={flipMcpToggle}
-            label="mcp wiring"
-            aria-label="knowledge mcp server wiring"
-          />
+          <span className="inline-flex items-center gap-1">
+            <Toggle
+              checked={mcpOn}
+              disabled={chainStep !== null}
+              onChange={flipMcpToggle}
+              label="mcp wiring"
+              aria-label="knowledge mcp server wiring"
+            />
+            <FieldHelp fieldId="agent.mcpToggle" iconOnly>
+              mcp wiring
+            </FieldHelp>
+          </span>
           <Button variant="ghost" disabled={empty} onClick={() => setRefreshAllConfirm(true)}>
             refresh all
           </Button>

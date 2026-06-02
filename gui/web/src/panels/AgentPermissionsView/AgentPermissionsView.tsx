@@ -2,6 +2,7 @@ import type { AgentDetail } from "gui-shared";
 import { useAgent } from "@/hooks/useAgents";
 import { Card } from "@/ui/Card";
 import { Chip } from "@/ui/Chip";
+import { FieldHelp } from "@/ui/FieldHelp";
 
 type Action = "allow" | "ask" | "deny";
 
@@ -41,8 +42,8 @@ export function AgentPermissionsView({ agentName }: { agentName: string }) {
 
   return (
     <Card>
-      <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-2">
-        // permissions
+      <div className="mb-2">
+        <FieldHelp fieldId="permission.action">permissions</FieldHelp>
       </div>
       {groups.length === 0 ? (
         <p className="text-matrix-body text-sm">No explicit permissions set — defaults apply.</p>
