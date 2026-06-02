@@ -1,6 +1,6 @@
 import type { CompiledKnowledge } from "./knowledge/compile";
 import type { KnowledgeSection } from "./knowledge/types";
-import { ROUTING_REGISTRY } from "./knowledge/routing-registry";
+import { ROUTING_REGISTRY } from "./knowledge/skill-routing-registry";
 
 export interface AssemblerInput {
   identity: string;
