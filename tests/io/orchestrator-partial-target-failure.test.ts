@@ -29,13 +29,24 @@ describe("orchestrator: partial-target failure", () => {
       };
 
       // Inject a model env where:
-      //   - opencode resolver throws (mimicking model-resolution-failed)
+      //   - opencode resolver throws SmithError (mimicking
+      //     model-resolution-failed: CLI present, no providers authed)
       //   - claude-code returns a valid literal
       //   - codex/kiro authentic
       const env: ModelResolutionEnv = {
         getOpenCodeModels: async () => undefined,
         warnings: { push() {} },
-        detectAuthenticatedProviders: async () => [], // → opencode resolver will throw
+        detectAuthenticatedProviders: async () => [], // → opencode fail-loud
+        // Stub auth detector to "CLI installed" so the resolver's lazy
+        // fail-loud path throws SmithError (not PlatformUnavailableError).
+        // This test exercises the "user has OpenCode but no providers
+        // authed" branch; the cli-not-installed branch is covered in
+        // opencode-resolver.test.ts.
+        detectOpenCodeAuth: async () => ({
+          platform: "opencode",
+          cliInstalled: true,
+          status: "unauthenticated",
+        }),
         detectClaudeCodeAuth: async () => ({
           platform: "claude-code",
           cliInstalled: true,

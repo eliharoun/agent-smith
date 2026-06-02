@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolveOpenCodeModel } from "../../../src/core/model-resolution/opencode";
 import {
+  PlatformUnavailableError,
   type ModelResolutionEnv,
   makeWarningCollector,
 } from "../../../src/core/model-resolution/types";
@@ -39,6 +40,17 @@ function envWith(
       }
       return [...set];
     },
+    // Stub the auth detector to "CLI installed, status authenticated"
+    // so existing tests continue to behave exactly as before. Tests that
+    // need the cli-not-installed branch construct their own ModelResolutionEnv
+    // with an explicit detector — see the "CLI not installed" describe block
+    // below. This keeps the production default
+    // (detectOpenCodeAuth = defaultDetectOpenCodeAuth) out of every test.
+    detectOpenCodeAuth: async () => ({
+      platform: "opencode" as const,
+      cliInstalled: true,
+      status: "authenticated" as const,
+    }),
     env: {},
     collected: collector,
   };
@@ -168,5 +180,92 @@ describe("resolveOpenCodeModel", () => {
         expect(se.payload.preferences).toContain("openai");
       }
     }
+  });
+
+  // ─── CLI-not-installed (parity with kiro/claude/codex resolvers) ──
+  // These tests mirror the contract the other three resolvers already
+  // implement: when the platform CLI isn't on PATH, throw
+  // PlatformUnavailableError so the orchestrator silently drops the
+  // target — the user simply doesn't have OpenCode and we shouldn't
+  // tell them to "run opencode auth login".
+
+  test("CLI not installed -> throws PlatformUnavailableError (no auth-login advice)", async () => {
+    const collector = makeWarningCollector();
+    const env: ModelResolutionEnv = {
+      // Non-undefined live list to prove the resolver doesn't fall
+      // through to the curated-fallback path; the auth detector's
+      // verdict must take precedence.
+      getOpenCodeModels: async () => undefined,
+      detectAuthenticatedProviders: async () => [],
+      detectOpenCodeAuth: async () => ({
+        platform: "opencode",
+        cliInstalled: false,
+        status: "cli-not-installed",
+      }),
+      warnings: collector,
+      env: {},
+    };
+    await expect(
+      resolveOpenCodeModel(baseConfig({ modelTier: "high" }), env),
+    ).rejects.toBeInstanceOf(PlatformUnavailableError);
+    // No "auth login" warning should have been emitted — the user
+    // doesn't have OpenCode, telling them to authenticate would be wrong.
+    for (const w of collector.warnings) {
+      expect(w.message.toLowerCase()).not.toContain("auth login");
+    }
+  });
+
+  test("CLI not installed + allowMissingCli -> returns curated tier literal + warning", async () => {
+    const collector = makeWarningCollector();
+    const env: ModelResolutionEnv = {
+      getOpenCodeModels: async () => undefined,
+      detectAuthenticatedProviders: async () => [],
+      detectOpenCodeAuth: async () => ({
+        platform: "opencode",
+        cliInstalled: false,
+        status: "cli-not-installed",
+      }),
+      warnings: collector,
+      env: {},
+      allowMissingCli: true,
+    };
+    const result = await resolveOpenCodeModel(
+      baseConfig({ modelTier: "high" }),
+      env,
+    );
+    // Mirrors kiro/claude/codex: returns a tier-mapped curated literal
+    // when --allow-missing-cli is set (used by hermetic CI flows).
+    expect(typeof result).toBe("string");
+    expect(result).toMatch(/opus|claude/i);
+    // Warning must mention "not installed", not "auth login".
+    expect(collector.warnings.length).toBeGreaterThan(0);
+    expect(collector.warnings[0]?.message).toMatch(/not installed/i);
+    expect(collector.warnings[0]?.message.toLowerCase()).not.toContain(
+      "auth login",
+    );
+  });
+
+  test("CLI installed but unauthenticated -> existing curated-fallback path still works", async () => {
+    // This regression-pins the case where the CLI IS installed but
+    // no providers are authenticated. The existing behavior (curated
+    // fallback when getOpenCodeModels returns undefined and
+    // authenticated providers is non-empty) must continue to work.
+    const collector = makeWarningCollector();
+    const env: ModelResolutionEnv = {
+      getOpenCodeModels: async () => undefined,
+      detectAuthenticatedProviders: async () => ["github-copilot"],
+      detectOpenCodeAuth: async () => ({
+        platform: "opencode",
+        cliInstalled: true,
+        status: "authenticated",
+      }),
+      warnings: collector,
+      env: {},
+    };
+    const result = await resolveOpenCodeModel(
+      baseConfig({ modelTier: "balanced" }),
+      env,
+    );
+    expect(result).toBe("github-copilot/claude-sonnet-4.6");
   });
 });

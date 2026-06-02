@@ -29,6 +29,16 @@ function layeredEnv(opts: {
     getOpenCodeModels: async () => opts.live,
     warnings: collector,
     detectAuthenticatedProviders: async () => opts.authenticated ?? [],
+    // Stub the auth detector to "CLI installed, authenticated" so the
+    // resolver's lazy fail-loud-with-cli-detection path treats this as
+    // "user has OpenCode but no live model match" rather than
+    // "user doesn't have OpenCode at all". The latter is exercised by
+    // the dedicated cli-not-installed tests in opencode-resolver.test.ts.
+    detectOpenCodeAuth: async () => ({
+      platform: "opencode" as const,
+      cliInstalled: true,
+      status: "authenticated" as const,
+    }),
     env: opts.processEnv ?? {},
     collected: collector,
   };

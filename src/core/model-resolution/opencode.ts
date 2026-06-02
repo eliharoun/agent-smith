@@ -1,9 +1,27 @@
 // src/core/model-resolution/opencode.ts
+import { detectOpenCodeAuth as defaultDetectOpenCodeAuth } from "../../io/auth/opencode";
 import type { CanonicalConfig, CanonicalModelTier } from "../types";
 import { SmithError } from "../smith-error";
 import { PROVIDER_TABLE_V1_0_0_RC_5, sortByOpenCodePrecedence } from "./provider-table";
-import type { ModelResolutionEnv } from "./types";
+import { PlatformUnavailableError, type ModelResolutionEnv } from "./types";
 import { pickHighestVersion } from "./version-sort";
+
+/**
+ * Curated tier → canonical-id mapping used when the OpenCode CLI is absent
+ * AND `--allow-missing-cli` is set. Matches the highest-precedence
+ * github-copilot entry from PROVIDER_TABLE_V1_0_0_RC_5 — OpenCode's
+ * default-best provider — so headless / hermetic CI flows render a
+ * predictable model literal even without the CLI installed.
+ *
+ * This is the same shape as `LEGACY_TIER_NAMES` (claude-code) and
+ * `TIER_TO_CODEX` (codex): one entry per non-`inherit` tier, used only on
+ * the `cli-not-installed + allowMissingCli` branch.
+ */
+const TIER_TO_OPENCODE: Record<Exclude<CanonicalModelTier, "inherit">, string> = {
+  high: "github-copilot/claude-opus-4.7",
+  balanced: "github-copilot/claude-sonnet-4.6",
+  fast: "github-copilot/claude-haiku-4.5-thinking-fast",
+};
 
 /**
  * Resolve the OpenCode `model` literal at install time.
@@ -88,7 +106,35 @@ export async function resolveOpenCodeModel(
     }
   }
 
-  // Step 9: Fail loudly.
+  // Step 9: Resolution failed. Before fail-loud, distinguish "user
+  // doesn't have OpenCode" from "user has OpenCode but no providers
+  // authenticated". The existing fail-loud message tells the user to
+  // "run opencode auth login" — wrong advice if they don't have
+  // OpenCode at all. Mirrors the contract Kiro/Claude/Codex resolvers
+  // already implement, but the auth check is lazy: only consulted in
+  // the failure path so happy-path tests don't need to stub it.
+  //
+  // Note this is the only path that exercises detectOpenCodeAuth; tests
+  // that drive the live-list / env-override / curated-fallback paths
+  // never reach here, so they don't need the seam either.
+  const detect = env.detectOpenCodeAuth ?? (() => defaultDetectOpenCodeAuth());
+  const auth = await detect();
+  if (auth.status === "cli-not-installed") {
+    if (env.allowMissingCli) {
+      env.warnings.push({
+        target: "opencode",
+        message:
+          "opencode CLI not installed; rendering tier '" + tier + "' as '" +
+          TIER_TO_OPENCODE[tier] + "' (install the CLI or set SMITH_TIER_" +
+          tier.toUpperCase() + " to override).",
+      });
+      return TIER_TO_OPENCODE[tier];
+    }
+    throw new PlatformUnavailableError("opencode", "opencode CLI is not installed");
+  }
+
+  // CLI is installed; the existing fail-loud message ("run opencode
+  // auth login") is accurate.
   const authenticated = env.detectAuthenticatedProviders
     ? await env.detectAuthenticatedProviders()
     : [];

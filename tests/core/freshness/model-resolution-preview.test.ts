@@ -175,6 +175,22 @@ describe("model-resolution provider preview", () => {
           fast: "anthropic/claude-haiku-4-5-20260101",
         },
         detectAuthenticatedProviders: async () => [],
+        // Pin the auth matrix so the doctor's resolver-preview path
+        // sees opencode as "CLI installed, unauthenticated" instead of
+        // probing the real test-host PATH (which usually doesn't have
+        // opencode and would correctly throw PlatformUnavailableError
+        // — masking the SmithError fail-loud path this test asserts).
+        platformAuth: {
+          opencode: {
+            platform: "opencode",
+            cliInstalled: true,
+            status: "unauthenticated",
+          },
+          "claude-code": { platform: "claude-code", cliInstalled: false, status: "cli-not-installed" },
+          codex: { platform: "codex", cliInstalled: false, status: "cli-not-installed" },
+          kiro: { platform: "kiro", cliInstalled: false, status: "cli-not-installed" },
+          "agents-md": { platform: "agents-md", cliInstalled: false, status: "cli-not-installed" },
+        },
       },
     });
 

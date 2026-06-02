@@ -51,6 +51,7 @@ export interface ModelResolutionEnv {
   detectClaudeCodeAuth?: () => Promise<PlatformAuth>;
   detectCodexAuth?: () => Promise<PlatformAuth>;
   detectKiroAuth?: () => Promise<PlatformAuth>;
+  detectOpenCodeAuth?: () => Promise<PlatformAuth>;
   /**
    * When true, a resolver whose platform CLI is absent returns the static
    * tier literal + a warning instead of throwing PlatformUnavailableError.

@@ -1073,6 +1073,10 @@ async function buildModelResolutionReport(
           getOpenCodeModels: cfg.getOpenCodeModels,
           warnings: noopWarnings,
           detectAuthenticatedProviders: detectAuth,
+          // Pass through the platform auth matrix so the resolver's
+          // lazy fail-loud-with-cli-detection path uses the same
+          // verdict as the rest of the doctor preview.
+          detectOpenCodeAuth: async () => platformAuthMatrix.opencode,
         },
       );
       if (r) {
@@ -1158,6 +1162,11 @@ async function resolvePerPlatformTier(
         getOpenCodeModels: cfg.getOpenCodeModels,
         warnings: noop,
         detectAuthenticatedProviders: cfg.detectAuthenticatedProviders ?? defaultDetectAuthProviders,
+        // Preview is a doctor-side surface; we already know the
+        // matrix's opencode auth verdict. Pass it through so the
+        // resolver's lazy fail-loud-with-cli-detection path
+        // (added 2026-06) gets the same answer as a live resolution.
+        detectOpenCodeAuth: async () => matrix.opencode,
       }),
     ),
     safeResolve(() =>
