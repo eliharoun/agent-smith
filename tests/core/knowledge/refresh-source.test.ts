@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +10,12 @@ import type {
   KnowledgeManifest,
   KnowledgeSource,
   NpmSource,
+  UrlSource,
 } from "../../../src/core/knowledge/types";
 import { knowledgeDirFor } from "../../../src/io/knowledge-paths";
+import { McpClientPool } from "../../../src/io/mcp-client-pool";
+
+const ECHO_FIXTURE = join(import.meta.dir, "..", "..", "_fixtures", "echo-mcp-server.ts");
 
 // ---------- shared helpers ----------
 
@@ -597,5 +601,96 @@ describe("refreshSource", () => {
 
     // Negative: the old buggy path was NOT written.
     await expect(stat(join(home, "agents", "agent-a", "knowledge"))).rejects.toThrow();
+  });
+});
+
+describe("refreshSource: via routing", () => {
+  let pool: McpClientPool | null = null;
+
+  afterEach(async () => {
+    if (pool) {
+      await pool.shutdown();
+      pool = null;
+    }
+  });
+
+  test("threads mcpPool through to acquireSource", async () => {
+    const home = await makeHome();
+    const bundleDir = await makeBundle();
+    const cacheRoot = await makeCache();
+    pool = new McpClientPool();
+    const source: UrlSource = {
+      id: "via-src",
+      type: "url",
+      delivery: "file",
+      url: "https://example.com/x",
+      via: { server: "echo", tool: "Fetch" },
+    };
+
+    const result = await refreshSource({
+      agentSmithHome: home,
+      agent: "agent-a",
+      source,
+      bundleDir,
+      cacheRoot,
+      mcpPool: pool,
+      spawnOptsFor: () => ({ command: "bun", args: [ECHO_FIXTURE] }),
+    });
+
+    expect(result.kind).toBe("refreshed");
+    if (result.kind !== "refreshed") return;
+
+    // The echo fixture echoes the args back as JSON; the URL must appear in
+    // the materialized artifact text under sources/<id>/.
+    const sourcesDir = join(home, "knowledge", "agent-a", "sources", "via-src");
+    const entries = await readdir(sourcesDir);
+    expect(entries.length).toBeGreaterThan(0);
+    const firstFile = entries[0];
+    if (!firstFile) return;
+    const body = await readFile(join(sourcesDir, firstFile), "utf8");
+    expect(body).toContain("example.com");
+  }, 30_000);
+
+  test("throws internal-error when via is set but mcpPool missing", async () => {
+    const home = await makeHome();
+    const bundleDir = await makeBundle();
+    const cacheRoot = await makeCache();
+    const source: UrlSource = {
+      id: "via-no-pool",
+      type: "url",
+      delivery: "file",
+      url: "https://example.com/x",
+      via: { server: "echo", tool: "Fetch" },
+    };
+
+    let caught: unknown;
+    try {
+      await refreshSource({
+        agentSmithHome: home,
+        agent: "agent-zed",
+        source,
+        bundleDir,
+        cacheRoot,
+        // intentionally no mcpPool / spawnOptsFor
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    // refreshSource wraps acquire failures via wrapWithPhase. The phase
+    // headline must mention the source/agent context; the original
+    // SmithError surfaces via .cause and its payload.code is
+    // "internal-error".
+    const outer = caught as Error;
+    expect(outer.message).toContain("via-no-pool");
+    expect(outer.message).toContain("agent-zed");
+    // Either the wrapped headline mentions internal-error/mcpPool, or the
+    // cause carries the SmithError payload — accept either to keep the
+    // assertion robust against minor wording changes upstream.
+    const cause = outer.cause as { payload?: { code?: string } } | undefined;
+    const causePayloadCode = cause?.payload?.code;
+    const combined = `${outer.message} ${causePayloadCode ?? ""}`;
+    expect(combined).toMatch(/internal-error|mcpPool/i);
   });
 });

@@ -48,6 +48,12 @@ export interface RefreshSourceOpts {
   now?: () => number;
   errLog?: (msg: string) => void;
   cacheRoot?: string;
+  /** MCP client pool for via-routed URL sources. Required when any source
+   *  declares `via:` — `acquireSource` throws otherwise. Sources without
+   *  via: ignore this. */
+  mcpPool?: import("../../io/mcp-client-pool").McpClientPool;
+  /** Resolves a server name to spawn options. Paired with `mcpPool`. */
+  spawnOptsFor?: (server: string) => import("../../io/mcp-client").McpClientOpts;
 }
 
 export type RefreshSourceResult =
@@ -261,6 +267,8 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
       bundleDir: opts.bundleDir,
       cacheDir,
       ...(opts.gitSpawner ? { gitSpawner: opts.gitSpawner } : {}),
+      ...(opts.mcpPool ? { mcpPool: opts.mcpPool } : {}),
+      ...(opts.spawnOptsFor ? { spawnOptsFor: opts.spawnOptsFor } : {}),
     });
     artifacts = acquired.artifacts;
   } catch (err) {
