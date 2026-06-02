@@ -33,6 +33,35 @@ const ConfluencePageRef = z.union([
   z.object({ id: z.number().int().positive() }),
 ]);
 
+// v1.2 routing: when set, smith calls <server>.<tool>(args) instead of HTTP
+// at acquire/refresh time. Travels with the bundle so recipients route the
+// same way. Credential-shaped argument keys are rejected at schema level —
+// authors must not bake auth into shared bundles.
+const CREDENTIAL_KEY_DENYLIST = /^(authorization|token|api[_-]?key|cookie|secret|password|bearer)$/i;
+
+const ViaSpec = z
+  .object({
+    server: z.string().min(1, "via.server must be non-empty"),
+    tool: z.string().min(1, "via.tool must be non-empty"),
+    args: z.record(z.string(), z.unknown()).optional()
+      .superRefine((args, ctx) => {
+        if (!args) return;
+        for (const key of Object.keys(args)) {
+          if (CREDENTIAL_KEY_DENYLIST.test(key)) {
+            ctx.addIssue({
+              code: "custom",
+              message: `via.args key '${key}' looks credential-shaped — credentials must not travel with shared bundles. Use the MCP server's own auth instead.`,
+              path: [key],
+            });
+          }
+        }
+      }),
+    /** Opt-out of the read-shaped tool-name guard. Authors must opt in
+     *  explicitly to call write/destructive tools via routing. */
+    allowWriteTool: z.boolean().optional(),
+  })
+  .strict();
+
 // v2.0 compile-stage retrieval spec. `external-mcp` requires `mcpUrl`.
 const RetrievalMode = z.enum(["off", "bm25", "external-mcp"]);
 const RetrievalSpec = z
@@ -65,6 +94,11 @@ const BaseFields = {
   summary: z.string().min(1).max(280).optional(),
   toc: z.boolean().optional(),
   retrieval: RetrievalSpec.optional(),
+  // v1.2 routing
+  via: ViaSpec.optional(),
+  // v1.2 forward-compat: Phase 2 will activate this. Phase 1 accepts and
+  // no-ops to keep bundles authored against the design doc parseable.
+  lazy: z.union([z.boolean(), z.literal("auto")]).optional(),
 } as const;
 
 // Per-variant strict schemas. `.strict()` rejects unknown keys so cross-type

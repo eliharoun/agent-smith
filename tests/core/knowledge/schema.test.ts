@@ -132,6 +132,82 @@ describe("KnowledgeSourceSchema", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  describe("via routing field (v1.2)", () => {
+    it("accepts via with server + tool", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        via: { server: "internal-mcp", tool: "fetch_page" },
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("accepts via with optional args object", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        via: { server: "x", tool: "y", args: { url: "https://example.com" } },
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("rejects via with empty server", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        via: { server: "", tool: "y" },
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects via with unknown extra keys (strict mode)", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        via: { server: "x", tool: "y", extra: 1 },
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects via.args containing credential-shaped keys", () => {
+      for (const key of ["authorization", "Authorization", "token", "API_KEY", "cookie", "secret", "password", "bearer"]) {
+        const r = KnowledgeSourceSchema.safeParse({
+          type: "url", id: "x", delivery: "file",
+          url: "https://example.com",
+          via: { server: "x", tool: "y", args: { [key]: "..." } },
+        });
+        expect(r.success).toBe(false);
+      }
+    });
+
+    it("accepts allowWriteTool flag on via", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        via: { server: "x", tool: "create_thing", allowWriteTool: true },
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("accepts lazy field (Phase 2 forward-compat — no-op in Phase 1)", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        lazy: true,
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("accepts lazy: 'auto'", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        type: "url", id: "x", delivery: "file",
+        url: "https://example.com",
+        lazy: "auto",
+      });
+      expect(r.success).toBe(true);
+    });
+  });
 });
 
 describe("KnowledgeBlockSchema", () => {
