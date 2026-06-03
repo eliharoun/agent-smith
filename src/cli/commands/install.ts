@@ -7,7 +7,7 @@ import {
   loadRouteCache as defaultLoadRouteCache,
   recordRoute as recordCacheRoute,
   type RouteCache,
-  saveRouteCache,
+  saveRouteCache as defaultSaveRouteCache,
 } from "../../core/knowledge/route-cache";
 import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
 import { SmithError } from "../../core/smith-error";
@@ -207,6 +207,13 @@ export interface InstallCliOptions {
    * `~/.config/agent-smith/url-routing.json`.
    */
   loadRouteCache?: () => Promise<RouteCache>;
+  /**
+   * v1.4.2 DI: persist the per-user routing cache. Default writes to
+   * `stateHome()`. Tests inject a mock writer to assert the cache passed
+   * in without mutating `XDG_CONFIG_HOME` or touching the user's real
+   * `~/.config/agent-smith/url-routing.json`.
+   */
+  saveRouteCache?: (cache: RouteCache) => Promise<void>;
 }
 
 export interface InstallBareHelpfulErrorOptions {
@@ -365,6 +372,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.agentSmithHome ? { agentSmithHome: o.agentSmithHome } : {}),
         ...(o.codexHome ? { codexHome: o.codexHome } : {}),
         ...(o.opencodeConfigHome ? { opencodeConfigHome: o.opencodeConfigHome } : {}),
+        ...(o.forceUnlock ? { forceUnlock: true } : {}),
       });
       if (code !== 0) failed++;
       else installed++;
@@ -385,6 +393,29 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     return 2;
   }
   const name = o.name;
+
+  // --force-unlock: drop a stale per-agent install lock before any acquire
+  // attempt downstream (orchestrator's acquireInstallLock). Recovery path
+  // for runs killed mid-flight (Ctrl-C, parent process died) that left a
+  // 0-byte `.install.lock` behind. The 60-min staleness threshold otherwise
+  // blocks every retry until it expires. The lock path is resolved from the
+  // same `agentSmithHome` the orchestrator's lock acquire uses, so the
+  // remove targets the same file the orchestrator would re-create.
+  if (o.forceUnlock) {
+    const home = o.agentSmithHome ?? defaultAgentSmithHome();
+    const lockPath = installLockPath(home, name);
+    try {
+      const st = await stat(lockPath);
+      printErr(
+        `${pc.yellow("warn")} forcing release of install lock at ${lockPath} (held since ${st.mtime.toISOString()})`,
+      );
+      await rm(lockPath, { force: true });
+    } catch (err) {
+      // ENOENT = no lock to release; silent. Anything else (EACCES, EROFS)
+      // is surfaced because the user explicitly asked us to act on the lock.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
 
   const reg = await loadReg(canonicalRegistryPath());
   const loadResult = await loadBundles(reg);
@@ -514,12 +545,17 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // subsequent installs skip the prompt. Updates the in-memory cache view
   // and re-saves on every record. Race with concurrent installs is
   // benign — last-writer-wins with idempotent recordCacheRoute upserts.
+  // `persistRoute` honors the DI seam so tests can assert on the cache
+  // passed in without mutating $XDG_CONFIG_HOME or hitting disk.
+  const persistRoute =
+    o.saveRouteCache ??
+    ((cache: RouteCache) => defaultSaveRouteCache({ stateHome: stateHome() }, cache));
   const recordRoute = async (r: { url: string; server: string; tool: string }) => {
     mutableRouteCache = recordCacheRoute(mutableRouteCache, {
       ...r,
       now: new Date().toISOString(),
     });
-    await saveRouteCache({ stateHome: stateHome() }, mutableRouteCache);
+    await persistRoute(mutableRouteCache);
   };
 
   try {

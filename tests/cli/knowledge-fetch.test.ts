@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { InstallCliOptions } from "../../src/cli/commands/install";
 import { type KnowledgeFetchDeps, knowledgeFetch } from "../../src/cli/commands/knowledge/fetch";
 import { urlCacheKey } from "../../src/core/knowledge/acquire";
+import type { RouteCache } from "../../src/core/knowledge/route-cache";
 import { SmithError } from "../../src/core/smith-error";
 import { cacheDirFor } from "../../src/io/knowledge-paths";
 
@@ -859,60 +860,54 @@ describe("knowledgeFetch", () => {
     const sources = [
       { id: "src-rec", type: "url", delivery: "file", url: "https://example.com/x" },
     ];
-    const xdg = process.env.XDG_CONFIG_HOME;
-    process.env.XDG_CONFIG_HOME = dir;
-    try {
-      let captured:
-        | ((r: { url: string; server: string; tool: string }) => Promise<void>)
-        | undefined;
-      const refreshSourceFn = mock(async (opts: unknown) => {
-        captured = (opts as { recordRoute?: typeof captured }).recordRoute;
-        return {
-          kind: "refreshed" as const,
-          sourceId: "src-rec",
-          bytes: 1,
-          entries: 1,
-          tokens: 0,
-          durationMs: 1,
-        };
-      });
-      const rerenderFn = mock(async () => ({ ok: true as const }));
-      const installFn = mock(async () => 0);
+    let captured:
+      | ((r: { url: string; server: string; tool: string }) => Promise<void>)
+      | undefined;
+    const refreshSourceFn = mock(async (opts: unknown) => {
+      captured = (opts as { recordRoute?: typeof captured }).recordRoute;
+      return {
+        kind: "refreshed" as const,
+        sourceId: "src-rec",
+        bytes: 1,
+        entries: 1,
+        tokens: 0,
+        durationMs: 1,
+      };
+    });
+    const rerenderFn = mock(async () => ({ ok: true as const }));
+    const installFn = mock(async () => 0);
+    const saved: RouteCache[] = [];
 
-      const code = await knowledgeFetch("agent-rec", "src-rec", {
-        install: installFn,
-        loadRegistry: stubLoadRegistry(),
-        loadAllBundles: stubLoadBundles([fakeBundle("agent-rec", sources)]),
-        refreshSource: refreshSourceFn as unknown as NonNullable<
-          KnowledgeFetchDeps["refreshSource"]
-        >,
-        rerenderPrompts: rerenderFn as unknown as NonNullable<
-          KnowledgeFetchDeps["rerenderPrompts"]
-        >,
-        readAvailableMcpServers: async () => ({}),
-        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
-        knowledgePaths: { agentSmithHome: dir },
-      });
-      expect(code).toBe(0);
-      expect(captured).toBeDefined();
-      await captured!({
-        url: "https://wiki.test/team/foo",
-        server: "atlassian",
-        tool: "fetch",
-      });
+    const code = await knowledgeFetch("agent-rec", "src-rec", {
+      install: installFn,
+      loadRegistry: stubLoadRegistry(),
+      loadAllBundles: stubLoadBundles([fakeBundle("agent-rec", sources)]),
+      refreshSource: refreshSourceFn as unknown as NonNullable<
+        KnowledgeFetchDeps["refreshSource"]
+      >,
+      rerenderPrompts: rerenderFn as unknown as NonNullable<
+        KnowledgeFetchDeps["rerenderPrompts"]
+      >,
+      readAvailableMcpServers: async () => ({}),
+      loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+      saveRouteCache: async (c) => {
+        saved.push(c);
+      },
+      knowledgePaths: { agentSmithHome: dir },
+    });
+    expect(code).toBe(0);
+    expect(captured).toBeDefined();
+    await captured!({
+      url: "https://wiki.test/team/foo",
+      server: "atlassian",
+      tool: "fetch",
+    });
 
-      const { loadRouteCache } = await import(
-        "../../src/core/knowledge/route-cache"
-      );
-      const reloaded = await loadRouteCache({
-        stateHome: join(dir, "agent-smith"),
-      });
-      expect(reloaded.entries).toHaveLength(1);
-      expect(reloaded.entries[0]?.urlPattern).toBe("https://wiki.test/**");
-      expect(reloaded.entries[0]?.server).toBe("atlassian");
-    } finally {
-      if (xdg === undefined) delete process.env.XDG_CONFIG_HOME;
-      else process.env.XDG_CONFIG_HOME = xdg;
-    }
+    expect(saved).toHaveLength(1);
+    const persisted = saved[0]!;
+    expect(persisted.entries).toHaveLength(1);
+    expect(persisted.entries[0]?.urlPattern).toBe("https://wiki.test/**");
+    expect(persisted.entries[0]?.server).toBe("atlassian");
+    expect(persisted.entries[0]?.tool).toBe("fetch");
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { install } from "../../src/cli/commands/install";
+import type { RouteCache } from "../../src/core/knowledge/route-cache";
 import { SmithError } from "../../src/core/smith-error";
 import type { AgentBundle, InstallPaths } from "../../src/core/types";
 import type { Registry } from "../../src/io/registry";
@@ -571,63 +572,46 @@ describe("cli/install", () => {
     test("recordRoute callback persists confirmed routes via saveRouteCache", async () => {
       // Drive the recordRoute callback directly to assert persistence: the
       // probe path is exercised in core/knowledge/probe-route tests; here
-      // we only verify the CLI's persistence wiring writes to the same
-      // stateHome we'd load from.
-      const tmp = await import("node:fs/promises").then((fs) =>
-        fs.mkdtemp(
-          require("node:path").join(require("node:os").tmpdir(), "smith-route-cache-"),
-        ),
-      );
-      try {
-        const xdg = process.env.XDG_CONFIG_HOME;
-        process.env.XDG_CONFIG_HOME = tmp;
-        try {
-          let captured:
-            | ((r: { url: string; server: string; tool: string }) => Promise<void>)
-            | undefined;
-          await install({
-            name: "foo",
-            paths,
-            loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
-            loadAllBundles: async () => ({
-              bundles: [fakeBundle("foo")],
-              failures: [],
-            }),
-            buildAndInstall: async (_b, _p, options) => {
-              captured = options?.recordRoute;
-              return emptyResult;
-            },
-            readAvailableMcpServers: async () => ({}),
-            loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
-            print: () => {},
-            printErr: () => {},
-          });
-          expect(captured).toBeDefined();
-          await captured!({
-            url: "https://wiki.test/team/foo",
-            server: "atlassian",
-            tool: "fetch",
-          });
+      // we only verify the CLI's persistence wiring forwards the merged
+      // cache to the injected writer. Pure mock — no filesystem, no env
+      // mutation.
+      let captured:
+        | ((r: { url: string; server: string; tool: string }) => Promise<void>)
+        | undefined;
+      const saved: RouteCache[] = [];
+      await install({
+        name: "foo",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("foo")],
+          failures: [],
+        }),
+        buildAndInstall: async (_b, _p, options) => {
+          captured = options?.recordRoute;
+          return emptyResult;
+        },
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+        saveRouteCache: async (c) => {
+          saved.push(c);
+        },
+        print: () => {},
+        printErr: () => {},
+      });
+      expect(captured).toBeDefined();
+      await captured!({
+        url: "https://wiki.test/team/foo",
+        server: "atlassian",
+        tool: "fetch",
+      });
 
-          const { loadRouteCache } = await import(
-            "../../src/core/knowledge/route-cache"
-          );
-          const reloaded = await loadRouteCache({
-            stateHome: require("node:path").join(tmp, "agent-smith"),
-          });
-          expect(reloaded.entries).toHaveLength(1);
-          expect(reloaded.entries[0]?.urlPattern).toBe("https://wiki.test/**");
-          expect(reloaded.entries[0]?.server).toBe("atlassian");
-          expect(reloaded.entries[0]?.tool).toBe("fetch");
-        } finally {
-          if (xdg === undefined) delete process.env.XDG_CONFIG_HOME;
-          else process.env.XDG_CONFIG_HOME = xdg;
-        }
-      } finally {
-        await import("node:fs/promises").then((fs) =>
-          fs.rm(tmp, { recursive: true, force: true }),
-        );
-      }
+      expect(saved).toHaveLength(1);
+      const persisted = saved[0]!;
+      expect(persisted.entries).toHaveLength(1);
+      expect(persisted.entries[0]?.urlPattern).toBe("https://wiki.test/**");
+      expect(persisted.entries[0]?.server).toBe("atlassian");
+      expect(persisted.entries[0]?.tool).toBe("fetch");
     });
   });
 });

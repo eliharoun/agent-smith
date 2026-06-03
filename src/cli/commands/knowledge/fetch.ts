@@ -22,7 +22,7 @@ import {
   loadRouteCache as defaultLoadRouteCache,
   recordRoute as recordCacheRoute,
   type RouteCache,
-  saveRouteCache,
+  saveRouteCache as defaultSaveRouteCache,
 } from "../../../core/knowledge/route-cache";
 import { extractMetaClaims, type MetaClaim } from "../../../core/knowledge/route-meta";
 import { SmithError } from "../../../core/smith-error";
@@ -64,6 +64,11 @@ export interface KnowledgeFetchDeps {
    *  inject a fake to avoid touching the real
    *  `~/.config/agent-smith/url-routing.json`. */
   loadRouteCache?: () => Promise<RouteCache>;
+  /** v1.4.2 DI: persist the per-user routing cache. Default writes to
+   *  `stateHome()`. Tests inject a mock writer to assert the cache passed
+   *  in without mutating `XDG_CONFIG_HOME` or touching the user's real
+   *  `~/.config/agent-smith/url-routing.json`. */
+  saveRouteCache?: (cache: RouteCache) => Promise<void>;
   /** TTY detector DI seam (defaults to `process.stdin.isTTY`). Tests pass
    *  `() => false` to assert the non-interactive path skips probing. */
   isTTY?: () => boolean;
@@ -239,12 +244,17 @@ export async function knowledgeFetch(
           })
       : undefined;
 
+    // `persistRoute` honors the DI seam so tests can assert on the cache
+    // passed in without mutating $XDG_CONFIG_HOME or hitting disk.
+    const persistRoute =
+      deps.saveRouteCache ??
+      ((cache: RouteCache) => defaultSaveRouteCache({ stateHome: stateHome() }, cache));
     const recordRoute = async (r: { url: string; server: string; tool: string }) => {
       mutableRouteCache = recordCacheRoute(mutableRouteCache, {
         ...r,
         now: new Date().toISOString(),
       });
-      await saveRouteCache({ stateHome: stateHome() }, mutableRouteCache);
+      await persistRoute(mutableRouteCache);
     };
 
     const cacheDir = cacheDirFor(agent, knowledgePaths);
