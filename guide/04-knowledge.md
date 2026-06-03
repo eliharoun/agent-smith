@@ -512,9 +512,98 @@ suggestion still prints but the source is saved without `via`; opt in
 by hand-editing `agent.config.json`.
 
 For URLs the registry doesn't recognise, set `via` directly on the
-source — there is no global default. Run `smith doctor` (`mcp-deps`
-section) after install to see which servers each bundle needs and
-which the platform actually has.
+source — or skip `via` entirely and let the three-layer resolver pick
+the route at install time. See
+[How smith picks a route](#how-smith-picks-a-route) for the full
+resolution order, including the probe-on-failure prompt smith uses
+when direct HTTP fails. Run `smith doctor` (`mcp-deps` section) after
+install to see which servers each bundle needs and which the platform
+actually has; the `url-routing` section in the same report shows the
+resolved routing table grouped by layer.
+
+---
+
+## How smith picks a route
+
+When a URL knowledge source has no explicit `via:` field, smith
+resolves the fetch through three layers in order. Each layer is
+independent — any one of them can route the fetch, and the resolver
+falls through to the next when none of the entries in a layer match.
+If all three layers come up empty, smith fetches the URL directly
+over HTTP, and on a hard failure, offers to probe the bundle's MCP
+servers and remember the answer.
+
+### The three layers
+
+1. **Learned (per-user cache).** Smith reads
+   `~/.config/agent-smith/url-routing.json` first. Entries land here
+   when you accept a probe-on-failure prompt (see below). The cache
+   is keyed by URL prefix and points at a `<server>.<tool>` pair, so
+   the same source on the next install skips the prompt entirely.
+   This layer is the highest-priority because it captures an
+   explicit user decision.
+2. **Advertised (server self-claim).** During install, smith calls
+   `tools/list` on every server in the bundle's `mcpServers` and
+   reads `_meta["dev.agent-smith/fetchDomains"]` on each tool
+   descriptor. A server publishing
+   `["wiki.internal.example.com", "docs.internal.example.com"]` on
+   its `fetch_page` tool is telling smith "I handle these
+   hostnames" — no per-bundle wiring required. Servers that don't
+   advertise the key, refuse to start, or don't expose any matching
+   tool produce a silent skip; the resolver tolerates an empty
+   claim list.
+3. **Curated (smith's built-in registry).** The same suggestion
+   registry that powers the `smith knowledge add` confirmation
+   prompt — Atlassian Confluence, SharePoint, Notion, GitHub blob
+   URLs — is the bottom layer. It only fires when the URL matches
+   one of those well-known patterns AND the bundle declares the
+   matching server in `mcpServers`. Smith ships no global defaults:
+   if your bundle doesn't declare the server, the curated entry is
+   skipped.
+
+If two layers claim the same URL pattern, the higher layer wins
+(learned > advertised > curated). The `url-routing` section of
+`smith doctor` lists every entry grouped by layer and flags any
+pattern claimed by more than one server/tool pair, so you can audit
+the resolution table without running an install.
+
+### Probe-on-failure UX
+
+When all three layers come up empty and direct HTTP fails, smith
+offers to probe each MCP server declared in the bundle:
+
+```text
+$ smith agent install my-agent
+→ fetching https://wiki.internal.example.com/architecture/
+  HTTP fetch failed: 401 Unauthorized
+  Try via internal-mcp.fetch_page? [y/N] y
+→ routed via internal-mcp.fetch_page
+→ saved route to ~/.config/agent-smith/url-routing.json
+```
+
+The prompt loops over each server in `mcpServers` until you accept
+one or exhaust the list. Accepting saves the URL → server/tool
+mapping to the per-user cache so the next install of the same source
+skips the prompt and routes through the cached pair on the first
+try.
+
+The probe is interactive-only. In non-TTY contexts (cron, daemon,
+CI, piped stdin) smith never reaches the prompt — the install fails
+with the original HTTP error, leaving the source unmaterialized.
+Re-run interactively to teach smith the route, or set `via:` on the
+source by hand and commit it to the bundle.
+
+### Inspecting the resolved table
+
+`smith doctor` includes a `url-routing` section that walks all three
+layers and prints the resolved table. Layer 2 (`advertised`) is gated
+behind `SMITH_DOCTOR_PROBE_META=1` because populating it requires
+spawning every available MCP server and calling `tools/list` —
+expensive and side-effecting (some servers want auth tokens, others
+take seconds to start). Without the env var, the section shows only
+the curated and learned layers; with it, the advertised layer joins
+in. See [14 — `smith doctor`](./14-cli-reference.md#smith-doctor) for
+the full section description.
 
 ---
 

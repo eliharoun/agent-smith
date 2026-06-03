@@ -2166,6 +2166,39 @@ config and re-running `smith agent install <agent>`. See
 [04 — Bundle MCP dependencies](./04-knowledge.md#bundle-mcp-dependencies).
 Source: `src/core/freshness/check-mcp-deps.ts`.
 
+**Url-routing section:** read-only enumeration of every URL pattern
+smith would auto-route at install time, grouped by source layer:
+
+- `curated` — patterns from smith's built-in suggestion registry
+  (Atlassian Confluence, SharePoint, Notion, GitHub blob URLs).
+- `advertised` — patterns picked up from server `_meta` self-claims
+  (`_meta["dev.agent-smith/fetchDomains"]` on a tool descriptor).
+- `learned` — patterns persisted to the per-user cache at
+  `~/.config/agent-smith/url-routing.json` after a confirmed probe.
+
+Patterns claimed by more than one `<server>.<tool>` pair are flagged
+as `[ambiguous]` and listed in a trailing block — the resolver picks
+the highest-priority layer (learned > advertised > curated) at fetch
+time, but the section surfaces the conflict so you can prune. The
+section never affects doctor's exit code. See
+[04 — How smith picks a route](./04-knowledge.md#how-smith-picks-a-route).
+Source: `src/core/freshness/check-url-routing.ts`.
+
+The `advertised` layer is gated behind the
+`SMITH_DOCTOR_PROBE_META=1` environment variable. Populating it
+requires spawning every available MCP server and calling
+`tools/list` to read `_meta` claims — too expensive and
+side-effecting to run on every `smith doctor` (some servers expect
+auth tokens, others take multi-second handshakes, and a probe is
+observable on the server side). Without the env var, the section
+emits only the curated and learned layers; set `SMITH_DOCTOR_PROBE_META=1`
+to include the advertised layer when you want a complete picture
+(e.g. when auditing a bundle's routing surface):
+
+```bash
+$ SMITH_DOCTOR_PROBE_META=1 smith doctor
+```
+
 **No-platform refusal:** if zero platform CLIs are on `PATH`, doctor
 refuses to run, prints three install one-liners (one per platform), and
 exits `2`. `--json` emits `{"error":"no-platform-detected", "message",

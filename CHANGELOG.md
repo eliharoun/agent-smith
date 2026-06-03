@@ -4,6 +4,60 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-02
+
+Three-layer URL routing. URL knowledge sources without an explicit
+`via:` now resolve through curated patterns, server self-claims, and
+a per-user learned cache before falling back to direct HTTP. When
+HTTP fails, smith offers to probe the bundle's MCP servers and
+remembers the user's choice — auth-coupled internal URLs become
+discoverable rather than hand-configured.
+
+### Added
+
+- `_meta` self-claim parsing on MCP `tools/list`. Servers can
+  advertise URL patterns they handle by including
+  `_meta: { "dev.agent-smith/fetchDomains": ["wiki.internal.example.com"] }`
+  on a tool descriptor. Smith picks up the claim during install and
+  uses it as Layer 2 of the routing resolver.
+- Probe-on-failure prompt. When a URL source without `via:` fails the
+  direct HTTP fetch, smith asks `Try via <server>.<tool>?` for each
+  server declared in `mcpServers`. Skipped silently in non-TTY runs
+  (cron, daemon, CI) so unattended workloads never block on stdin.
+- Per-user routing cache at `~/.config/agent-smith/url-routing.json`.
+  Confirmed probe results persist there; the next install with the
+  same URL skips the prompt and routes through the cached
+  `<server>.<tool>` pair.
+- `url-routing` doctor section. Enumerates every pattern smith would
+  auto-route, grouped by source layer (`curated` / `advertised` /
+  `learned`), and flags any pattern claimed by more than one
+  server/tool pair as ambiguous. Read-only; informational.
+- `SMITH_DOCTOR_PROBE_META=1` env var. Gates the spawn loop the
+  `url-routing` section uses to discover Layer 2 (`advertised`)
+  claims. Off by default — probing every declared server is slow and
+  side-effecting (auth tokens, multi-second handshakes), so the
+  section omits the advertised layer unless you opt in.
+
+### Changed
+
+- URL knowledge sources without a `via:` field now consult the
+  three-layer resolver (cache → advertised → curated) before
+  falling back to direct HTTP. Previously, only an explicit `via:`
+  on the source — or a curated suggestion accepted at
+  `smith knowledge add` time — could route a fetch through MCP.
+- On HTTP failure for a URL source, smith offers to probe the
+  bundle's declared MCP servers and remembers the user's choice in
+  `~/.config/agent-smith/url-routing.json`. Subsequent installs of
+  the same source skip the prompt.
+
+### Documentation
+
+- New section in `guide/04-knowledge.md`: "How smith picks a route" —
+  walks through the three resolution layers and the probe-on-failure
+  UX.
+- `guide/14-cli-reference.md`: `url-routing` doctor section
+  description plus the `SMITH_DOCTOR_PROBE_META` env-var note.
+
 ## [1.2.0] — 2026-06-02
 
 MCP-routed knowledge sources. URLs in knowledge sources can now be
@@ -135,6 +189,7 @@ into OpenCode, Claude Code, Codex, and Kiro.
 - Browser GUI (`smith gui`) wrapping every CLI surface with persistent job history.
 - Four bundled example agents: `incident-debugger`, `security-threat-modeler`, `repo-cartographer`, and `knowledge-demo`.
 
+[1.3.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.3.0
 [1.2.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.2.0
 [1.1.1]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.1
 [1.1.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.0
