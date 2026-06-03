@@ -413,6 +413,43 @@ describe("cli/install", () => {
       // No preflight noise about 'x'.
       expect(errs.some((e) => /required|expects/i.test(e))).toBe(false);
     });
+
+    test("name-mismatch warnings from the platform availability check do not block install", async () => {
+      // A bundle may list MCP servers that are installed locally under a
+      // different alias (e.g. `aws-api-mcp` registered as `aws-api`). The
+      // orchestrator surfaces this as a warning, not an error — install
+      // proceeds with exit 0 and the warning is printed.
+      const out: string[] = [];
+      const code = await install({
+        name: "tb",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("tb")],
+          failures: [],
+        }),
+        buildAndInstall: async () => ({
+          installed: [{ target: "opencode", path: "/fake/opencode/agents/tb.md" }],
+          skipped: [],
+          warnings: [
+            "[tb] MCP server 'aws-api-mcp' referenced but not configured for claude-code",
+            "[tb] MCP server 'builder-mcp' referenced but not configured for claude-code",
+          ],
+          errors: [],
+          grantedKnowledgeDirs: [],
+          knowledge: [],
+        }),
+        // Stub readAvailableMcpServers so the install-level preflight (which
+        // reads the real $HOME) is skipped — the bundle declares no
+        // mcp.required[], so preflight is a no-op anyway.
+        readAvailableMcpServers: async () => ({}),
+        print: (m) => out.push(m),
+        printErr: (m) => out.push(m),
+      });
+      expect(code).toBe(0);
+      expect(out.some((m) => m.includes("aws-api-mcp"))).toBe(true);
+      expect(out.some((m) => m.includes("builder-mcp"))).toBe(true);
+    });
   });
 
   test("does not print knowledge block when summary has zero sources", async () => {

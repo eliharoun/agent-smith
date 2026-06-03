@@ -4,6 +4,18 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-06-02
+
+### Fixed
+
+- smith knowledge fetch and smith agent install no longer pre-spawn
+  every declared MCP server on each invocation. Self-claim probing is
+  now opt-in via SMITH_PROBE_META=1 — the on-demand fallback covers
+  the cases users hit in practice without the upfront cost.
+- MCP server name-mismatch warnings (server declared in the bundle
+  but registered under a different name in the platform's MCP config)
+  no longer block install. The warning prints; install proceeds.
+
 ## [1.3.0] — 2026-06-02
 
 Three-layer URL routing. URL knowledge sources without an explicit

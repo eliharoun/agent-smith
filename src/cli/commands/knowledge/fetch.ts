@@ -195,16 +195,19 @@ export async function knowledgeFetch(
       deps.loadRouteCache ?? (() => defaultLoadRouteCache({ stateHome: stateHome() }));
     let mutableRouteCache: RouteCache = await loadRouteCacheFn();
 
-    // Eagerly fetch _meta claims from the bundle's declared MCP servers.
-    // Best-effort: a server not running locally surfaces here as a silent
-    // skip; the resolver tolerates an empty claim list.
+    // Layer 2 _meta self-claim collection. Gated behind SMITH_PROBE_META
+    // because spawning every declared MCP server up front is expensive
+    // (each can take 5-10s with auth handshakes); the probe-on-failure
+    // path acquires servers lazily as needed.
+    // When tests inject `readAvailableMcpServers`, the spawn-opts resolver
+    // was built off the test's stubbed map — eagerly probing declared
+    // servers there would spawn real processes for fixture names.
     const allMetaClaims: MetaClaim[] = [];
-    if (bundle && deps.readAvailableMcpServers === undefined) {
-      // When tests inject `readAvailableMcpServers`, the spawn-opts
-      // resolver was built off the test's stubbed map — eagerly probing
-      // declared servers there would spawn real processes for fixture
-      // names. Skip the eager fetch in that case; tests that need
-      // metaClaims can pass a populated cache directly.
+    if (
+      process.env.SMITH_PROBE_META === "1" &&
+      bundle &&
+      deps.readAvailableMcpServers === undefined
+    ) {
       const declaredServers = bundle.config.mcpServers ?? [];
       for (const serverName of declaredServers) {
         try {
@@ -212,7 +215,7 @@ export async function knowledgeFetch(
           const tools = await client.listTools();
           allMetaClaims.push(...extractMetaClaims(serverName, tools));
         } catch {
-          // Silent: server may not be configured/running locally.
+          // Server may not be installed locally; preflight covers required vs peer.
         }
       }
     }

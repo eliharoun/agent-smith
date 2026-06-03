@@ -161,18 +161,12 @@ export interface BuildAndInstallOptions {
    */
   isTty?: boolean;
   /**
-   * Opt-out for the v1-task-B7 install-time MCP availability check.
-   *
-   * Default (`false` / undefined): any MCP server listed in
-   * `config.mcpServers` that is NOT present in the relevant platform's
-   * MCP config aborts that bundle's install. The error message includes
-   * a remediation hint (configure the server in
-   * `~/.config/opencode/opencode.json` / `~/.claude.json` / `~/.codex/config.toml`)
-   * AND mentions `--allow-missing-mcp` as the explicit escape hatch.
-   *
-   * Set to `true` (e.g. via `smith agent install --allow-missing-mcp`)
-   * to demote the failure back to a warning. Use sparingly — the v1
-   * contract says "if the bundle declares it, it's required."
+   * Forwarded from `smith agent install --allow-missing-mcp`. The
+   * orchestrator no longer escalates platform-config name-mismatch
+   * warnings to errors (a server may be installed under a different
+   * alias locally), so this flag is consumed upstream by the install
+   * command's `mcp.required[]` preflight. It is retained on the
+   * orchestrator options for callers that still pass it through.
    */
   allowMissingMcp?: boolean;
   /**
@@ -294,20 +288,13 @@ export async function buildAndInstall(
       continue;
     }
     warnings.push(...validation.warnings.map((w) => `[${bundle.config.name}] ${w}`));
+    // Name-mismatch detection across the platform's MCP config. The bundle
+    // may declare a server that exists locally under a different alias
+    // (e.g. `aws-api-mcp` vs `aws-api`), so the warning is informational
+    // only — surfacing it lets the user reconcile names without blocking
+    // an otherwise valid install. The `mcp.required[]` preflight in the
+    // install command remains the hard gate for true missing dependencies.
     const mcpWarnings = await checkMcpAvailability(bundle.config, resolvedMcpPaths);
-    if (mcpWarnings.length > 0 && !options.allowMissingMcp) {
-      // v1-task B7: missing MCP servers are install-blocking by default.
-      // The bundle declared an MCP requirement that the platform can't
-      // satisfy; rendering the agent would produce a non-functional
-      // install. Surface as an error with a per-target remediation hint
-      // and the explicit opt-out flag, then skip this bundle.
-      const remediated = mcpWarnings.map(
-        (w) =>
-          `${w}\n    fix: configure the server in the platform's MCP config (see 'smith doctor'), or re-run with --allow-missing-mcp`,
-      );
-      errors.push({ agent: bundle.config.name, messages: remediated });
-      continue;
-    }
     warnings.push(...mcpWarnings.map((w) => `[${bundle.config.name}] ${w}`));
 
     // Per-agent install lock: serializes CLI / daemon / GUI installs for the

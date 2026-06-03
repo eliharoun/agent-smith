@@ -462,16 +462,15 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     o.loadRouteCache ?? (() => defaultLoadRouteCache({ stateHome: stateHome() }));
   let mutableRouteCache: RouteCache = await loadRouteCacheFn();
 
-  // Eagerly fetch _meta claims from each declared bundle MCP server.
-  // Best-effort: a server not running locally, refusing connections, or
-  // simply not advertising the `dev.agent-smith/fetchDomains` key all
-  // surface here as silent skips — preflight already covered the
-  // required-vs-peer story, and the resolver tolerates an empty claim list.
+  // Layer 2 _meta self-claim collection. Gated behind SMITH_PROBE_META
+  // because spawning every declared MCP server up front is expensive
+  // (each can take 5-10s with auth handshakes); the probe-on-failure
+  // path acquires servers lazily as needed.
   // Tests inject `readAvailableMcpServers` to skip the live $HOME read; we
   // also skip the eager probe in that case since the resolver would throw
   // for fixture server names not present in the synthetic map.
   const allMetaClaims: MetaClaim[] = [];
-  if (!o.readAvailableMcpServers) {
+  if (process.env.SMITH_PROBE_META === "1" && !o.readAvailableMcpServers) {
     for (const b of bundles) {
       const declaredServers = b.config.mcpServers ?? [];
       for (const serverName of declaredServers) {
@@ -480,8 +479,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
           const tools = await client.listTools();
           allMetaClaims.push(...extractMetaClaims(serverName, tools));
         } catch {
-          // Silent: server may not be installed locally; preflight already
-          // covered the required-vs-peer story.
+          // Server may not be installed locally; preflight covers required vs peer.
         }
       }
     }
