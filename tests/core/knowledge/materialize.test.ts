@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { filenameFromUrl } from "../../../src/core/knowledge/acquire";
 import {
   inferMaterializer,
   materializeHtmlToMarkdown,
@@ -85,5 +86,11 @@ describe("inferMaterializer", () => {
   it("defaults to passthrough on unknown", () => {
     expect(inferMaterializer({ filename: "x.xyz" })).toBe("passthrough");
     expect(inferMaterializer({})).toBe("passthrough");
+  });
+});
+
+describe("filenameFromUrl (exported)", () => {
+  it("appends .html for text/html content type", () => {
+    expect(filenameFromUrl("https://example.com/foo", "text/html")).toBe("foo.html");
   });
 });

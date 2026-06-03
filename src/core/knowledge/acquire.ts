@@ -198,7 +198,7 @@ export function urlCacheKey(url: string): string {
   return createHash("sha256").update(url).digest("hex");
 }
 
-function filenameFromUrl(url: string, contentType?: string): string {
+export function filenameFromUrl(url: string, contentType?: string): string {
   let pathname: string;
   try {
     pathname = new URL(url).pathname;
