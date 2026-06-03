@@ -239,3 +239,90 @@ describe("translators/codex: per-agent MCP emission via sidecar", () => {
     expect(yaml).toMatch(/description:/);
   });
 });
+
+describe("translators/codex: mcp.required[] in sidecar", () => {
+  test("emits sidecar entry for each name in mcp.required", () => {
+    const out = tcx(
+      { ...baseConfig, name: "agent-x", mcp: { required: ["dep-a", "dep-b"] } },
+      "body",
+      { resolvedModel: undefined },
+    );
+    const sidecar = out.sidecars?.[0];
+    expect(sidecar?.relativePath).toBe("agent-x/agents/openai.yaml");
+    const yaml = sidecar?.content ?? "";
+    expect(yaml).toMatch(/value: dep-a/);
+    expect(yaml).toMatch(/value: dep-b/);
+  });
+
+  test("dedupes when a name appears in both mcpServers and mcp.required", () => {
+    const out = tcx(
+      {
+        ...baseConfig,
+        name: "agent-x",
+        mcpServers: ["shared", "scope-only"],
+        mcp: { required: ["shared", "dep-only"] },
+      },
+      "body",
+      { resolvedModel: undefined },
+    );
+    const yaml = out.sidecars?.[0]?.content ?? "";
+    // 'shared' must appear exactly once.
+    const sharedMatches = (yaml.match(/value: shared/g) ?? []).length;
+    expect(sharedMatches).toBe(1);
+    expect(yaml).toMatch(/value: scope-only/);
+    expect(yaml).toMatch(/value: dep-only/);
+  });
+
+  test("preserves declaration order (mcpServers first, then mcp.required)", () => {
+    const out = tcx(
+      {
+        ...baseConfig,
+        name: "agent-x",
+        mcpServers: ["b", "a"],
+        mcp: { required: ["c"] },
+      },
+      "body",
+      { resolvedModel: undefined },
+    );
+    const yaml = out.sidecars?.[0]?.content ?? "";
+    const aIdx = yaml.indexOf("value: a");
+    const bIdx = yaml.indexOf("value: b");
+    const cIdx = yaml.indexOf("value: c");
+    expect(bIdx).toBeLessThan(aIdx);
+    expect(aIdx).toBeLessThan(cIdx);
+  });
+
+  test("emits no sidecar when both mcpServers and mcp.required are empty", () => {
+    const out = tcx(
+      { ...baseConfig, name: "agent-x" },
+      "body",
+      { resolvedModel: undefined },
+    );
+    expect(out.sidecars).toBeUndefined();
+  });
+
+  test("emits sidecar with mcp.required only (no mcpServers)", () => {
+    const out = tcx(
+      { ...baseConfig, name: "agent-x", mcp: { required: ["only-required"] } },
+      "body",
+      { resolvedModel: undefined },
+    );
+    const yaml = out.sidecars?.[0]?.content ?? "";
+    expect(yaml).toMatch(/value: only-required/);
+  });
+
+  test("does NOT include mcp.peer entries in the sidecar (peer is non-blocking expectation)", () => {
+    const out = tcx(
+      {
+        ...baseConfig,
+        name: "agent-x",
+        mcp: { required: ["req"], peer: ["peer-only"] },
+      },
+      "body",
+      { resolvedModel: undefined },
+    );
+    const yaml = out.sidecars?.[0]?.content ?? "";
+    expect(yaml).toMatch(/value: req/);
+    expect(yaml).not.toMatch(/value: peer-only/);
+  });
+});

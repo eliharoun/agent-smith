@@ -24,16 +24,23 @@ import type { CanonicalConfig, RenderedAgent, ResolvedModelContext } from "../ty
  * the map are silently skipped by `expandPermissionToToolList`.
  *
  * Per-agent MCP emission: emits `<name>/agents/openai.yaml` as a sibling
- * sidecar when the bundle declares a non-empty `mcpServers`. The sidecar
- * follows the canonical `dependencies.tools[]` shape consumed by Codex's
+ * sidecar listing every declared MCP dependency from BOTH `config.mcpServers`
+ * (per-agent scope hint) AND `config.mcp.required` (bundle-level dependency,
+ * v1.2). Names appearing in both lists are deduplicated; ordering is
+ * mcpServers first (preserves authoring order), then mcp.required entries
+ * not already emitted. `config.mcp.peer` is NOT included — peer is a
+ * non-blocking expectation and Codex's install-prompt treats every entry
+ * in `dependencies.tools[]` as a hard requirement. The sidecar follows
+ * the canonical `dependencies.tools[]` shape consumed by Codex's
  * install-prompt UX. The receiving feature
  * (codex-rs/core/src/mcp_skill_dependencies.rs) remains gated upstream on
  * `is_first_party_originator()` in codex-rs/login/src/auth/default_client.rs,
  * so third-party Codex wrappers get nothing from the install-prompt path
  * today. Emission is still useful as a documentation surface for any tool
  * inspecting agent bundles, and unlocks the receiving feature for free if
- * the originator gate is ever lifted. When `mcpServers` is empty/absent
- * the sidecar field is omitted entirely (byte-identical to prior output).
+ * the originator gate is ever lifted. When both `mcpServers` and
+ * `mcp.required` are empty/absent the sidecar field is omitted entirely
+ * (byte-identical to prior output).
  */
 export function translateCodex(
   config: CanonicalConfig,
@@ -71,25 +78,41 @@ export function translateCodex(
   }
 
   // Sidecar emission: `<name>/agents/openai.yaml` listing each declared
-  // MCP server in the canonical `dependencies.tools[]` shape. We emit
-  // ONLY when the bundle has a non-empty `mcpServers` so bundles without
-  // any MCP deps stay byte-identical to their pre-sidecar output.
+  // MCP dependency in the canonical `dependencies.tools[]` shape.
+  //
+  // Sources, in order:
+  //   1) config.mcpServers — per-agent scope hints (translators emit these
+  //      into platform-native MCP frontmatter; for Codex the sidecar is the
+  //      canonical surface, so the per-agent hint becomes a dependency too).
+  //   2) config.mcp.required — bundle-level required dependencies (v1.2).
+  //
+  // Peer dependencies (config.mcp.peer) are NOT emitted: a peer is a non-
+  // blocking expectation, and Codex's install-prompt treats every entry in
+  // dependencies.tools[] as a hard requirement.
+  //
+  // Dedupe by value so a name appearing in both mcpServers and mcp.required
+  // emits once. Order: mcpServers first (preserves authoring order),
+  // then mcp.required (skipping any name already emitted).
   const mcpServers = config.mcpServers ?? [];
+  const required = config.mcp?.required ?? [];
+  const seen = new Set<string>();
+  const tools: Array<{ type: string; value: string; description: string }> = [];
+  for (const name of [...mcpServers, ...required]) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    tools.push({
+      type: "mcp",
+      value: name,
+      // No per-server description field exists on CanonicalConfig today;
+      // emit empty string for the schema slot. If/when a future
+      // `mcpServerDescriptions` field lands it can flow in here without
+      // changing the sidecar's wire shape.
+      description: "",
+    });
+  }
   const sidecars: NonNullable<RenderedAgent["sidecars"]> = [];
-  if (mcpServers.length > 0) {
-    const sidecarDoc = {
-      dependencies: {
-        tools: mcpServers.map((name) => ({
-          type: "mcp",
-          value: name,
-          // No per-server description field exists on CanonicalConfig
-          // today; emit empty string for the schema slot. If/when a
-          // future `mcpServerDescriptions` field lands it can flow in
-          // here without changing the sidecar's wire shape.
-          description: "",
-        })),
-      },
-    };
+  if (tools.length > 0) {
+    const sidecarDoc = { dependencies: { tools } };
     const yaml = dump(sidecarDoc, { lineWidth: 0, noRefs: true });
     sidecars.push({
       relativePath: `${config.name}/agents/openai.yaml`,

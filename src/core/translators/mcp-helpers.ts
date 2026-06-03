@@ -13,9 +13,11 @@
  *                scoping, opt-out via targetOptions.claudeCode.scopeMcpServers=false).
  * - Codex     → emits `<name>/agents/openai.yaml` sidecar with
  *                `dependencies.tools[]` listing each declared MCP server
- *                name. Consumed by Codex's install-prompt UX (still
- *                gated upstream on `is_first_party_originator()` per
- *                codex-rs/core/src/mcp_skill_dependencies.rs, so
+ *                from BOTH `config.mcpServers` (per-agent scope hint) AND
+ *                `config.mcp.required` (bundle-level dependency, v1.2).
+ *                Deduplicated by name. Consumed by Codex's install-prompt
+ *                UX (still gated upstream on `is_first_party_originator()`
+ *                per codex-rs/core/src/mcp_skill_dependencies.rs, so
  *                third-party Codex wrappers see no UX effect today —
  *                emission is still useful as a documentation surface
  *                and unlocks the receiving feature if the originator
