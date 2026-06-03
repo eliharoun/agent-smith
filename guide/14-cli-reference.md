@@ -61,6 +61,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`knowledge refresh-session`](#smith-knowledge-refresh-session) | Refresh session-mode sources for installed agents (soft-fail; for hook use) | [04](./04-knowledge.md) |
 | [`knowledge list`](#smith-knowledge-list-agent) | Show installed knowledge for an agent (from the manifest) | [04](./04-knowledge.md) |
 | [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
+| [`knowledge route`](#smith-knowledge-route-agent) | Run the MCP picker against existing URL sources to set `via:` in bulk | [04](./04-knowledge.md) |
 | [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (BM25 search + fetch, stdio) | [16](./16-knowledge-compiler.md) |
 | [`knowledge validate`](#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents | [04](./04-knowledge.md) |
 | [`migrate-clones`](#smith-migrate-clones) | Migrate rc.1 external-repo clones from config to state dir | [13](./13-paths-and-state.md) |
@@ -2069,6 +2070,50 @@ installed knowledge files remain on disk until the next
 
 ```bash
 $ smith knowledge remove my-agent api-docs
+```
+
+**See also:** [Knowledge](./04-knowledge.md).
+
+---
+
+### `smith knowledge route <agent>`
+
+**Synopsis:** `smith knowledge route <agent> [--source <id>]`
+
+**Description:** Run the interactive MCP server/tool picker against
+existing URL knowledge sources to set `via:` in bulk. Without
+`--source`, iterates every URL source in the bundle that does not
+already have `via:` set; with `--source <id>`, runs the picker against
+that single source whether or not it already has a route. The picker
+is the same one wired into `smith knowledge add`, including the
+auto-extension of `mcpServers[]` and `mcp.required[]` when you pick a
+server that wasn't already declared in the bundle. Source:
+`src/cli/commands/knowledge/route.ts`.
+
+**Arguments:**
+
+- `<agent>` — agent name.
+
+**Flags:**
+
+- `--source <id>` — route only the source with this id (default: all
+  unrouted URL sources).
+
+**Exit codes:**
+
+- `0` — success (any number of sources routed, including 0 when the
+  user skips every prompt).
+- `1` — `--source <id>` did not match an existing URL source; bundle
+  has no URL sources at all (`not-found`).
+- `2` — non-TTY environment (the picker is interactive-only);
+  `config-missing` (agent has no `agent.config.json`); the rewritten
+  config failed schema validation (`validation-failed`).
+
+**Examples:**
+
+```bash
+$ smith knowledge route my-agent
+$ smith knowledge route my-agent --source api-docs
 ```
 
 **See also:** [Knowledge](./04-knowledge.md).

@@ -531,6 +531,36 @@ and the curated registry runs unchanged. Cross-link:
 [How smith picks a route](#how-smith-picks-a-route) covers the full
 resolution order once the source is on disk.
 
+### Retrofitting `via:` on existing sources
+
+Already added a batch of URL sources without `via:` and want to wire
+them up after the fact? `smith knowledge route <agent>` runs the same
+picker against every URL source in the bundle that doesn't already
+have `via:` set:
+
+```text
+$ smith knowledge route my-agent
+
+Routing source api-docs: https://docs.example.com/api
+  Which MCP server fetches this URL? (or skip for direct HTTP)
+    1. internal-mcp                 [from bundle]
+    2. confluence-mcp               [from your AI client config]
+    0. skip — save as direct-HTTP source
+  Choice [0]: 1
+  loading tools from internal-mcp…
+  → routing through internal-mcp.FetchInternalUrl
+
+Routing source runbook: https://wiki.internal.example.com/runbook
+  …
+→ Routed 2 sources, skipped 0
+  run smith knowledge fetch my-agent to materialize the new routes
+```
+
+Pass `--source <id>` to target a single source (including ones that
+already have `via:`, when you want to re-route). Sources with an
+existing `via:` are skipped automatically when no `--source` is given,
+so the command is safe to re-run after adding new URL sources.
+
 ### Authoring shortcut on `smith knowledge add`
 
 For a handful of well-known URL patterns, smith ships a curated routing
