@@ -57,6 +57,39 @@ const McpDepsReport = z.object({
   findings: z.array(McpDepFinding),
 });
 
+/**
+ * URL-routing doctor section. Mirrors the CLI's
+ * `CheckUrlRoutingResult` shape: a flat list of resolved routing
+ * `entries` (curated registry + server `_meta` claims + user cache)
+ * plus an `ambiguities` list of patterns claimed by more than one
+ * `(server, tool)` pair across the merged entries. Both arrays are
+ * informational — only `ambiguities` flips the radial (warn).
+ */
+const RouteSource = z.enum(["curated", "_meta", "cache"]);
+
+const RouteEntry = z.object({
+  urlPattern: z.string(),
+  source: RouteSource,
+  server: z.string(),
+  tool: z.string(),
+});
+
+const AmbiguityClaimant = z.object({
+  server: z.string(),
+  tool: z.string(),
+  source: RouteSource,
+});
+
+const AmbiguityFinding = z.object({
+  urlPattern: z.string(),
+  claimants: z.array(AmbiguityClaimant),
+});
+
+const UrlRoutingReport = z.object({
+  entries: z.array(RouteEntry),
+  ambiguities: z.array(AmbiguityFinding),
+});
+
 /** Atlassian skills runtime status (when atlassian-skills is installed). */
 const AtlassianSkillsRuntimeStatus = z.object({
   installed: z.literal(true),
@@ -136,6 +169,7 @@ export const DoctorReport = z.object({
   knowledgeRefresh: z.unknown().optional(),
   mcpSpawnCommands: z.unknown().optional(),
   mcpDeps: McpDepsReport.optional(),
+  urlRouting: UrlRoutingReport.optional(),
   knowledgeConsistency: z.unknown().optional(),
   exitCode: z.union([z.literal(0), z.literal(1), z.literal(2)]),
 });

@@ -136,6 +136,62 @@ describe("DoctorReport mcpDeps section", () => {
   });
 });
 
+describe("DoctorReport urlRouting section", () => {
+  it("parses a report with typed urlRouting entries and ambiguities", () => {
+    const real = {
+      generatedAt: "2026-05-20T10:00:00.000Z",
+      platforms: [],
+      skippedPlatforms: [],
+      atlassianAuth: { status: "missing" },
+      urlRouting: {
+        entries: [
+          { urlPattern: "https://example.com/*", source: "curated", server: "s1", tool: "fetch" },
+          { urlPattern: "https://example.com/*", source: "_meta", server: "s2", tool: "fetch" },
+        ],
+        ambiguities: [
+          {
+            urlPattern: "https://example.com/*",
+            claimants: [
+              { server: "s1", tool: "fetch", source: "curated" },
+              { server: "s2", tool: "fetch", source: "_meta" },
+            ],
+          },
+        ],
+      },
+      exitCode: 0,
+    };
+    expect(DoctorReport.safeParse(real).success).toBe(true);
+  });
+
+  it("rejects urlRouting with an unknown source value", () => {
+    const bad = {
+      generatedAt: "2026-05-20T10:00:00.000Z",
+      platforms: [],
+      skippedPlatforms: [],
+      atlassianAuth: { status: "missing" },
+      urlRouting: {
+        entries: [
+          { urlPattern: "x", source: "bogus", server: "s", tool: "t" },
+        ],
+        ambiguities: [],
+      },
+      exitCode: 0,
+    };
+    expect(DoctorReport.safeParse(bad).success).toBe(false);
+  });
+
+  it("accepts a report with urlRouting absent", () => {
+    const real = {
+      generatedAt: "2026-05-20T10:00:00.000Z",
+      platforms: [],
+      skippedPlatforms: [],
+      atlassianAuth: { status: "missing" },
+      exitCode: 0,
+    };
+    expect(DoctorReport.safeParse(real).success).toBe(true);
+  });
+});
+
 describe("DoctorRefusal", () => {
   it("parses the no-platform-detected short-circuit", () => {
     const refusal = {

@@ -126,6 +126,24 @@ export function flattenChecks(r: DoctorResponse): FlatCheck[] {
       });
     }
   }
+  // url-routing section. The CLI produces an informational `entries`
+  // list plus an `ambiguities` list of patterns claimed by multiple
+  // `(server, tool)` pairs across the merged routing layers. Only
+  // ambiguities flip the radial (warn) — entries on their own are not
+  // a health signal, so they're not flattened.
+  if (r.urlRouting?.ambiguities) {
+    for (const a of r.urlRouting.ambiguities) {
+      const claimants = a.claimants
+        .map((c) => `${c.server}.${c.tool} (${c.source})`)
+        .join(", ");
+      out.push({
+        id: `url-routing:${a.urlPattern}`,
+        label: `URL routing ambiguous: ${a.urlPattern}`,
+        status: "warn",
+        detail: `claimed by ${claimants}`,
+      });
+    }
+  }
   // (Other z.unknown() sections that may land in the future are still not
   // flattened — they remain available on the report for future expansion
   // without forcing a schema bump.)

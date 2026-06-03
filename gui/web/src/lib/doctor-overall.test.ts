@@ -219,3 +219,68 @@ describe("flattenChecks: mcpDeps section", () => {
     expect(flattenChecks(baseReport).filter((c) => c.id.startsWith("mcp-deps"))).toEqual([]);
   });
 });
+
+describe("flattenChecks: urlRouting section", () => {
+  it("emits no FlatChecks when ambiguities is empty (entries-only payloads stay informational)", () => {
+    const r = {
+      ...baseReport,
+      urlRouting: {
+        entries: [
+          {
+            urlPattern: "https://example.com/*",
+            source: "curated" as const,
+            server: "s1",
+            tool: "fetch",
+          },
+        ],
+        ambiguities: [],
+      },
+    };
+    expect(flattenChecks(r).filter((c) => c.id.startsWith("url-routing:"))).toEqual([]);
+  });
+
+  it("emits one warn FlatCheck per ambiguity, with conflicting servers in detail", () => {
+    const r = {
+      ...baseReport,
+      urlRouting: {
+        entries: [],
+        ambiguities: [
+          {
+            urlPattern: "https://example.com/*",
+            claimants: [
+              { server: "s1", tool: "fetch", source: "curated" as const },
+              { server: "s2", tool: "fetch", source: "_meta" as const },
+            ],
+          },
+        ],
+      },
+    };
+    const found = flattenChecks(r).find(
+      (c) => c.id === "url-routing:https://example.com/*",
+    );
+    expect(found).toBeDefined();
+    expect(found?.status).toBe("warn");
+    expect(found?.label).toMatch(/URL routing ambiguous/);
+    expect(found?.detail).toMatch(/s1/);
+    expect(found?.detail).toMatch(/s2/);
+  });
+
+  it("an ambiguity flips overall health to degraded", () => {
+    const r = {
+      ...baseReport,
+      urlRouting: {
+        entries: [],
+        ambiguities: [
+          {
+            urlPattern: "https://example.com/*",
+            claimants: [
+              { server: "s1", tool: "fetch", source: "curated" as const },
+              { server: "s2", tool: "fetch", source: "_meta" as const },
+            ],
+          },
+        ],
+      },
+    };
+    expect(deriveOverallHealth(r)).toBe("degraded");
+  });
+});
