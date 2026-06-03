@@ -418,7 +418,7 @@ Full offboarding: `agent uninstall-all` + `rm -rf ~/.config/agent-smith`. Requir
 
 #### `smith doctor`
 
-Health check across up to 16 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `knowledge-refresh`, `knowledge-compile`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section (v1-task RC2-10) groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code. v1-task C3.14.
+Health check across up to 17 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `mcp-deps`, `knowledge-refresh`, `knowledge-compile`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section (v1-task RC2-10) groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code. v1-task C3.14.
 
 **Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile]`
 
@@ -801,6 +801,27 @@ Lint knowledge configuration. Validates every source's schema fields and (for gi
 | Arg | Required | Description |
 |---|---|---|
 | `[agent]` | no | If omitted, validates every registered agent's knowledge block. |
+
+#### Routing URL sources through MCP (`via`)
+
+Source URLs that need credentials smith can't supply (internal wikis, ticketing, document stores) can be fetched via a declared MCP server's tool instead of direct HTTP. Add `via` to the source:
+
+```json
+{ "id": "internal-wiki", "type": "url", "url": "https://wiki.internal.example.com/page",
+  "delivery": "file", "via": { "server": "internal-mcp", "tool": "fetch_page" } }
+```
+
+`smith knowledge fetch` and `smith agent install` then call `<server>.<tool>` over MCP, passing `{ url, ...via.args }`. See [guide/04 — Routing URL fetches through MCP servers](./guide/04-knowledge.md#routing-url-fetches-through-mcp-servers).
+
+#### Bundle MCP dependencies (`mcp.required` / `mcp.peer`)
+
+Declare the MCP servers a bundle needs so `smith agent install` can preflight them:
+
+```json
+{ "mcp": { "required": ["internal-mcp"], "peer": ["search-mcp"] } }
+```
+
+Semantics mirror npm: `required` blocks install when missing (exit `1`; `--allow-missing-mcp` demotes to a warning), `peer` warns only. Resolution scans every targeted platform's MCP config; a server present on at least one passes. The `mcp-deps` section of `smith doctor` audits installed agents post-hoc. See [guide/04 — Bundle MCP dependencies](./guide/04-knowledge.md#bundle-mcp-dependencies).
 
 ---
 

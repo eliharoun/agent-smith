@@ -39,6 +39,7 @@ The schema is enforced by zod in `src/core/config-schema.ts` and the underlying 
 | `color` | string | no | omitted | platform-dependent display hint |
 | `permission` | object | no | omitted | see [Permissions](./06-permissions-and-platforms.md) |
 | `mcpServers` | string[] | no | omitted | each entry non-empty |
+| `mcp` | object | no | omitted | `{ required?: string[], peer?: string[] }`; install-time MCP-dependency preflight — see [`mcp`](#mcp) below |
 | `skills` | string[] | no | omitted | populates the appended `## Default Skills` section |
 | `knowledge` | object | no | omitted | see [Knowledge](./04-knowledge.md) |
 | `requires` | object | no | omitted | container for `requires.skills` |
@@ -55,6 +56,23 @@ A record of group-name → action or group-name → pattern-record. Actions are 
 ### `mcpServers`
 
 Array of MCP server names this agent expects to be available on each target platform. Documentation only — declaring a server here does not install it, allowlist it, or write any per-server gating into the rendered agent file. The only observable effect is an advisory warning at install time when a named server is not configured on a target platform. See [Permissions and platforms — MCP](./06-permissions-and-platforms.md#mcp-server-dependencies).
+
+### `mcp`
+
+Bundle-level MCP dependency declaration. Two arrays of server names mirror npm's `dependencies` / `peerDependencies`:
+
+```jsonc
+{
+  "mcp": {
+    "required": ["internal-mcp"],   // preflight refuses install when missing
+    "peer":     ["search-mcp"]      // preflight warns when missing
+  }
+}
+```
+
+`smith agent install` reads this block before render, scans the union of platform MCP configs the bundle targets (`~/.config/opencode/opencode.json`, `~/.claude/settings.json`, `~/.codex/config.toml`, `~/.kiro/settings/mcp.json`), and refuses (exit `1`) when a `required` server is absent from every targeted platform. `--allow-missing-mcp` demotes the refusal to a warning. `peer` entries warn but never block. The `mcp-deps` section of `smith doctor` audits the same data post-hoc.
+
+`mcp` is distinct from `mcpServers`: the latter is per-agent advisory metadata about runtime expectations, while `mcp.required` / `mcp.peer` express bundle-level dependencies that gate (or warn at) install time. Bundles that route URL knowledge sources through `via:` should declare those servers in `mcp.required` (or `mcp.peer` if optional). Full semantics, including the `via:` field on URL sources, in [Knowledge — Bundle MCP dependencies](./04-knowledge.md#bundle-mcp-dependencies).
 
 ### `skills`
 
@@ -84,6 +102,8 @@ The optional `compile` block overrides the v2.1 smart default:
 ```
 
 When `compile` is absent the pipeline picks compile vs. v1-inline based on the corpus size against `inlineBudget.totalTokens` (default 8000) — see [Smart default and overrides](./16-knowledge-compiler.md#smart-default-and-overrides). Per-source `summary`, `toc`, and `retrieval` fields layer on every source variant; they parse cleanly in v1 mode but only affect rendering when the bundle compiles. Full reference: [Knowledge compiler](./16-knowledge-compiler.md).
+
+URL sources additionally accept a `via: { server, tool, args? }` field that routes the fetch through a declared MCP server's tool instead of direct HTTP — useful for internal sources whose credentials live in an MCP server you've already configured. See [Knowledge — Routing URL fetches through MCP servers](./04-knowledge.md#routing-url-fetches-through-mcp-servers); the [`mcp`](#mcp) block above is how the bundle declares which servers must be present for those routes to resolve.
 
 ### `thresholds`
 

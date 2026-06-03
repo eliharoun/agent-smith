@@ -30,7 +30,7 @@ Define a bundle:
 - `IDENTITY.md` — who the agent is and when to use it
 - `EXPERTISE.md` — what the agent knows, checks, and optimizes for
 - `SOUL.md` — how the agent behaves, communicates, and makes tradeoffs
-- `agent.config.json` — targets, model tier, mode, permissions, MCP servers, skills
+- `agent.config.json` — targets, model tier, mode, permissions, MCP servers, skills, knowledge sources (including URLs routed through declared MCP tools)
 
 Then `smith agent install` emits the right native config for every platform you target.
 
@@ -175,7 +175,7 @@ Start with the [in-depth guide](./GUIDE.md) — a hub that links into focused to
 **Sharing, skills, and knowledge**
 - [`05-skills.md`](./guide/05-skills.md) — installing skills, `requires.skills`, skill catalogs, drift
 - [`08-registries-and-catalogs.md`](./guide/08-registries-and-catalogs.md) — registries, catalog kinds, precedence
-- [`04-knowledge.md`](./guide/04-knowledge.md) — per-agent knowledge sources (files, dirs, URLs, git, Confluence, Jira)
+- [`04-knowledge.md`](./guide/04-knowledge.md) — per-agent knowledge sources (files, dirs, URLs, git, Confluence, Jira), routing URL fetches through MCP servers, declaring `mcp.required` / `mcp.peer` bundle dependencies
 - [`16-knowledge-compiler.md`](./guide/16-knowledge-compiler.md) — v2 progressive disclosure: `compile` block, `agents-md` target, BM25 retrieval server, APM import
 - [`15-sharing-and-distribution.md`](./guide/15-sharing-and-distribution.md) — end-to-end publisher + consumer flow
 

@@ -349,6 +349,62 @@ Canonical documentation is in [04 — Knowledge, "Credential resolution order"](
 
 ---
 
+## Sharing bundles that route knowledge through MCP
+
+Bundles can declare URL knowledge sources that fetch through a configured MCP server's tool instead of direct HTTP — a `via: { server, tool, args? }` field on the source. This is how a bundle reaches an internal wiki, a ticketing system, or any source whose credentials are held by an MCP server you've already wired up. The shared-bundle story for these is its own thing: the bundle declares the *route*, the recipient brings the *credentials*. This section walks through what changes for publishers and consumers.
+
+Full background on the `via:` field, the curated routing-suggestion registry, and the `mcp.required[]` / `mcp.peer[]` declaration is in [04 — Routing URL fetches through MCP servers](./04-knowledge.md#routing-url-fetches-through-mcp-servers).
+
+### What travels with the bundle
+
+A bundle that uses MCP routing carries two pieces of new metadata, both committed in `agent.config.json`:
+
+- **`via:` declarations on URL sources** — the server name and the tool name the fetcher should call (`{ "server": "internal-mcp", "tool": "fetch_page" }`).
+- **`mcp.required[]` and `mcp.peer[]`** at the bundle root — the list of servers the bundle expects on the recipient's machine, with npm-style semantics (`required` blocks install when missing, `peer` warns).
+
+What does **not** travel: credentials, MCP server processes, MCP server configuration. Those live exclusively in each recipient's per-platform MCP config (`~/.config/opencode/opencode.json`, `~/.claude/settings.json`, `~/.codex/config.toml`, `~/.kiro/settings/mcp.json`). The bundle says "this source goes through `internal-mcp.fetch_page`"; whether `internal-mcp` is installed, how it authenticates, and what tenant it sees is the recipient's own setup.
+
+### Recipient experience
+
+When a teammate runs `smith agent install <name>` against your shared bundle, smith preflights `mcp.required[]` and `mcp.peer[]` against *their* MCP config before render:
+
+- **Every `required` server present** — install proceeds normally; routed sources fetch through MCP at materialize time.
+- **A `required` server is missing** — install refuses (exit `1`) and prints which server(s) need to be added to which platform's config. `--allow-missing-mcp` demotes the refusal to a warning when the recipient knows they're staging a bundle ahead of the server rollout.
+- **A `peer` server is missing** — install proceeds with a warning. The bundle still works for sources that don't go through that server; routed sources targeting it will fail at acquire time with an actionable error.
+
+The `mcp-deps` section of `smith doctor` audits installed agents the same way, post-hoc — useful when a recipient adds a bundle, then later removes a server from their MCP config.
+
+### Different auth, same source
+
+The bundle declares the *tool*, not the *credential*. When two recipients install the same bundle and both have the named MCP server configured against different workspace tenants, each gets their own view of the source through their own credentials. The `url` field in the source record is what the MCP tool receives as input; whatever scope or permission the recipient's server applies is what they see. There is no way (and no need) for the publisher to pre-bake auth into the bundle.
+
+This is the same separation `confluence` / `jira` sources have today (the bundle ships the space key or JQL; each consumer brings their own `SMITH_ATLASSIAN_*` credentials), generalized: any MCP server can play the auth-holder role.
+
+### What to tell teammates
+
+When you hand a teammate a bundle that routes through MCP, give them three facts:
+
+1. **Which MCP server(s) the bundle requires** — read these off the bundle's `mcp.required[]` array.
+2. **How to install each one** — most MCP servers ship as a package the recipient adds to a platform's MCP config (e.g. an entry under `mcpServers` in `~/.claude/settings.json`, the `mcp_servers` block in `~/.codex/config.toml`, or the `mcp` block in `~/.config/opencode/opencode.json`). Link them to the upstream server's install instructions.
+3. **The install command** — once the server is configured, `smith agent install <name>` (or `smith agent install --from <url>`) should preflight clean and render normally.
+
+Recipient-side checklist:
+
+```bash
+# 1. Add the required MCP server to the relevant platform config(s).
+#    Follow the server's own install docs; smith does not install MCP servers.
+
+# 2. Verify smith sees it:
+smith doctor                         # mcp-deps section reports any gaps
+
+# 3. Install the bundle:
+smith agent install <name>            # or: smith agent install --from <url>
+```
+
+If a recipient is staging a bundle before they've configured the server, `--allow-missing-mcp` lets them render the bundle anyway; the routed sources will fail at acquire time until the server is in place, which is usually the desired behavior (visible failure rather than silent miss).
+
+---
+
 ## 8. Team patterns
 
 Three patterns cover the realistic cases. They're not mutually exclusive — A is the starting point; B and C are extensions.
