@@ -330,6 +330,91 @@ describe("cli/install", () => {
     expect(printed.join("\n")).not.toContain("knowledge");
   });
 
+  describe("MCP preflight", () => {
+    test("refuses with EXIT_RUNTIME (1) when a required MCP server is missing", async () => {
+      const errs: string[] = [];
+      let buildCalled = false;
+      const code = await install({
+        name: "tb",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("tb", { mcp: { required: ["missing"] } })],
+          failures: [],
+        }),
+        buildAndInstall: async () => {
+          buildCalled = true;
+          return emptyResult;
+        },
+        readAvailableMcpServers: async () => ({}),
+        print: () => {},
+        printErr: (m) => errs.push(m),
+      });
+      expect(code).toBe(1);
+      expect(buildCalled).toBe(false);
+      expect(errs.some((e) => /required.*missing/i.test(e))).toBe(true);
+    });
+
+    test("warns and proceeds when only peer servers are missing", async () => {
+      const warns: string[] = [];
+      const code = await install({
+        name: "tb",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("tb", { mcp: { peer: ["opt"] } })],
+          failures: [],
+        }),
+        buildAndInstall: async () => emptyResult,
+        readAvailableMcpServers: async () => ({}),
+        print: () => {},
+        printErr: (m) => warns.push(m),
+      });
+      expect(code).toBe(0);
+      expect(warns.some((e) => /expects/i.test(e) && /opt/.test(e))).toBe(true);
+    });
+
+    test("--allow-missing-mcp demotes required-missing to a warning", async () => {
+      const warns: string[] = [];
+      const code = await install({
+        name: "tb",
+        paths,
+        allowMissingMcp: true,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("tb", { mcp: { required: ["missing"] } })],
+          failures: [],
+        }),
+        buildAndInstall: async () => emptyResult,
+        readAvailableMcpServers: async () => ({}),
+        print: () => {},
+        printErr: (m) => warns.push(m),
+      });
+      expect(code).toBe(0);
+      expect(warns.some((e) => /required.*missing.*allowed/i.test(e))).toBe(true);
+    });
+
+    test("proceeds silently when all dependencies present", async () => {
+      const errs: string[] = [];
+      const code = await install({
+        name: "tb",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [fakeBundle("tb", { mcp: { required: ["x"] } })],
+          failures: [],
+        }),
+        buildAndInstall: async () => emptyResult,
+        readAvailableMcpServers: async () => ({ x: { command: "/x" } }),
+        print: () => {},
+        printErr: (m) => errs.push(m),
+      });
+      expect(code).toBe(0);
+      // No preflight noise about 'x'.
+      expect(errs.some((e) => /required|expects/i.test(e))).toBe(false);
+    });
+  });
+
   test("does not print knowledge block when summary has zero sources", async () => {
     const printed: string[] = [];
     await install({

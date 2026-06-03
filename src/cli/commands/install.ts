@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import pc from "picocolors";
 import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refresh-manifest";
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
@@ -9,6 +10,12 @@ import {
   installRequiredSkills,
 } from "../../io/install-required-skills";
 import { loadInstalledSkills } from "../../io/installed-skills";
+import {
+  type AvailableMap,
+  readAvailableMcpServers as defaultReadAvailable,
+} from "../../io/mcp-config-readers";
+import { McpClientPool } from "../../io/mcp-client-pool";
+import { createSpawnOptsResolver } from "../../io/mcp-spawn-resolver";
 import { registerAgentInOpencodePlugin } from "../../io/opencode-plugin";
 import {
   type BuildAndInstallOptions,
@@ -34,6 +41,7 @@ import {
 } from "../load-all";
 import { readConsentChoice, readToken } from "../prompt";
 import type { RefreshConsentParsed } from "../parse-refresh-consent";
+import { preflightMcp } from "./agent/preflight-mcp";
 
 /**
  * Default adapter for the installed-skills file: returns just the
@@ -146,6 +154,12 @@ export interface InstallCliOptions {
    * → resolveConventions for each declared target.
    */
   platformConventions?: import("../../io/conventions").DefaultStrategy;
+  /**
+   * DI seam for the MCP-config preflight reader. Production omits and gets
+   * a reader pointed at the user's real `$HOME`; tests inject a synthetic
+   * `AvailableMap` to exercise the preflight branches without touching disk.
+   */
+  readAvailableMcpServers?: () => Promise<AvailableMap>;
 }
 
 export interface InstallBareHelpfulErrorOptions {
@@ -344,6 +358,51 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   const filteredBundle = applyPlatformFilter(bundle, o.platformFilter);
   const bundles = [filteredBundle];
 
+  // Preflight MCP dependencies BEFORE the consent loop so the user doesn't
+  // answer prompts for an install that's about to refuse. `mcp.required[]`
+  // missing aborts (EXIT_RUNTIME=1); `mcp.peer[]` missing only warns.
+  // `--allow-missing-mcp` demotes required-missing to a warning, mirroring
+  // the existing escape hatch for legacy `mcpServers[]`.
+  const readAvailable =
+    o.readAvailableMcpServers ?? (() => defaultReadAvailable({ homeDir: homedir() }));
+  const available = await readAvailable();
+  for (const b of bundles) {
+    const preflight = preflightMcp(b.config.mcp ?? {}, available);
+    if (preflight.requiredMissing.length > 0) {
+      if (o.allowMissingMcp) {
+        printErr(
+          `smith: ${b.config.name} required MCP server(s) missing but allowed by --allow-missing-mcp: ${preflight.requiredMissing.join(", ")}`,
+        );
+      } else {
+        printErr(
+          `smith: ${b.config.name} required MCP server(s) not installed: ${preflight.requiredMissing.join(", ")}`,
+        );
+        printErr(`       Install them and re-run, or pass --allow-missing-mcp.`);
+        return 1;
+      }
+    }
+    if (preflight.peerMissing.length > 0) {
+      printErr(
+        `smith: ${b.config.name} expects MCP server(s) (peer; not strictly required): ${preflight.peerMissing.join(", ")}`,
+      );
+    }
+  }
+
+  // Pool lifetime equals one install invocation. via-routed knowledge
+  // sources fetch through `pool` (forwarded into `acquireSource` via the
+  // orchestrator); bundles without via-routed sources never trigger an
+  // acquire, so the pool stays empty for them. The `finally` block
+  // guarantees `pool.shutdown()` runs even when build/install throws.
+  const pool = new McpClientPool();
+  // Spawn-opts resolver mirrors the available-map: built once per install
+  // off the same `$HOME` so via-routed sources resolve consistently with
+  // the preflight check. Skipped when an injected `readAvailableMcpServers`
+  // makes it clear we're in a test that doesn't need the live resolver.
+  const spawnOptsFor = o.readAvailableMcpServers
+    ? undefined
+    : await createSpawnOptsResolver({ homeDir: homedir() });
+
+  try {
   // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
   // the translator gates emission of the SessionStart hook block on an
   // explicit opt-in flag threaded through the render context, so we have to
@@ -454,6 +513,8 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // Build agent bundles. If any agent build fails we abort before
   // touching the user's skill set — installing a required skill for an
   // agent that didn't ship would leave a confusing partial state.
+  // `mcpPool` + `spawnOptsFor` thread to `acquireSource` for via-routed
+  // knowledge sources.
   const result = await build(bundles, paths, {
     withRefreshHooksFor,
     ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
@@ -462,6 +523,8 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     ...(o.platformConventions
       ? { platformConventions: o.platformConventions }
       : {}),
+    mcpPool: pool,
+    ...(spawnOptsFor ? { spawnOptsFor } : {}),
   });
   if (result.errors.length > 0) {
     for (const e of result.errors) {
@@ -566,6 +629,12 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   }
 
   return 0;
+  } finally {
+    // Pool lifetime ends here so via-routed acquires can run during build
+    // and finish before we tear down their connections. shutdown() is
+    // idempotent and safe even when nothing was acquired.
+    await pool.shutdown();
+  }
 }
 
 /**

@@ -22,6 +22,8 @@ import { cacheDirFor, type KnowledgePaths, knowledgeDirFor } from "./knowledge-p
 import type { KnowledgeSummary } from "./knowledge-summary";
 import { defaultReadPriorManifest, summarizeKnowledgeStage } from "./knowledge-summary";
 import { checkMcpAvailability, type McpAvailabilityPaths } from "./mcp-availability";
+import type { McpClientOpts } from "./mcp-client";
+import type { McpClientPool } from "./mcp-client-pool";
 import { getOpenCodeModels } from "./opencode-models";
 import { checkSkillAvailability, type SkillAvailabilityPaths } from "./skill-availability";
 
@@ -179,6 +181,21 @@ export interface BuildAndInstallOptions {
    * literal + a warning instead of throwing. Default false (drop the target).
    */
   allowMissingCli?: boolean;
+  /**
+   * Process-wide MCP client pool, used by `acquireSource` to fetch knowledge
+   * sources that declare an explicit `via:` MCP route. The install CLI
+   * creates one pool per command invocation and shuts it down in a
+   * `finally` block. Forwarded into `runKnowledgeStage` so the pipeline
+   * can re-use connections across sources. Bundles without via-routed
+   * sources never trigger pool acquisition.
+   */
+  mcpPool?: McpClientPool;
+  /**
+   * Resolver for spawn opts of a named MCP server. Required alongside
+   * `mcpPool` when via-routed sources are present. Threaded into
+   * `acquireSource` via the pipeline.
+   */
+  spawnOptsFor?: (server: string) => McpClientOpts;
 }
 
 /**
@@ -308,11 +325,18 @@ export async function buildAndInstall(
         const priorManifestPath = join(knowledgeDir, "_manifest.json");
         const priorSnapshot = await defaultReadPriorManifest(priorManifestPath)();
 
-        const stage = await runKnowledgeStage(mergedKnowledge, {
-          bundleDir: bundle.bundlePath,
-          knowledgeDir,
-          cacheDir,
-        });
+        const stage = await runKnowledgeStage(
+          mergedKnowledge,
+          {
+            bundleDir: bundle.bundlePath,
+            knowledgeDir,
+            cacheDir,
+          },
+          {
+            ...(options.mcpPool ? { mcpPool: options.mcpPool } : {}),
+            ...(options.spawnOptsFor ? { spawnOptsFor: options.spawnOptsFor } : {}),
+          },
+        );
         if (stage.errors.length > 0) {
           errors.push({
             agent: bundle.config.name,

@@ -19,6 +19,8 @@ export interface FakeBundleOpts {
   expertise?: string;
   soul?: string;
   user?: string;
+  /** Optional `mcp:` block (required[]/peer[]) for preflight tests. */
+  mcp?: { required?: string[]; peer?: string[] };
 }
 
 export function fakeBundle(name: string, opts: FakeBundleOpts = {}): AgentBundle {
@@ -31,6 +33,7 @@ export function fakeBundle(name: string, opts: FakeBundleOpts = {}): AgentBundle
       description: opts.description ?? "Use to test things.",
       targets: opts.targets ?? ["opencode"],
       modelTier: "balanced",
+      ...(opts.mcp ? { mcp: opts.mcp } : {}),
     },
     source: { kind, rootPath, label: kind },
     bundlePath: opts.bundlePath ?? `${rootPath}/${name}`,

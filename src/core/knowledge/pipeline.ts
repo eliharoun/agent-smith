@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertWithin } from "../../io/assert-within";
+import type { McpClientOpts } from "../../io/mcp-client";
+import type { McpClientPool } from "../../io/mcp-client-pool";
 import { SmithError } from "../smith-error";
 import { toMessage } from "../to-message";
 import type { AcquiredArtifact, GitSpawner } from "./acquire";
@@ -50,6 +52,13 @@ export interface PipelineResult {
  */
 export interface RunKnowledgeStageOpts {
   gitSpawner?: GitSpawner;
+  /** Pool for via-routed URL sources. Forwarded into `acquireSource` so
+   *  knowledge sources with explicit `via:` declarations re-use the
+   *  process-wide MCP client pool rather than reconnecting per source. */
+  mcpPool?: McpClientPool;
+  /** Resolver for spawn opts of a named MCP server. Required when
+   *  `mcpPool` is set. */
+  spawnOptsFor?: (server: string) => McpClientOpts;
 }
 
 const DEFAULT_INLINE_BUDGET = 8000;
@@ -280,6 +289,8 @@ export async function runKnowledgeStage(
           bundleDir: paths.bundleDir,
           cacheDir: paths.cacheDir,
           ...(opts.gitSpawner ? { gitSpawner: opts.gitSpawner } : {}),
+          ...(opts.mcpPool ? { mcpPool: opts.mcpPool } : {}),
+          ...(opts.spawnOptsFor ? { spawnOptsFor: opts.spawnOptsFor } : {}),
         });
         const materializedTexts: ProcessedSource["materializedTexts"] = [];
         for (const a of artifacts) {
