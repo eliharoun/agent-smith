@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>Architecture Overview</title></head>
+<body>
+  <div class="aui-page-panel-nav">Sidebar nav (should be stripped)</div>
+  <div id="main-content" class="aui-page-panel">
+    <h1>Architecture Overview</h1>
+    <p>Service A receives traffic from the edge, routes to Service B for compute, and writes outputs to Service C.</p>
+    <h2>Components</h2>
+    <ul>
+      <li><strong>Service A</strong> — load balancer, TLS termination</li>
+      <li><strong>Service B</strong> — request handler, business logic</li>
+      <li><strong>Service C</strong> — durable storage</li>
+    </ul>
+    <h2>Latency budget</h2>
+    <table>
+      <tr><th>Stage</th><th>P50</th><th>P99</th></tr>
+      <tr><td>Edge</td><td>5ms</td><td>20ms</td></tr>
+      <tr><td>Compute</td><td>30ms</td><td>200ms</td></tr>
+    </table>
+  </div>
+  <div class="toolbar">Toolbar (should be stripped)</div>
+</body>
+</html>
