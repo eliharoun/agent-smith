@@ -16,8 +16,22 @@ import { KnowledgeSourceRow } from "./KnowledgeSourceRow";
 import { McpWiringModal } from "./McpWiringModal";
 import { RefreshConsentBanner } from "./RefreshConsentBanner";
 
-/** Canonical name of the bundled MCP server the toggle owns. */
-const MCP_SERVER_KEY = "agent-smith-knowledge";
+/**
+ * Per-agent MCP server key. Each bundle owns a server name derived from
+ * its agent name, so multiple bundles can wire their own knowledge MCPs
+ * into the same AI client without colliding on a singleton key.
+ */
+function keyForAgent(agent: string): string {
+  return `${agent}-knowledge`;
+}
+
+/** Order-insensitive equality for the bundle's `mcpServers: string[]`. */
+function arraysEqualIgnoreOrder(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((v, i) => v === sortedB[i]);
+}
 
 /**
  * Reads the current `mcpServers` array from the agent detail config (loose
@@ -97,9 +111,10 @@ export function KnowledgeSources({ agent }: Props) {
   //   2. on confirm: PUT /config (mcpServers array) → POST /mcp-wiring →
   //      dispatch agent.install. Failure mid-chain reverts the optimistic
   //      flip and surfaces the error inline.
+  const mcpServerKey = keyForAgent(agent);
   const config = detail.data?.config as Record<string, unknown> | undefined;
   const mcpServers = readMcpServers(config);
-  const savedOn = mcpServers.includes(MCP_SERVER_KEY);
+  const savedOn = mcpServers.includes(mcpServerKey);
   // Optimistic flag for in-flight flip — the switch animates instantly
   // when the user clicks, and we revert if the chain fails or the modal
   // is cancelled. Cleared when the refetched config catches up (so the
@@ -115,7 +130,7 @@ export function KnowledgeSources({ agent }: Props) {
   // Multi-step chain progress. When non-null, the toggle is locked and
   // the body shows a small status line.
   const [chainStep, setChainStep] = useState<
-    "config" | "wiring" | "install" | null
+    "config" | "wiring" | "install" | "noop" | null
   >(null);
   const [chainError, setChainError] = useState<string | null>(null);
 
@@ -184,16 +199,32 @@ export function KnowledgeSources({ agent }: Props) {
    */
   async function applyMcpWiring(enable: boolean, platforms: PlatformId[]) {
     setChainError(null);
-    const without = mcpServers.filter((n) => n !== MCP_SERVER_KEY);
-    const nextArray = enable ? [...without, MCP_SERVER_KEY] : without;
-    setChainStep("config");
-    try {
-      await saveConfig.mutateAsync({ mcpServers: nextArray });
-    } catch (err) {
-      setChainError(`config save failed: ${(err as Error).message}`);
-      setChainStep(null);
-      setOptimisticOn(null);
+    const without = mcpServers.filter((n) => n !== mcpServerKey);
+    const nextArray = enable ? [...without, mcpServerKey] : without;
+    const bundleConfigChanged = !arraysEqualIgnoreOrder(mcpServers, nextArray);
+    // True no-op: nothing to write to the bundle, nothing to wire on
+    // disk. Surface a brief status so the user gets feedback the action
+    // was acknowledged, then exit cleanly.
+    if (!bundleConfigChanged && platforms.length === 0) {
+      setChainStep("noop");
+      // Brief on-screen acknowledgement before clearing state.
+      setTimeout(() => {
+        setChainStep(null);
+        setPendingFlip(null);
+        setOptimisticOn(null);
+      }, 600);
       return;
+    }
+    if (bundleConfigChanged) {
+      setChainStep("config");
+      try {
+        await saveConfig.mutateAsync({ mcpServers: nextArray });
+      } catch (err) {
+        setChainError(`config save failed: ${(err as Error).message}`);
+        setChainStep(null);
+        setOptimisticOn(null);
+        return;
+      }
     }
     if (platforms.length > 0) {
       setChainStep("wiring");
@@ -216,9 +247,17 @@ export function KnowledgeSources({ agent }: Props) {
         return;
       }
     }
-    // platforms.length === 0 means "every platform is already in the
-    // desired state" or "no CLIs detected" — still run install so the
-    // bundle's rendered files reflect the new mcpServers entry.
+    // Skip the install dispatch when bundle config didn't change AND no
+    // platforms needed wiring — there's nothing for the install to
+    // re-render. (The earlier true-no-op short-circuit covers
+    // bundleConfigChanged=false + platforms=0; this guards the case
+    // where only the per-platform writes happened, which is a separate
+    // flow and doesn't require a bundle reinstall.)
+    if (!bundleConfigChanged) {
+      setChainStep(null);
+      setPendingFlip(null);
+      return;
+    }
     setChainStep("install");
     try {
       // useStartJob is fire-and-forget (returns jobId immediately). The
@@ -303,6 +342,7 @@ export function KnowledgeSources({ agent }: Props) {
               dispatching <code>smith agent install {agent}</code>…
             </>
           )}
+          {chainStep === "noop" && "already in desired state — nothing to do"}
         </div>
       )}
 

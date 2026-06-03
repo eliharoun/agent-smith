@@ -23,6 +23,7 @@ function mockFetch(
       hasEntry: boolean;
       configReadable: boolean;
     }>;
+    bundleHasEntry?: boolean;
   },
 ) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,8 +50,12 @@ function mockFetch(
             configReadable: true,
           },
         ],
+        bundleHasEntry: false,
       };
-      return new Response(JSON.stringify(plan), { status: 200 });
+      // Backfill bundleHasEntry when caller's provider doesn't supply it
+      // (older tests predate the field).
+      const planWithDefault = { bundleHasEntry: false, ...plan };
+      return new Response(JSON.stringify(planWithDefault), { status: 200 });
     }
     if (url.endsWith("/mcp-wiring") && init?.method === "POST") {
       return new Response(
@@ -360,7 +365,8 @@ describe("KnowledgeSources", () => {
       );
       expect(put).toBeDefined();
       const body = JSON.parse((put!.init!.body as string) ?? "{}");
-      expect(body).toEqual({ mcpServers: ["github-mcp", "agent-smith-knowledge"] });
+      // Per-agent key: bundle "testing-agent" → "testing-agent-knowledge".
+      expect(body).toEqual({ mcpServers: ["github-mcp", "testing-agent-knowledge"] });
     });
     // 2. POST /mcp-wiring with enable=true and the platforms list.
     await waitFor(() => {
@@ -408,7 +414,7 @@ describe("KnowledgeSources", () => {
           name: "testing-agent",
           description: "",
           targets: ["opencode"],
-          mcpServers: ["agent-smith-knowledge", "github-mcp"],
+          mcpServers: ["testing-agent-knowledge", "github-mcp"],
         },
       }),
       // Plan: claude-code currently has the entry, so disable should target it.
@@ -422,6 +428,7 @@ describe("KnowledgeSources", () => {
             configReadable: true,
           },
         ],
+        bundleHasEntry: true,
       }),
     ) as unknown as typeof fetch;
     renderPanel();
@@ -554,6 +561,62 @@ describe("KnowledgeSources", () => {
     );
     // The url field is pre-populated with the existing value.
     expect(screen.getByLabelText(/^\/\/ url$/i)).toHaveValue("https://x.test/");
+  });
+
+  it("MCP toggle: per-agent key — bundle named foo-bar adds 'foo-bar-knowledge' to mcpServers", async () => {
+    // Sanity: a non-singleton agent must derive its own per-agent server
+    // key from its name, NOT use the legacy hardcoded
+    // "agent-smith-knowledge". Without per-agent keys, a second bundle's
+    // toggle-ON would overwrite the first bundle's entry under the same
+    // name in every AI client's MCP config.
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "foo-bar",
+        sources: [{ source: { id: "docs", type: "url", url: "https://x.test/" } }],
+        consent: { granted_at: "x", platforms: [], sources: [] },
+      }),
+      calls,
+      () => ({
+        name: "foo-bar",
+        description: "",
+        catalog: "default",
+        path: "/x",
+        targets: ["opencode"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        config: {
+          name: "foo-bar",
+          description: "",
+          targets: ["opencode"],
+          mcpServers: [],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <KnowledgeSources agent="foo-bar" />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
+    const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^wire 1 platform/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^wire 1 platform/i }));
+    await waitFor(() => {
+      const put = calls.find(
+        (c) => c.url.endsWith("/config") && c.init?.method === "PUT" && c.url.includes("/agents/"),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse((put!.init!.body as string) ?? "{}");
+      // The key MUST be derived from the agent name — NOT
+      // "agent-smith-knowledge".
+      expect(body).toEqual({ mcpServers: ["foo-bar-knowledge"] });
+    });
   });
 
   it("opens AddKnowledgeSourceModal with 8 source types", async () => {

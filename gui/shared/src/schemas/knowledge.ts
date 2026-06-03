@@ -46,7 +46,7 @@ const ConfluencePageRef = z.union([
 const RetrievalSpec = z
   .object({
     mode: z.enum(["off", "bm25", "external-mcp"]),
-    mcpUrl: z.string().url().optional(),
+    mcpUrl: z.url().optional(),
   })
   .strict();
 
@@ -99,7 +99,7 @@ const GlobSrc = SourceBase.extend({
 }).strict();
 const UrlSrc = SourceBase.extend({
   type: z.literal("url"),
-  url: z.string().url(),
+  url: z.url(),
   auth: z.enum(["atlassian", "none"]).optional(),
 }).strict();
 const GitSrc = SourceBase.extend({
@@ -248,7 +248,7 @@ export const ParsedKnowledgeUrl = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("confluence-space"), space: z.string() }),
   z.object({ kind: z.literal("jira-issue"), key: z.string() }),
   z.object({ kind: z.literal("jira-jql"), jql: z.string() }),
-  z.object({ kind: z.literal("plain-url"), url: z.string().url() }),
+  z.object({ kind: z.literal("plain-url"), url: z.url() }),
 ]);
 export type ParsedKnowledgeUrl = z.infer<typeof ParsedKnowledgeUrl>;
 
