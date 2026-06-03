@@ -261,4 +261,57 @@ describe("acquireViaMcp", () => {
     expect(arts[0]?.filename).toMatch(/doc\.md$/);
     expect(arts[0]?.contentType).toBe("text/markdown");
   });
+
+  it("end-to-end: JSON envelope around XWiki HTML produces clean wiki markdown", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const envelope = await fs.readFile(
+      path.join(import.meta.dir, "..", "..", "_fixtures", "wiki-revision-history-envelope.json"),
+      "utf8",
+    );
+    const fakeClient = {
+      callTool: () => Promise.resolve({
+        isError: false,
+        content: [{ type: "text", text: envelope }],
+      }),
+      listTools: () => Promise.resolve([]),
+    } as unknown as McpClient;
+    const fakePool = {
+      acquire: () => Promise.resolve(fakeClient),
+      shutdown: () => Promise.resolve(),
+    };
+    const arts = await acquireViaMcp(
+      { server: "ghost", tool: "fetch_x", args: { url: "https://wiki.example.com/RevisionHistory" } },
+      "https://wiki.example.com/RevisionHistory",
+      {
+        pool: fakePool as unknown as McpClientPool,
+        spawnOptsFor: () => ({ command: "bun", args: [] }),
+      },
+    );
+    // Sniffer recognized the envelope and unwrapped to HTML.
+    expect(arts[0]?.contentType).toBe("text/html");
+    expect(arts[0]?.filename).toMatch(/RevisionHistory\.html$/);
+
+    // Now apply the materializer the way the pipeline would.
+    const { runMaterializer, chooseMaterializer } = await import(
+      "../../../src/core/knowledge/acquire-source"
+    );
+    const fakeSrc = {
+      id: "revision-history", type: "url" as const, url: "https://wiki.example.com/RevisionHistory",
+      delivery: "file" as const,
+    };
+    const m = chooseMaterializer(fakeSrc, arts[0]!);
+    expect(m).toBe("html-to-md");
+    const result = runMaterializer(m, arts[0]!);
+    // The table from the XWiki fixture must survive as GFM pipes.
+    expect(result.content).toContain("| Version | Date |");
+    expect(result.content).toContain("| 1.0 |");
+    // The fenced code block must survive.
+    expect(result.content).toContain("curl -X POST");
+    // The xwikiintro panel must be stripped.
+    expect(result.content).not.toContain("This intro panel should be stripped");
+    // Frontmatter must be present.
+    expect(result.content.startsWith("---\n")).toBe(true);
+    expect(result.content).toContain('source_url: "https://wiki.example.com/RevisionHistory"');
+  });
 });
