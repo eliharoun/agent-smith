@@ -1,15 +1,18 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { HttpError } from "../middleware/error";
 import {
   defaultMcpConfigPaths,
   detectMcpStatus,
+  keyForAgent,
   type McpPlatform,
   MCP_PLATFORMS,
   removeMcpEntry,
   writeMcpEntry,
 } from "../services/mcp-config";
-import { parseRegistry } from "../services/parse-registry";
+import { parseRegistry, type Registry } from "../services/parse-registry";
 import { resolveSmithPath } from "../services/resolve-smith-path";
 
 export interface McpRouteDeps {
@@ -35,6 +38,35 @@ async function assertAgentExists(registryPath: string, name: string): Promise<vo
   }
 }
 
+/**
+ * Read the bundle's saved `mcpServers[]` and report whether it already
+ * contains the per-agent key (`<agent>-knowledge`). Returns `false` on any
+ * read/parse failure — the modal shows the diff line conservatively in
+ * that case (better to over-report than to silently skip the line).
+ *
+ * Kept inside the route handler (not in `mcp-wiring.ts`) so the wiring
+ * module stays pure: it operates on AI-client config files only and never
+ * reads the bundle's `agent.config.json`.
+ */
+async function readBundleHasEntry(
+  registry: Registry,
+  agentName: string,
+): Promise<boolean> {
+  for (const info of Object.values(registry.catalogs)) {
+    if (!info.agents.includes(agentName)) continue;
+    const configPath = join(info.path, agentName, "agent.config.json");
+    try {
+      const data = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+      const arr = data.mcpServers;
+      if (!Array.isArray(arr)) return false;
+      return arr.includes(keyForAgent(agentName));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 const PlatformEnum = z.enum(MCP_PLATFORMS);
 const WiringBody = z
   .object({
@@ -49,18 +81,31 @@ export function registerMcpRoutes(app: Hono, deps: McpRouteDeps) {
   /**
    * Wiring plan preview. Returned shape lets the GUI render the confirm
    * modal without making per-platform decisions client-side.
+   *
+   * `bundleHasEntry` is a bundle-level fact (the saved `mcpServers[]`
+   * array contains `<agent>-knowledge`) — kept at the response top-level
+   * rather than inside `PlatformMcpStatus` because it is not per-platform.
+   * The modal uses it to decide whether to show the
+   * "+ mcpServers add ..." diff line.
    */
   app.get("/api/agents/:name/mcp-wiring-plan", async (c) => {
     const name = c.req.param("name");
     assertValidAgentName(name);
-    await assertAgentExists(deps.registryPath, name);
+    const reg = await parseRegistry(deps.registryPath);
+    const exists = Object.values(reg.catalogs).some((info) => info.agents.includes(name));
+    if (!exists) {
+      throw new HttpError(404, "NOT_FOUND", `agent ${name} not in registry`);
+    }
     const paths = configPathsFor();
-    const platforms = await detectMcpStatus({
-      agent: name,
-      paths,
-      ...(deps.detectInstalled ? { detectInstalled: deps.detectInstalled } : {}),
-    });
-    return c.json({ platforms });
+    const [platforms, bundleHasEntry] = await Promise.all([
+      detectMcpStatus({
+        agent: name,
+        paths,
+        ...(deps.detectInstalled ? { detectInstalled: deps.detectInstalled } : {}),
+      }),
+      readBundleHasEntry(reg, name),
+    ]);
+    return c.json({ platforms, bundleHasEntry });
   });
 
   /**
