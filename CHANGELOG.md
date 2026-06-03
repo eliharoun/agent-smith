@@ -4,6 +4,30 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] — 2026-06-03
+
+Edit-time control over knowledge-source routing.
+
+### Added
+
+- The Edit Knowledge Source modal in the GUI now exposes the same
+  routing dropdown as Add. URL sources show their current `via:`
+  server and tool pre-selected; users can switch servers, switch
+  tools on the same server, or revert to direct HTTP. Servers
+  declared on the source but absent from the user's MCP config show
+  with a `[not configured]` badge.
+- `smith knowledge route <agent> --source <id> --clear-via` removes
+  the `via:` declaration from a routed source, switching it back to
+  direct HTTP. The flag requires `--source` and is non-interactive;
+  switching to a different server still uses the picker.
+
+### Changed
+
+- The Edit modal's `mcpServers[]` is auto-extended when a user picks
+  a server from their AI client config that wasn't yet in the
+  bundle. `mcp.required[]` is left untouched on Edit (it's an Add
+  concern).
+
 ## [1.4.2] — 2026-06-03
 
 Polish release on top of v1.4.1's routing picker — retrofitting existing sources, lock recovery, and clearer errors.
