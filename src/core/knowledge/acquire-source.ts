@@ -17,7 +17,7 @@ import {
 import { acquireViaMcp } from "./acquire-via";
 import {
   inferMaterializer,
-  materializeHtmlToMarkdown,
+  materializeHtml,
   materializeJson,
   materializePassthrough,
 } from "./materialize";
@@ -227,7 +227,7 @@ export function runMaterializer(
     case "json":
       return materializeJson(art.bytes);
     case "html-to-md":
-      return materializeHtmlToMarkdown(art.bytes);
+      return materializeHtml(art.bytes.toString("utf8"), art.sourceUrl ?? "https://localhost/");
     case "passthrough":
     case "markdown":
     case "text":
