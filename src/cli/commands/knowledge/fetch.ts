@@ -334,8 +334,9 @@ export async function knowledgeFetch(
       const allSources = bundle.config.knowledge?.sources ?? [];
       const source = allSources.find((s) => s.id === sourceId);
       if (source) {
+        let refreshResult: RefreshSourceResult;
         try {
-          await doRefresh({
+          refreshResult = await doRefresh({
             agentSmithHome: knowledgePaths.agentSmithHome,
             agent,
             source,
@@ -360,6 +361,25 @@ export async function knowledgeFetch(
         if (!rerender.ok) {
           console.error(pc.red(`smith: rerender failed for ${agent}: ${rerender.error}`));
           return 1;
+        }
+        if (refreshResult.kind === "refreshed") {
+          console.log(
+            pc.green(
+              `refreshed ${sourceId}: ${refreshResult.entries} file(s), ${refreshResult.bytes} byte(s) in ${refreshResult.durationMs}ms`,
+            ),
+          );
+        } else if (refreshResult.kind === "lock-held") {
+          console.warn(
+            pc.yellow(
+              `refresh of ${sourceId} skipped: another refresh is already in progress for ${agent}`,
+            ),
+          );
+        } else if (refreshResult.kind === "skipped") {
+          console.warn(pc.yellow(`refresh of ${sourceId} skipped: ${refreshResult.reason}`));
+        } else if (refreshResult.kind === "inline-only") {
+          console.log(
+            pc.dim(`${sourceId} has delivery: ${refreshResult.delivery} — nothing to materialize`),
+          );
         }
         return 0;
       }
