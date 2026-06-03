@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertWithin } from "../../io/assert-within";
 import type { McpClientOpts } from "../../io/mcp-client";
@@ -9,7 +9,7 @@ import { toMessage } from "../to-message";
 import type { AcquiredArtifact, GitSpawner } from "./acquire";
 import { urlCacheKey } from "./acquire";
 import { acquireSource, chooseMaterializer, runMaterializer } from "./acquire-source";
-import { compile, type CompiledKnowledge } from "./compile";
+import { type CompiledKnowledge, compile } from "./compile";
 import { writeCompileManifest } from "./compile-manifest";
 import {
   ensureRelativeSymlink,
@@ -101,9 +101,7 @@ function shouldAutoCompile(
   // the user saying "keep this in working memory regardless." Defer to v1 mode
   // for the whole bundle in that case — the validator's hard-limit check is
   // the right place to surface overflow when the user explicitly asks for it.
-  const hasExplicitInline = (block?.sources ?? []).some(
-    (s) => s.delivery === "inline",
-  );
+  const hasExplicitInline = (block?.sources ?? []).some((s) => s.delivery === "inline");
   if (hasExplicitInline) return false;
   const budget = block?.inlineBudget?.totalTokens ?? DEFAULT_INLINE_BUDGET;
   const estimatedTotalTokens = Math.ceil(manifest.totals.bytes / 4);
@@ -526,36 +524,10 @@ export async function runKnowledgeStage(
     // pins the v1 path even for large bundles.
     const compileExplicit = block?.compile?.progressive;
     const compileShouldRun =
-      compileExplicit === true ||
-      (compileExplicit !== false && shouldAutoCompile(manifest, block));
+      compileExplicit === true || (compileExplicit !== false && shouldAutoCompile(manifest, block));
     let compiled: CompiledKnowledge | undefined;
     if (compileShouldRun) {
-      const compileOpts = {
-        progressive: true,
-        tocMaxLines: block?.compile?.tocMaxLines ?? 150,
-        emitAgentsMd: block?.compile?.emitAgentsMd ?? false,
-      };
-      const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
-        id: s.id,
-        scope: s.scope,
-        type: s.type,
-        delivery: s.delivery,
-        files: s.files.map((f) => ({
-          relPath: f.path,
-          bytes: f.bytes,
-          sha256: f.sha256,
-          ...(f.summary ? { summary: f.summary } : {}),
-        })),
-        tokensInline: s.tokensInline,
-        ...(s.description !== undefined ? { description: s.description } : {}),
-        ...(s.source ? { source: s.source } : {}),
-        ...(s.fetchedAt ? { fetchedAt: s.fetchedAt } : {}),
-        ...(s.summary !== undefined ? { summary: s.summary } : {}),
-        ...(s.toc !== undefined ? { toc: s.toc } : {}),
-        ...(s.retrieval !== undefined ? { retrieval: s.retrieval } : {}),
-      }));
-      compiled = compile(matSources, compileOpts, { rootDir: paths.knowledgeDir });
-      await writeCompileManifest(paths.knowledgeDir, compiled.manifest);
+      compiled = await compileFromManifest(manifest, block, paths.knowledgeDir);
       for (const w of compiled.warnings) warnings.push(w);
     }
 
@@ -574,4 +546,309 @@ export async function runKnowledgeStage(
     }
     throw err;
   }
+}
+
+/**
+ * Shared helper: compile a `KnowledgeManifest` (in-memory or freshly read
+ * from disk) into a `CompiledKnowledge` and persist `compile-manifest.json`.
+ *
+ * Used by both the live acquire+materialize path (`runKnowledgeStage`) and
+ * the offline `runCompileFromMaterialized` path. Keeps the projection from
+ * `KnowledgeManifestSourceEntry` → `MaterializedSource` in one place so the
+ * two paths can never drift.
+ */
+async function compileFromManifest(
+  manifest: KnowledgeManifest,
+  block: KnowledgeBlock | undefined,
+  knowledgeDir: string,
+): Promise<CompiledKnowledge> {
+  const compileOpts = {
+    progressive: true,
+    tocMaxLines: block?.compile?.tocMaxLines ?? 150,
+    emitAgentsMd: block?.compile?.emitAgentsMd ?? false,
+  };
+  const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
+    id: s.id,
+    scope: s.scope,
+    type: s.type,
+    delivery: s.delivery,
+    files: s.files.map((f) => ({
+      relPath: f.path,
+      bytes: f.bytes,
+      sha256: f.sha256,
+      ...(f.summary ? { summary: f.summary } : {}),
+    })),
+    tokensInline: s.tokensInline,
+    ...(s.description !== undefined ? { description: s.description } : {}),
+    ...(s.source ? { source: s.source } : {}),
+    ...(s.fetchedAt ? { fetchedAt: s.fetchedAt } : {}),
+    ...(s.summary !== undefined ? { summary: s.summary } : {}),
+    ...(s.toc !== undefined ? { toc: s.toc } : {}),
+    ...(s.retrieval !== undefined ? { retrieval: s.retrieval } : {}),
+  }));
+  const compiled = compile(matSources, compileOpts, { rootDir: knowledgeDir });
+  await writeCompileManifest(knowledgeDir, compiled.manifest);
+  return compiled;
+}
+
+/**
+ * Paths required by `runCompileFromMaterialized`.
+ *
+ * `cacheDir` is accepted but unused: compile-from-materialized never touches
+ * the cache. It's part of the signature so callers can pass `PipelinePaths`
+ * verbatim without conditional spread, and so a future helper can opt into
+ * cache-aware behaviour without breaking the API.
+ */
+export interface RunCompileFromMaterializedOpts {
+  bundleDir: string;
+  knowledgeDir: string;
+  cacheDir: string;
+}
+
+/**
+ * Offline compile: re-derive `compile-manifest.json` from already-materialized
+ * sources without re-acquiring from network/MCP/disk. The materialized files
+ * and `_manifest.json` are produced by a prior `smith knowledge fetch` or
+ * `smith agent install`; this function reads them in place.
+ *
+ * Compile is a re-derivation operation — given the same materialized inputs
+ * it produces the same compile manifest. It must be cheap, pure, and offline:
+ *
+ *   - No MCP servers spawned.
+ *   - No network calls.
+ *   - The `<knowledgeDir>/sources/` tree is read but never mutated.
+ *   - No routing options (mcpPool / spawnOptsFor / routeCache / metaClaims /
+ *     probeOnFailure / recordRoute) are accepted; routing happens at fetch
+ *     time, not compile time.
+ *
+ * Sources declared in `block.sources` that have no entry in the live
+ * `_manifest.json` are reported as errors with a clear "run smith knowledge
+ * fetch first" hint. The `_manifest.json` itself missing is treated the same
+ * way — the agent has never had its knowledge materialized.
+ */
+export async function runCompileFromMaterialized(
+  block: KnowledgeBlock | undefined,
+  opts: RunCompileFromMaterializedOpts,
+): Promise<PipelineResult> {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const liveDir = opts.knowledgeDir;
+
+  const sources = block?.sources ?? [];
+  const totalBudget = block?.inlineBudget?.totalTokens ?? DEFAULT_INLINE_BUDGET;
+
+  // No declared sources: behave like `runKnowledgeStage`'s empty-sources path
+  // — return an empty manifest + section, no compile output.
+  if (sources.length === 0) {
+    const empty: KnowledgeManifest = {
+      schemaVersion: 1,
+      renderedAt: new Date().toISOString(),
+      sources: [],
+      totals: {
+        tokensInline: 0,
+        tokensInlineBudget: totalBudget,
+        files: 0,
+        bytes: 0,
+      },
+    };
+    return {
+      manifest: empty,
+      section: { inline: [], index: [], rootDir: liveDir },
+      warnings,
+      errors,
+    };
+  }
+
+  // Read the live manifest written by a prior fetch/install. ENOENT means the
+  // agent has never been materialized; report a clear actionable error per
+  // declared source rather than failing opaquely.
+  const manifestPath = join(liveDir, "_manifest.json");
+  let liveManifest: KnowledgeManifest | undefined;
+  try {
+    const raw = await readFile(manifestPath, "utf8");
+    liveManifest = JSON.parse(raw) as KnowledgeManifest;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      const empty: KnowledgeManifest = {
+        schemaVersion: 1,
+        renderedAt: new Date().toISOString(),
+        sources: [],
+        totals: {
+          tokensInline: 0,
+          tokensInlineBudget: totalBudget,
+          files: 0,
+          bytes: 0,
+        },
+      };
+      for (const src of sources) {
+        errors.push(`[${src.id}] no materialized files found; run \`smith knowledge fetch\` first`);
+      }
+      return {
+        manifest: empty,
+        section: { inline: [], index: [], rootDir: liveDir },
+        warnings,
+        errors,
+      };
+    }
+    throw new SmithError({
+      code: "validation-failed",
+      what: `_manifest.json at ${manifestPath}`,
+      reasons: [toMessage(err)],
+    });
+  }
+
+  // Re-derive section + per-source manifest entries by intersecting declared
+  // sources with the live manifest. Sources missing from the live manifest are
+  // reported as errors; sources present but with zero files (degenerate state)
+  // are warned and omitted from the compile.
+  const section: KnowledgeSection = { inline: [], index: [], rootDir: liveDir };
+  const manifestSources: KnowledgeManifestSourceEntry[] = [];
+  let totalFiles = 0;
+  let totalBytes = 0;
+  let usedTokens = 0;
+
+  const liveById = new Map<string, KnowledgeManifestSourceEntry>(
+    liveManifest.sources.map((s) => [s.id, s]),
+  );
+
+  for (const declared of sources) {
+    const live = liveById.get(declared.id);
+    if (!live) {
+      errors.push(
+        `[${declared.id}] no materialized files found; run \`smith knowledge fetch\` first`,
+      );
+      continue;
+    }
+
+    // Sanity-check materialized files exist on disk. A missing file in the
+    // sources/ tree indicates a partial swap or out-of-band deletion; surface
+    // it as an error so the user runs fetch to repair, rather than producing
+    // a compile manifest that points at vanished content.
+    let missingFile = false;
+    for (const f of live.files) {
+      const abs = join(liveDir, f.path);
+      try {
+        await stat(abs);
+      } catch {
+        errors.push(
+          `[${declared.id}] materialized file missing on disk: ${f.path}; run \`smith knowledge fetch\` to repair`,
+        );
+        missingFile = true;
+        break;
+      }
+    }
+    if (missingFile) continue;
+
+    // Carry forward the live manifest entry but freshen `renderedAt` semantics
+    // by overlaying the declared block's optional knobs (description, summary,
+    // toc, retrieval) so iteration on those bundle-side fields takes effect on
+    // compile without a re-fetch.
+    const provenance: { url?: string; path?: string } = {};
+    if ("url" in declared && declared.url) provenance.url = declared.url;
+    if ("path" in declared && declared.path) provenance.path = declared.path;
+    const entry: KnowledgeManifestSourceEntry = {
+      id: declared.id,
+      scope: live.scope,
+      type: declared.type,
+      ...(Object.keys(provenance).length > 0
+        ? { source: provenance }
+        : live.source
+          ? { source: live.source }
+          : {}),
+      delivery: live.delivery,
+      files: live.files,
+      ...(live.fetchedAt ? { fetchedAt: live.fetchedAt } : {}),
+      extractor: live.extractor ?? null,
+      tokensInline: live.tokensInline,
+      ...(declared.description !== undefined
+        ? { description: declared.description }
+        : live.description !== undefined
+          ? { description: live.description }
+          : {}),
+      ...(declared.summary !== undefined
+        ? { summary: declared.summary }
+        : live.summary !== undefined
+          ? { summary: live.summary }
+          : {}),
+      ...(declared.toc !== undefined
+        ? { toc: declared.toc }
+        : live.toc !== undefined
+          ? { toc: live.toc }
+          : {}),
+      ...(declared.retrieval !== undefined
+        ? { retrieval: declared.retrieval }
+        : live.retrieval !== undefined
+          ? { retrieval: live.retrieval }
+          : {}),
+    };
+    manifestSources.push(entry);
+    totalFiles += live.files.length;
+    totalBytes += live.files.reduce((n, f) => n + f.bytes, 0);
+    usedTokens += live.tokensInline;
+
+    // Rebuild the section so callers that consume `section` (e.g. assembler
+    // dry-runs) get a coherent view. Inline content is read from disk so we
+    // don't depend on the materialized files being kept in memory.
+    if (live.delivery === "inline") {
+      const parts: string[] = [];
+      for (const f of live.files) {
+        const abs = join(liveDir, f.path);
+        try {
+          parts.push(await readFile(abs, "utf8"));
+        } catch (err) {
+          warnings.push(`[${declared.id}] failed to read inline file ${f.path}: ${toMessage(err)}`);
+        }
+      }
+      section.inline.push({
+        id: declared.id,
+        ...(declared.description ? { description: declared.description } : {}),
+        content: parts.join("\n\n---\n\n"),
+      });
+    } else {
+      for (const f of live.files) {
+        section.index.push({
+          id: declared.id,
+          relPath: f.path,
+          ...(declared.description ? { description: declared.description } : {}),
+          ...(f.summary ? { summary: f.summary } : {}),
+        });
+      }
+    }
+  }
+
+  section.hasGitSources = manifestSources.some((s) => s.type === "git");
+  section.sourceTypes = new Set(manifestSources.map((s) => s.type));
+
+  const manifest: KnowledgeManifest = {
+    schemaVersion: 1,
+    renderedAt: liveManifest.renderedAt,
+    sources: manifestSources,
+    totals: {
+      tokensInline: usedTokens,
+      tokensInlineBudget: totalBudget,
+      files: totalFiles,
+      bytes: totalBytes,
+    },
+  };
+
+  // If any source failed, return without producing a compile manifest. The
+  // caller surfaces `result.errors` so the user sees the "run fetch first"
+  // hint per source.
+  if (errors.length > 0) {
+    return { manifest, section, warnings, errors };
+  }
+
+  // Compile is forced for this offline path: callers (CLI compile command)
+  // explicitly asked for it. Honor that the same way the live path does when
+  // `compile.progressive: true` is set.
+  const compiled = await compileFromManifest(manifest, block, liveDir);
+  for (const w of compiled.warnings) warnings.push(w);
+
+  return {
+    manifest,
+    section,
+    warnings,
+    errors,
+    compiled,
+  };
 }

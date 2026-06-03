@@ -120,7 +120,7 @@ smith knowledge compile <name>      # force compile for one bundle
 smith knowledge compile --all       # force compile for every bundle with knowledge sources
 ```
 
-Forces a compile regardless of opt-in or smart-default thresholds — the user explicitly asked for it. Reads the materialized cache produced by the most recent `smith agent install`, builds the TOC stanza, and writes `compile-manifest.json` next to the materialized cache:
+Forces a compile regardless of opt-in or smart-default thresholds — the user explicitly asked for it. Reads the materialized files produced by the most recent `smith knowledge fetch` or `smith agent install`, builds the TOC stanza, and writes `compile-manifest.json` next to the materialized cache:
 
 ```
 ~/.config/agent-smith/knowledge/<agent>/
@@ -131,9 +131,11 @@ Forces a compile regardless of opt-in or smart-default thresholds — the user e
 
 `compile-manifest.json` records per-source TOC line, on-disk path, retrieval mode, and a content sha; `contentHash` over the sorted manifest is what `doctor` will diff for drift detection.
 
-`smith agent install` runs compile under the smart default (or honours the explicit `compile.progressive` override). Manual invocation of `smith knowledge compile` is for offline iteration (you're editing summaries and want to re-render the TOC without paying for a network refetch), CI checks, or pre-warming the manifest. Schema reference for the command lives in [CLI reference — `smith knowledge compile`](./14-cli-reference.md#smith-knowledge-compile-name).
+The command is **entirely offline** (v1.5.0): it never re-acquires sources from the network, never spawns MCP servers, and never mutates the `sources/` tree. It only reads `_manifest.json` and the materialized files, runs `compile()`, and writes `compile-manifest.json`. Sources that have never been materialized produce a per-source error pointing the user at `smith knowledge fetch <agent>`. Compile is idempotent — re-running with the same materialized inputs produces the same `contentHash`.
 
-The command exits `2` only when the named bundle has no `knowledge` block or no sources to compile — i.e. there's nothing to do regardless of mode. `--all` skips bundles without sources (one warn line per skipped bundle) and only exits non-zero when every bundle was skipped.
+`smith agent install` runs compile under the smart default (or honours the explicit `compile.progressive` override) at install time, when the source bytes are already in hand from the acquire+materialize pass. Manual invocation of `smith knowledge compile` is for offline iteration (you're editing `summary` / `toc` / `delivery` / `compile.tocMaxLines` and want to re-render the TOC without paying for a network refetch), CI drift checks, or pre-warming the manifest. Schema reference for the command lives in [CLI reference — `smith knowledge compile`](./14-cli-reference.md#smith-knowledge-compile-name).
+
+The command exits `2` only when the named bundle has no `knowledge` block or no sources to compile — i.e. there's nothing to do regardless of mode. It exits `1` when one or more sources have never been materialized (run `smith knowledge fetch <agent>` first). `--all` skips bundles without sources (one warn line per skipped bundle) and only exits non-zero when every bundle was skipped.
 
 ---
 

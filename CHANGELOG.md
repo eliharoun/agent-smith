@@ -4,6 +4,30 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-06-03
+
+Major change to `smith knowledge compile`: it now operates entirely
+on already-materialized sources instead of re-fetching from network/
+MCP. Authors iterating on compile and delivery settings no longer
+burn fetches per iteration.
+
+### Changed
+
+- `smith knowledge compile` reads materialized files from
+  `<stateHome>/agents/<agent>/knowledge/sources/` instead of
+  re-acquiring. The command no longer requires network access, MCP
+  server spawning, or routing config.
+- Compile fails cleanly with "run smith knowledge fetch first" when
+  a source has never been materialized.
+- Compile is now idempotent and safe to re-run repeatedly.
+
+### Removed
+
+- The MCP-pool wiring added to compile in v1.4.4 is no longer needed
+  and has been removed. Routed knowledge sources are still resolved
+  during `smith knowledge fetch` and `smith agent install`, where
+  the wiring lives.
+
 ## [1.4.4] — 2026-06-03
 
 ### Fixed

@@ -24,12 +24,13 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctorCli } from "../../src/cli/commands/doctor";
-import { parseConfig } from "../../src/core/config-schema";
 import { runKnowledgeCompile } from "../../src/cli/commands/knowledge/compile";
+import { parseConfig } from "../../src/core/config-schema";
 import {
   compileManifestPath,
   readCompileManifest,
 } from "../../src/core/knowledge/compile-manifest";
+import { runKnowledgeStage } from "../../src/core/knowledge/pipeline";
 import type { AgentBundle } from "../../src/core/types";
 import type { PlatformId } from "../../src/io/platform-detect";
 
@@ -109,10 +110,7 @@ async function makeBundle(
   if (!parsed.success) {
     throw new Error(`fixture invalid: ${parsed.errors.join("; ")}`);
   }
-  await writeFile(
-    join(bundleDir, "agent.config.json"),
-    JSON.stringify(configRaw, null, 2),
-  );
+  await writeFile(join(bundleDir, "agent.config.json"), JSON.stringify(configRaw, null, 2));
   return {
     config: parsed.data,
     source: { kind: "user-global", rootPath: ctx.bundlesRoot, label: "test" },
@@ -161,6 +159,35 @@ async function runDoctor(opts: {
   return { exitCode: code, stdout, report };
 }
 
+/**
+ * Materialize a bundle's knowledge sources into the per-agent knowledge dir
+ * WITHOUT producing a compile-manifest.json. Compile is now offline (v1.5.0) —
+ * every test that calls runKnowledgeCompile must first materialize so
+ * `_manifest.json` exists. We strip the bundle's `compile` block (and pin
+ * `compile.progressive: false` to defeat the smart-default) so a clean fixture
+ * starts with materialized sources but no compile artifact.
+ */
+async function materialize(bundle: AgentBundle): Promise<void> {
+  const knowledgeDir = join(ctx.agentSmithHome, "knowledge", bundle.config.name);
+  const cacheDir = join(knowledgeDir, ".cache");
+  await mkdir(knowledgeDir, { recursive: true });
+  await mkdir(cacheDir, { recursive: true });
+  const block = bundle.config.knowledge;
+  if (!block?.sources?.length) return;
+  const matBlock = {
+    ...block,
+    compile: { progressive: false, tocMaxLines: 150, emitAgentsMd: false },
+  };
+  const result = await runKnowledgeStage(matBlock, {
+    bundleDir: bundle.bundlePath,
+    knowledgeDir,
+    cacheDir,
+  });
+  if (result.errors.length > 0) {
+    throw new Error(`materialize failed: ${result.errors.join("; ")}`);
+  }
+}
+
 async function fileExists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -185,6 +212,7 @@ describe("smith doctor knowledge-compile section", () => {
 
   test("drift: manifest exists but hash doesn't match a fresh compile", async () => {
     const bundle = await makeBundle("beta", { withCompile: true });
+    await materialize(bundle);
     // First compile populates the manifest legitimately.
     const code = await runKnowledgeCompile({
       name: "beta",
@@ -208,6 +236,7 @@ describe("smith doctor knowledge-compile section", () => {
 
   test("clean: manifest matches a fresh compile() — no findings", async () => {
     const bundle = await makeBundle("gamma", { withCompile: true });
+    await materialize(bundle);
     const code = await runKnowledgeCompile({
       name: "gamma",
       paths: { agentSmithHome: ctx.agentSmithHome },
@@ -237,6 +266,7 @@ describe("smith doctor knowledge-compile section", () => {
     // forced regardless of opt-in), then mutate the persisted hash to
     // introduce drift.
     const bundle = await makeBundle("smart-default", { withCompile: false });
+    await materialize(bundle);
     const code = await runKnowledgeCompile({
       name: "smart-default",
       paths: { agentSmithHome: ctx.agentSmithHome },
@@ -261,6 +291,7 @@ describe("smith doctor knowledge-compile section", () => {
     // user later flipped it off. The leftover manifest may be stale; doctor
     // surfaces it instead of silently ignoring.
     const bundle = await makeBundle("stale-optout", { withCompile: "explicit-false" });
+    await materialize(bundle);
     // Seed a real manifest by forcing a compile via runKnowledgeCompile,
     // which forces progressive=true on the way in regardless of bundle config.
     const code = await runKnowledgeCompile({
@@ -284,6 +315,7 @@ describe("smith doctor knowledge-compile section", () => {
 
   test("--fix-knowledge-compile re-runs compile and clears missing-manifest", async () => {
     const bundle = await makeBundle("epsilon", { withCompile: true });
+    await materialize(bundle);
     const knowledgeDir = join(ctx.agentSmithHome, "knowledge", "epsilon");
     const manifestPath = compileManifestPath(knowledgeDir);
     expect(await fileExists(manifestPath)).toBe(false);
@@ -300,6 +332,7 @@ describe("smith doctor knowledge-compile section", () => {
 
   test("--fix-knowledge-compile re-runs compile and clears drift", async () => {
     const bundle = await makeBundle("zeta", { withCompile: true });
+    await materialize(bundle);
     // Seed a real manifest, then corrupt the hash.
     const code = await runKnowledgeCompile({
       name: "zeta",

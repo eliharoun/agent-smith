@@ -1794,12 +1794,21 @@ bundle that has knowledge sources, regardless of v2.1 smart-default
 thresholds or the explicit `compile.progressive` opt-in/opt-out. The
 user explicitly typed the command; honour that. Persists
 `compile-manifest.json` under the agent's knowledge dir. Reads the
-materialized cache produced by the last `smith agent install`; offline
-(no acquire, no network). Use this for offline iteration on summaries /
+materialized files produced by the last `smith knowledge fetch` or
+`smith agent install`; entirely offline (no acquire, no network, no
+MCP server spawning). Use this for offline iteration on summaries /
 TOC tuning, CI drift checks, or pre-warming the manifest. The smart
 auto-compile default in `runKnowledgeStage` governs `smith agent install`'s
 implicit decisions, not this command. Source:
 `src/cli/commands/knowledge/compile.ts`.
+
+**Prerequisite:** every declared source must have been materialized
+at least once. If a source has never been fetched, compile exits with
+a per-source error pointing the user at `smith knowledge fetch <agent>`.
+The expected ordering is `smith agent install <agent>` (or `smith
+knowledge fetch <agent>`) first, then `smith knowledge compile <agent>`
+for any subsequent iteration on `delivery` / `compile.tocMaxLines` /
+`compile.progressive` / per-source `summary` / per-source `toc`.
 
 **Arguments:**
 
@@ -1816,7 +1825,8 @@ implicit decisions, not this command. Source:
 **Exit codes:**
 
 - `0` — every targeted bundle compiled successfully.
-- `1` — runtime error inside a compile.
+- `1` — runtime error inside a compile, OR one or more sources have
+  never been materialized (run `smith knowledge fetch <agent>` first).
 - `2` — usage error: neither `[name]` nor `--all` given; both given;
   named bundle has no `knowledge` block or no sources; or `--all`
   matched no bundles with sources.
