@@ -235,6 +235,7 @@ export async function knowledgeFetch(
                 process.stdin.once("data", (b) => resolve(b.toString().trim()));
               });
             },
+            notify: (msg: string) => process.stdout.write(msg),
           })
       : undefined;
 

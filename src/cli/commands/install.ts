@@ -506,6 +506,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
               process.stdin.once("data", (b) => resolve(b.toString().trim()));
             });
           },
+          notify: (msg: string) => process.stdout.write(msg),
         })
     : undefined;
 

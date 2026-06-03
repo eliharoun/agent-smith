@@ -4,6 +4,17 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] — 2026-06-02
+
+### Fixed
+
+- Probe-on-failure now restricts candidate tools to those whose
+  inputSchema declares a url parameter, preventing prompts about
+  unrelated read-shaped tools (issue trackers, search APIs, etc.) on
+  bundles that declare many MCP servers. Candidate prompts are also
+  capped at 5 per fetch — if more applicable tools exist, set via:
+  on the source explicitly.
+
 ## [1.3.1] — 2026-06-02
 
 ### Fixed

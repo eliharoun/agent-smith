@@ -10,6 +10,10 @@ export interface ProbeRouteOpts {
   /** UI callback. Returns the user's free-form response. The caller is
    *  responsible for interpreting "y"/"yes"/"" as the desired affirmative. */
   prompt: (msg: string) => Promise<string>;
+  /** Optional one-way status callback for informational lines that don't
+   *  expect a response (e.g. "N more candidates skipped"). Defaults to a
+   *  no-op when omitted. */
+  notify?: (msg: string) => void;
 }
 
 export interface ProbeRouteResult {
@@ -20,6 +24,34 @@ export interface ProbeRouteResult {
 /** Read-shaped tool-name regex. Mirrors via-tool-guard's allowlist. */
 const READ_SHAPED = /^(read|get|fetch|search|list|describe|preview|head)/i;
 
+/** Property-name regex identifying a URL parameter. */
+const URL_PARAM_NAME = /^(url|uri|URL)$/i;
+
+/** Maximum number of heuristic candidate prompts per probe (across all servers). */
+const MAX_CANDIDATE_PROMPTS = 5;
+
+/**
+ * Returns true iff the tool's `inputSchema` advertises a string-typed
+ * `url`/`uri` property — direct evidence the tool accepts a URL.
+ *
+ * Defensive against zod-shaped or otherwise non-plain JSON schemas: any
+ * property whose value isn't a typed schema with `type === "string"` is
+ * treated as not-a-URL and skipped.
+ */
+export function isUrlShapedTool(tool: McpToolDescriptor): boolean {
+  const schema = tool.inputSchema;
+  if (!schema || typeof schema !== "object") return false;
+  const props = (schema as Record<string, unknown>).properties;
+  if (!props || typeof props !== "object") return false;
+  for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
+    if (!URL_PARAM_NAME.test(key)) continue;
+    if (!value || typeof value !== "object") continue;
+    const type = (value as Record<string, unknown>).type;
+    if (type === "string") return true;
+  }
+  return false;
+}
+
 /**
  * Walk through candidate `(server, tool)` pairs from the bundle's
  * declared MCP servers. For each, ask the user; on yes, try a fetch; on
@@ -29,6 +61,12 @@ const READ_SHAPED = /^(read|get|fetch|search|list|describe|preview|head)/i;
  */
 export async function probeRoute(opts: ProbeRouteOpts): Promise<ProbeRouteResult | null> {
   if (opts.bundleMcpServers.length === 0) return null;
+
+  // Gather all heuristic candidates across servers first so we can cap
+  // them globally. Meta-claim matches are handled inline (per-server)
+  // because they're already targeted (the URL matched a declared
+  // pattern); they don't contribute to the heuristic-candidate budget.
+  const heuristicCandidates: Array<{ server: string; tool: string }> = [];
 
   for (const server of opts.bundleMcpServers) {
     let client;
@@ -53,12 +91,24 @@ export async function probeRoute(opts: ProbeRouteOpts): Promise<ProbeRouteResult
       if (confirmed) return confirmed;
     }
 
-    // Then: read-shaped tools (heuristic candidates).
+    // Then: tools that are both read-shaped AND advertise a url parameter.
     for (const tool of tools) {
       if (!READ_SHAPED.test(tool.name)) continue;
-      const confirmed = await tryRoute(opts, server, tool.name, "matches the read-shaped naming convention");
-      if (confirmed) return confirmed;
+      if (!isUrlShapedTool(tool)) continue;
+      heuristicCandidates.push({ server, tool: tool.name });
     }
+  }
+
+  const capped = heuristicCandidates.slice(0, MAX_CANDIDATE_PROMPTS);
+  const skipped = heuristicCandidates.length - capped.length;
+
+  for (const { server, tool } of capped) {
+    const confirmed = await tryRoute(opts, server, tool, "takes a url parameter");
+    if (confirmed) return confirmed;
+  }
+
+  if (skipped > 0) {
+    opts.notify?.(`  → ${skipped} more candidates skipped; declare via: explicitly to use them\n`);
   }
 
   return null;
