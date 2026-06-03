@@ -346,7 +346,7 @@ flowchart TB
     end
 
     subgraph MCP["MCP wiring (when any source has retrieval: bm25)"]
-        BundleMcp[("agent.config.json<br/>mcpServers: ['agent-smith-knowledge']<br/><sub>declarative — names only</sub>")]
+        BundleMcp[("agent.config.json<br/>mcpServers: ['&lt;agent&gt;-knowledge']<br/><sub>declarative — names only<br/>per-agent: agent-smith-knowledge,<br/>billing-expert-knowledge, ...</sub>")]
         Cfg -.->|"if any source has<br/>retrieval.mode: bm25"| BundleMcp
         ClientCfg[("AI-client MCP config<br/><sub>~/.claude.json<br/>~/.kiro/settings/mcp.json<br/>opencode.json / config.toml</sub>")]
         BundleMcp -->|"GUI MCP toggle<br/>writes spawn config"| ClientCfg
@@ -371,7 +371,7 @@ flowchart TB
 
 ### 5.3 Retrieval-server lifecycle (when MCP is wired)
 
-When the bundle's `mcpServers` declares `agent-smith-knowledge` AND the user's AI-client MCP config has the spawn entry, every session opens a fresh `smith knowledge serve` subprocess:
+When the bundle's `mcpServers` declares its per-agent key (`<agent>-knowledge` — e.g. `agent-smith-knowledge` for the `agent-smith` bundle, `billing-expert-knowledge` for a `billing-expert` bundle) AND the user's AI-client MCP config has the spawn entry, every session opens a fresh `smith knowledge serve` subprocess:
 
 ```mermaid
 sequenceDiagram
@@ -383,7 +383,7 @@ sequenceDiagram
     participant Agent as The agent's<br/>system prompt
 
     User->>Client: open agent (e.g. /agents agent-smith)
-    Client->>Client: read MCP config (per-platform location)<br/>find agent-smith-knowledge entry
+    Client->>Client: read MCP config (per-platform location)<br/>find &lt;agent&gt;-knowledge entry
     Client->>Smith: spawn: smith knowledge serve [agent] --stdio
     Smith->>FS: walk sources/, build BM25 index<br/>(in-memory — no on-disk cache)
     FS-->>Smith: file list + contents

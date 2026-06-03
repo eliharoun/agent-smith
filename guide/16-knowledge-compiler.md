@@ -150,11 +150,13 @@ Spawns a stdio MCP server backed by an in-memory BM25 index over the agent's mat
 - **`knowledge.search(query, k=5)`** — top-`k` `(path, score, snippet)` matches over the file tree. Pure lexical (no embeddings).
 - **`knowledge.fetch(path, start?, end?)`** — read a file under the agent's knowledge dir; range-bounded to 64KB per response to avoid blowing the context window on a single fetch. Path traversal is rejected.
 
-Wire it into a bundle's `mcpServers` declaration so each platform spawns the server at session start:
+Wire it into a bundle's `mcpServers` declaration so each platform spawns the server at session start. The key is **per-agent** — derived as `<agent>-knowledge` so multiple bundles wired into the same AI client coexist without clobbering each other:
 
 ```jsonc
 {
-  "mcpServers": ["agent-smith-knowledge"]
+  // for the `agent-smith` bundle: "agent-smith-knowledge"
+  // for an `agg-layer-expert` bundle: "agg-layer-expert-knowledge"
+  "mcpServers": ["<agent>-knowledge"]
 }
 ```
 
@@ -176,7 +178,7 @@ args: [knowledge, serve, <agent>, --stdio]
 The browser GUI's `/knowledge/:agent` route (Knowledge tab) is the pointing-and-clicking equivalent of editing `agent.config.json` by hand:
 
 - **Edit** button per source row — opens a modal exposing every v1+v2 field: `delivery` (auto / inline / file), `retrieval` (off / bm25 / external-mcp + `mcpUrl`), `summary`, `toc`, `materialize`, `extractor`, `refresh.mode` / `refresh.ttl` / `refresh.timeout`, `optional`, `inlineBudgetTokens`. Save writes the whole `knowledge` block back via `PUT /api/agents/:name/config` (server re-validates against the canonical schema). Confirm-on-cancel guards dirty state.
-- **MCP wiring toggle** at the top of the tab — adds or removes `"agent-smith-knowledge"` from the bundle's `mcpServers: string[]`. The toggle's banner explains the **two-step wiring** every author needs to do once: (1) `smith agent install <agent>` to rebuild the bundle so the rendered output advertises the dependency, (2) add the spawn config to the AI client's own MCP settings (per-platform paths in the banner). Smith's `mcpServers` field is documentation-only — agent-smith does **not** write spawn configs into platform MCP files.
+- **MCP wiring toggle** at the top of the tab — adds or removes the per-agent key `<agent>-knowledge` (e.g. `agg-layer-expert-knowledge` for the `agg-layer-expert` bundle, `agent-smith-knowledge` for the `agent-smith` bundle) from the bundle's `mcpServers: string[]`. Per-agent keys mean two different bundles wired into the same AI client never collide. The toggle's banner explains the **two-step wiring** every author needs to do once: (1) `smith agent install <agent>` to rebuild the bundle so the rendered output advertises the dependency, (2) add the spawn config to the AI client's own MCP settings (per-platform paths in the banner). The CLI equivalents are `smith knowledge wire <agent>` and `smith knowledge unwire <agent>`. Smith's `mcpServers` field is documentation-only — agent-smith does **not** write spawn configs into platform MCP files.
 
 The same `PUT /api/agents/:name/config` endpoint accepts `knowledge` and `mcpServers` patches alongside the existing `targets` and `modelTier` arms. Source: `gui/web/src/panels/KnowledgeSources/`.
 
