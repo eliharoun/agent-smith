@@ -73,4 +73,17 @@ describe("acquireViaMcp", () => {
       { pool, spawnOptsFor: () => ({ command: "bun", args: [FIXTURE] }) },
     )).rejects.toThrow();
   }, HEAVY_TIMEOUT);
+
+  it("wraps the URL in an array when the tool's input schema declares inputs: string[]", async () => {
+    pool = new McpClientPool();
+    const arts = await acquireViaMcp(
+      { server: "echo", tool: "FetchMany" },
+      "https://example.com/batch",
+      { pool, spawnOptsFor: () => ({ command: "bun", args: [FIXTURE] }) },
+    );
+    // FetchMany echoes inputs joined by newlines — we expect the URL to
+    // appear because acquireViaMcp wrapped it as { inputs: [url] }.
+    expect(arts).toHaveLength(1);
+    expect(arts[0]?.bytes.toString("utf8")).toBe("https://example.com/batch");
+  }, HEAVY_TIMEOUT);
 });

@@ -24,8 +24,8 @@ describe("McpClient", () => {
     client = new McpClient({ command: "bun", args: [FIXTURE] });
     await client.connect();
     const tools = await client.listTools();
-    expect(tools).toHaveLength(1);
-    expect(tools[0]?.name).toBe("Fetch");
+    expect(tools).toHaveLength(2);
+    expect(tools.map((t) => t.name).sort()).toEqual(["Fetch", "FetchMany"]);
     const r = await client.callTool("Fetch", { url: "https://x.test" });
     expect(r.content[0]?.type).toBe("text");
     expect(r.content[0]?.text).toContain("https://x.test");

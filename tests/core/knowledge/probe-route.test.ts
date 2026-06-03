@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { probeRoute } from "../../../src/core/knowledge/probe-route";
+import { detectUrlParam, probeRoute } from "../../../src/core/knowledge/probe-route";
 import type { McpToolDescriptor } from "../../../src/io/mcp-client";
 import { McpClientPool } from "../../../src/io/mcp-client-pool";
 
@@ -139,7 +139,7 @@ describe("probeRoute", () => {
     });
     expect(result).toEqual({ server: "web", tool: "fetch_page" });
     expect(promptCalls.length).toBe(2);
-    expect(promptCalls[0]).toContain("takes a url parameter");
+    expect(promptCalls[0]).toContain("takes a URL parameter");
   });
 
   it("caps prompts at 5 candidates and emits a summary for the rest", async () => {
@@ -200,5 +200,157 @@ describe("probeRoute", () => {
     });
     expect(result).toBeNull();
     expect(promptCalls.length).toBe(0);
+  });
+
+  it("offers a tool whose URL parameter is an array of strings (inputs)", async () => {
+    const pool = fakePool({
+      web: [
+        {
+          name: "fetch_batch",
+          description: "Batch URL fetcher",
+          inputSchema: {
+            type: "object",
+            properties: { inputs: { type: "array", items: { type: "string" } } },
+          },
+        },
+      ],
+    });
+    const promptCalls: string[] = [];
+    const result = await probeRoute({
+      url: "https://example.test/x",
+      bundleMcpServers: ["web"],
+      pool,
+      spawnOptsFor: () => ({ command: "noop" }),
+      prompt: async (msg) => {
+        promptCalls.push(msg);
+        return "y";
+      },
+    });
+    expect(result).toEqual({ server: "web", tool: "fetch_batch" });
+    expect(promptCalls[0]).toContain("takes a URL parameter");
+  });
+
+  it("offers a tool whose URL parameter is named `urls` and typed string[]", async () => {
+    const pool = fakePool({
+      web: [
+        {
+          name: "fetch_many",
+          inputSchema: {
+            type: "object",
+            properties: { urls: { type: "array", items: { type: "string" } } },
+          },
+        },
+      ],
+    });
+    const promptCalls: string[] = [];
+    const result = await probeRoute({
+      url: "https://example.test/x",
+      bundleMcpServers: ["web"],
+      pool,
+      spawnOptsFor: () => ({ command: "noop" }),
+      prompt: async (msg) => {
+        promptCalls.push(msg);
+        return "y";
+      },
+    });
+    expect(result).toEqual({ server: "web", tool: "fetch_many" });
+    expect(promptCalls.length).toBe(2);
+  });
+
+  it("rejects a tool whose only string parameter is not URL-named", async () => {
+    const pool = fakePool({
+      noisy: [
+        {
+          name: "fetch_thing",
+          inputSchema: { type: "object", properties: { not_a_url: { type: "string" } } },
+        },
+      ],
+    });
+    const promptCalls: string[] = [];
+    const result = await probeRoute({
+      url: "https://example.test/x",
+      bundleMcpServers: ["noisy"],
+      pool,
+      spawnOptsFor: () => ({ command: "noop" }),
+      prompt: async (msg) => {
+        promptCalls.push(msg);
+        return "n";
+      },
+    });
+    expect(result).toBeNull();
+    expect(promptCalls.length).toBe(0);
+  });
+});
+
+describe("detectUrlParam", () => {
+  it("recognizes a singular string url", () => {
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: { type: "object", properties: { url: { type: "string" } } },
+    })).toEqual({ kind: "string", key: "url" });
+  });
+
+  it("recognizes alternate single-string names (target_url, link, href)", () => {
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: { type: "object", properties: { target_url: { type: "string" } } },
+    })).toEqual({ kind: "string", key: "target_url" });
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: { type: "object", properties: { href: { type: "string" } } },
+    })).toEqual({ kind: "string", key: "href" });
+  });
+
+  it("recognizes a string-array url under inputs/urls/targets", () => {
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: {
+        type: "object",
+        properties: { inputs: { type: "array", items: { type: "string" } } },
+      },
+    })).toEqual({ kind: "string-array", key: "inputs" });
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: {
+        type: "object",
+        properties: { urls: { type: "array", items: { type: "string" } } },
+      },
+    })).toEqual({ kind: "string-array", key: "urls" });
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: {
+        type: "object",
+        properties: { targets: { type: "array", items: { type: "string" } } },
+      },
+    })).toEqual({ kind: "string-array", key: "targets" });
+  });
+
+  it("rejects an array whose items are not strings", () => {
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: {
+        type: "object",
+        properties: { inputs: { type: "array", items: { type: "object" } } },
+      },
+    })).toBeNull();
+  });
+
+  it("rejects unrelated property names", () => {
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: { type: "object", properties: { not_a_url: { type: "string" } } },
+    })).toBeNull();
+    expect(detectUrlParam({
+      name: "fetch",
+      inputSchema: { type: "object", properties: { query: { type: "string" } } },
+    })).toBeNull();
+  });
+
+  it("returns null for missing or non-object schema", () => {
+    expect(detectUrlParam({ name: "x" })).toBeNull();
+    expect(detectUrlParam({
+      name: "x",
+      inputSchema: { type: "object" },
+    })).toBeNull();
   });
 });

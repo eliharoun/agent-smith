@@ -6,7 +6,9 @@
  *
  * Behaviors:
  *   - initialize → returns protocolVersion + capabilities.tools.listChanged:false + serverInfo
- *   - tools/list → one tool "Fetch" (read-shaped name so the via-tool guard accepts it)
+ *   - tools/list → two tools:
+ *       • "Fetch"     — read-shaped, takes a single string `url`.
+ *       • "FetchMany" — read-shaped, takes `inputs: string[]` (batch URL fetcher).
  *   - tools/call → echoes args back as JSON in a text content block
  *   - notifications/initialized → ignored (no response, per JSON-RPC notification rules)
  *   - any other method → error -32601
@@ -43,12 +45,24 @@ for await (const chunk of stdin) {
             description: "Fetches a URL and echoes the args back as JSON in a text content block",
             inputSchema: { type: "object", properties: { url: { type: "string" } } },
           },
+          {
+            name: "FetchMany",
+            description: "Batch URL fetcher: takes inputs: string[] and echoes the joined URLs",
+            inputSchema: {
+              type: "object",
+              properties: { inputs: { type: "array", items: { type: "string" } } },
+            },
+          },
         ],
       };
     } else if (req.method === "tools/call") {
       const params = req.params as { name?: string; arguments?: unknown } | undefined;
       if (params?.name === "Fetch") {
         result = { content: [{ type: "text", text: JSON.stringify(params.arguments ?? {}) }] };
+      } else if (params?.name === "FetchMany") {
+        const inputs = (params.arguments as { inputs?: unknown } | undefined)?.inputs;
+        const list = Array.isArray(inputs) ? (inputs as unknown[]).map(String) : [];
+        result = { content: [{ type: "text", text: list.join("\n") }] };
       } else {
         console.log(JSON.stringify({
           jsonrpc: "2.0", id: req.id,

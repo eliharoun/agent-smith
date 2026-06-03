@@ -1,8 +1,9 @@
 import { SmithError } from "../smith-error";
 import type { McpClientPool } from "../../io/mcp-client-pool";
-import type { McpClientOpts } from "../../io/mcp-client";
+import type { McpClient, McpClientOpts } from "../../io/mcp-client";
 import type { Via } from "./types";
 import type { AcquiredArtifact } from "./acquire";
+import { detectUrlParam } from "./probe-route";
 import { findRoute } from "./routing-registry";
 import { assertViaToolAllowed } from "./via-tool-guard";
 
@@ -19,7 +20,10 @@ export interface AcquireViaOpts {
  *   1) via.args (explicit; highest precedence)
  *   2) routing-registry argMapper(url) (auto, when registry knows the URL
  *      AND the registry entry's server/tool match the declared via)
- *   3) { url } fallback
+ *   3) tool inputSchema introspection — wraps the URL in the right shape
+ *      (string vs single-element string array) based on the declared
+ *      parameter name and type.
+ *   4) { url } fallback when no URL-shaped parameter can be detected.
  *
  * Pre-flight checks:
  *   - via.tool name must be read-shaped or via.allowWriteTool=true.
@@ -33,8 +37,8 @@ export async function acquireViaMcp(
   opts: AcquireViaOpts,
 ): Promise<AcquiredArtifact[]> {
   assertViaToolAllowed(via);
-  const args = resolveArgs(via, url);
   const client = await opts.pool.acquire(via.server, opts.spawnOptsFor(via.server));
+  const args = await resolveArgs(via, url, client);
   const result = await client.callTool(via.tool, args);
   if (result.isError) {
     const errText = result.content
@@ -69,11 +73,32 @@ export async function acquireViaMcp(
   }];
 }
 
-function resolveArgs(via: Via, url: string): Record<string, unknown> {
+async function resolveArgs(
+  via: Via,
+  url: string,
+  client: McpClient,
+): Promise<Record<string, unknown>> {
   if (via.args) return via.args;
   const route = findRoute(url);
   if (route && route.server === via.server && route.tool === via.tool) {
     return route.argMapper(url);
+  }
+  // Inspect the tool's declared inputSchema so we wrap the URL in the
+  // shape the tool actually expects — single string vs string[]. The
+  // pool keeps the connection alive between calls so this is a single
+  // extra round-trip per acquire.
+  try {
+    const tools = await client.listTools();
+    const tool = tools.find((t) => t.name === via.tool);
+    if (tool) {
+      const param = detectUrlParam(tool);
+      if (param?.kind === "string") return { [param.key]: url };
+      if (param?.kind === "string-array") return { [param.key]: [url] };
+    }
+  } catch {
+    // tools/list failure is non-fatal here — fall through to the
+    // legacy { url } default and let callTool surface a meaningful
+    // error if the tool genuinely doesn't accept that shape.
   }
   return { url };
 }

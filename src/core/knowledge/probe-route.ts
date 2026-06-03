@@ -24,32 +24,59 @@ export interface ProbeRouteResult {
 /** Read-shaped tool-name regex. Mirrors via-tool-guard's allowlist. */
 const READ_SHAPED = /^(read|get|fetch|search|list|describe|preview|head)/i;
 
-/** Property-name regex identifying a URL parameter. */
-const URL_PARAM_NAME = /^(url|uri|URL)$/i;
+/** Property-name regex identifying a single-string URL parameter. */
+const URL_PARAM_NAME_STRING = /^(url|uri|URL|target_url|page_url|link|href)$/i;
+
+/** Property-name regex identifying an array-of-strings URL parameter. */
+const URL_PARAM_NAME_ARRAY = /^(urls|uris|URLs|inputs|targets|links|hrefs|pages)$/i;
 
 /** Maximum number of heuristic candidate prompts per probe (across all servers). */
 const MAX_CANDIDATE_PROMPTS = 5;
 
 /**
- * Returns true iff the tool's `inputSchema` advertises a string-typed
- * `url`/`uri` property — direct evidence the tool accepts a URL.
+ * Discriminated descriptor for a tool's URL-shaped parameter, returned by
+ * {@link detectUrlParam}. `kind` tells the caller how to package the URL
+ * when invoking the tool: pass a bare string for `"string"`, wrap in a
+ * single-element array for `"string-array"`.
+ */
+export type UrlParam =
+  | { kind: "string"; key: string }
+  | { kind: "string-array"; key: string };
+
+/**
+ * Inspect a tool's `inputSchema` and return a discriminated `UrlParam`
+ * describing the property smith should populate with a URL — or `null`
+ * if no recognized URL-shaped parameter is present.
+ *
+ * Recognized shapes:
+ *   1. Singular string URL — property name matches {@link URL_PARAM_NAME_STRING}
+ *      with `type: "string"`.
+ *   2. Array of strings URL — property name matches {@link URL_PARAM_NAME_ARRAY}
+ *      with `type: "array"` AND `items.type === "string"`.
  *
  * Defensive against zod-shaped or otherwise non-plain JSON schemas: any
- * property whose value isn't a typed schema with `type === "string"` is
- * treated as not-a-URL and skipped.
+ * property whose value isn't a typed schema matching the above is skipped.
  */
-export function isUrlShapedTool(tool: McpToolDescriptor): boolean {
+export function detectUrlParam(tool: McpToolDescriptor): UrlParam | null {
   const schema = tool.inputSchema;
-  if (!schema || typeof schema !== "object") return false;
+  if (!schema || typeof schema !== "object") return null;
   const props = (schema as Record<string, unknown>).properties;
-  if (!props || typeof props !== "object") return false;
+  if (!props || typeof props !== "object") return null;
   for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
-    if (!URL_PARAM_NAME.test(key)) continue;
     if (!value || typeof value !== "object") continue;
-    const type = (value as Record<string, unknown>).type;
-    if (type === "string") return true;
+    const v = value as Record<string, unknown>;
+    if (URL_PARAM_NAME_STRING.test(key) && v.type === "string") {
+      return { kind: "string", key };
+    }
+    if (URL_PARAM_NAME_ARRAY.test(key) && v.type === "array") {
+      const items = v.items;
+      if (items && typeof items === "object"
+          && (items as Record<string, unknown>).type === "string") {
+        return { kind: "string-array", key };
+      }
+    }
   }
-  return false;
+  return null;
 }
 
 /**
@@ -94,7 +121,7 @@ export async function probeRoute(opts: ProbeRouteOpts): Promise<ProbeRouteResult
     // Then: tools that are both read-shaped AND advertise a url parameter.
     for (const tool of tools) {
       if (!READ_SHAPED.test(tool.name)) continue;
-      if (!isUrlShapedTool(tool)) continue;
+      if (detectUrlParam(tool) === null) continue;
       heuristicCandidates.push({ server, tool: tool.name });
     }
   }
@@ -103,7 +130,7 @@ export async function probeRoute(opts: ProbeRouteOpts): Promise<ProbeRouteResult
   const skipped = heuristicCandidates.length - capped.length;
 
   for (const { server, tool } of capped) {
-    const confirmed = await tryRoute(opts, server, tool, "takes a url parameter");
+    const confirmed = await tryRoute(opts, server, tool, "takes a URL parameter");
     if (confirmed) return confirmed;
   }
 
