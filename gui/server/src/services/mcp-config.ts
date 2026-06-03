@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import { detectInstalledPlatforms } from "../../../../src/io/platform-detect";
 import { atomicWriteText } from "../io/atomic-write";
 import { resolveSmithPath } from "./resolve-smith-path";
 
@@ -189,15 +190,7 @@ export interface DetectInput {
 }
 
 async function detectInstalledDefault(): Promise<Set<McpPlatform>> {
-  // Cross-rootDir dynamic import (same precedent as model-config.ts and
-  // atlassian-env.ts in this directory). Keeps gui/server free of static
-  // build-time coupling to the CLI tree while still reusing the canonical
-  // platform detector — same helper the install matrix relies on.
-  const modulePath = "../../../../src/io/platform-detect";
-  const mod = (await import(modulePath)) as {
-    detectInstalledPlatforms: () => Promise<Set<McpPlatform>>;
-  };
-  return mod.detectInstalledPlatforms();
+  return detectInstalledPlatforms();
 }
 
 /**

@@ -3,18 +3,19 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { McpServerAndToolsView, McpUrlShapedTool } from "gui-shared";
 import type { Hono } from "hono";
+import { detectUrlParam } from "../../../../src/core/knowledge/probe-route";
+import { McpClientPool } from "../../../../src/io/mcp-client-pool";
+import { readAvailableMcpServers } from "../../../../src/io/mcp-config-readers";
+import { createSpawnOptsResolver } from "../../../../src/io/mcp-spawn-resolver";
 import { HttpError } from "../middleware/error";
 import { parseRegistrySources } from "../services/parse-registry";
 
 const AGENT_NAME_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
- * Cross-rootDir loader for the smith-side primitives the picker needs.
- * Mirrors the dynamic-import pattern used by routes/knowledge.ts and
- * routes/agents.ts: gui/server's tsconfig has rootDir: "src", so a static
- * `import "../../../../src/..."` would fail typecheck. Bun resolves the
- * dynamic import at request time. Tests inject overrides via deps so the
- * real $HOME / spawn paths are never touched.
+ * Surface the picker needs from the smith-side MCP primitives. Tests inject
+ * a stub via `loadCoreModule` so no real $HOME is read and no MCP server is
+ * spawned.
  */
 interface CoreModule {
   readAvailableMcpServers: (opts: {
@@ -37,41 +38,26 @@ interface CoreModule {
       },
     ) => Promise<{
       listTools: () => Promise<
-        Array<{
-          name: string;
-          inputSchema?: Record<string, unknown> | undefined;
+        ReadonlyArray<{
+          readonly name: string;
+          readonly inputSchema?: Record<string, unknown>;
         }>
       >;
     }>;
     shutdown: () => Promise<void>;
   };
   detectUrlParam: (tool: {
-    name: string;
-    inputSchema?: Record<string, unknown> | undefined;
+    readonly name: string;
+    readonly inputSchema?: Record<string, unknown>;
   }) => { kind: "string" | "string-array"; key: string } | null;
 }
 
 async function loadCore(): Promise<CoreModule> {
-  // Cross-rootDir loader: gui/server's tsconfig has rootDir: "src", so a
-  // statically-typed import from "../../../../src/..." breaks the workspace
-  // typecheck (TS analyzes the literal path target). Mirrors the indirection
-  // pattern already used by `services/mcp-config.ts` (see `detectInstalledDefault`)
-  // — assigning the path to a const variable keeps Bun's runtime resolution
-  // intact while sidestepping the compile-time rootDir analysis. Tests
-  // never reach this default; they inject a stub via `loadCoreModule`.
-  const readersPath = "../../../../src/io/mcp-config-readers";
-  const resolverPath = "../../../../src/io/mcp-spawn-resolver";
-  const poolPath = "../../../../src/io/mcp-client-pool";
-  const probePath = "../../../../src/core/knowledge/probe-route";
-  const readers = (await import(readersPath)) as Pick<CoreModule, "readAvailableMcpServers">;
-  const resolver = (await import(resolverPath)) as Pick<CoreModule, "createSpawnOptsResolver">;
-  const pool = (await import(poolPath)) as Pick<CoreModule, "McpClientPool">;
-  const probe = (await import(probePath)) as Pick<CoreModule, "detectUrlParam">;
   return {
-    readAvailableMcpServers: readers.readAvailableMcpServers,
-    createSpawnOptsResolver: resolver.createSpawnOptsResolver,
-    McpClientPool: pool.McpClientPool,
-    detectUrlParam: probe.detectUrlParam,
+    readAvailableMcpServers,
+    createSpawnOptsResolver,
+    McpClientPool,
+    detectUrlParam,
   };
 }
 

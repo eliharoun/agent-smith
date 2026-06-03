@@ -9,6 +9,7 @@ import {
 } from "gui-shared";
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { KnowledgeBlockSchema } from "../../../../src/core/knowledge/schema";
 import { atomicWriteText } from "../io/atomic-write";
 import { HttpError } from "../middleware/error";
 import { agentWithRemote } from "../projections/agent-with-remote";
@@ -214,14 +215,8 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
       // Defense in depth: the GUI-shared `AgentConfigPatch` is permissive
       // (`z.record(z.unknown())`) so it accepts loose round-trips; the
       // canonical `KnowledgeBlockSchema` lives in src/core (CLI's source of
-      // truth) and validates the full v1+v2 surface. Loaded dynamically to
-      // cross the gui-server → src/ rootDir boundary, mirroring the
-      // refresh-manifest writer in routes/knowledge.ts.
-      const modulePath = "../../../../src/core/knowledge/schema";
-      const mod = (await import(modulePath)) as {
-        KnowledgeBlockSchema: { safeParse: (v: unknown) => { success: boolean; error?: Error } };
-      };
-      const knowledgeParsed = mod.KnowledgeBlockSchema.safeParse(parsed.data.knowledge);
+      // truth) and validates the full v1+v2 surface.
+      const knowledgeParsed = KnowledgeBlockSchema.safeParse(parsed.data.knowledge);
       if (!knowledgeParsed.success) {
         throw new HttpError(
           400,

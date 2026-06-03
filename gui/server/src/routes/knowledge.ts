@@ -1,9 +1,10 @@
-import { homedir } from "node:os";
 import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentKnowledgeView, SourceJoined } from "gui-shared";
 import type { Hono } from "hono";
 import { z } from "zod";
+import { writeRefreshManifest } from "../../../../src/core/knowledge/refresh-manifest";
 import { HttpError } from "../middleware/error";
 import { parseKnowledgeConfig } from "../services/parse-knowledge-config";
 import {
@@ -45,30 +46,16 @@ interface ConsentInput {
 }
 
 /**
- * Writes a RefreshManifest to <agentSmithHome>/refresh/<agent>/refresh-manifest.json
- * via a dynamic cross-rootDir import. The writer in
- * src/core/knowledge/refresh-manifest.ts handles all the assertWithin /
- * mkdir-recursive details. We wrap it here so the route stays unaware of
- * the rootDir boundary.
+ * Writes a RefreshManifest to <agentSmithHome>/refresh/<agent>/refresh-manifest.json.
+ * The writer in src/core/knowledge/refresh-manifest.ts handles all the
+ * assertWithin / mkdir-recursive details.
  */
 async function writeRefreshConsent(
   agentSmithHome: string,
   agent: string,
   input: ConsentInput,
 ): Promise<void> {
-  const modulePath = "../../../../src/core/knowledge/refresh-manifest";
-  const mod = (await import(modulePath)) as {
-    writeRefreshManifest: (
-      agentSmithHome: string,
-      agent: string,
-      manifest: {
-        schemaVersion: 1;
-        agent: string;
-        refresh_consent: { granted_at: string; platforms: string[]; sources: string[] };
-      },
-    ) => Promise<void>;
-  };
-  await mod.writeRefreshManifest(agentSmithHome, agent, {
+  await writeRefreshManifest(agentSmithHome, agent, {
     schemaVersion: 1,
     agent,
     refresh_consent: {
