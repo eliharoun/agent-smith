@@ -110,7 +110,24 @@ export function flattenChecks(r: DoctorResponse): FlatCheck[] {
           ? "not needed"
           : "not configured",
   });
-  // (z.unknown() sections are not flattened — they remain available
-  // on the report for future expansion without forcing a schema bump.)
+  // mcp-deps section. One FlatCheck per finding so the radial shows
+  // each missing dependency individually rather than a single rolled-up
+  // status (matches the per-platform / per-source pattern above).
+  if (r.mcpDeps?.findings) {
+    for (const f of r.mcpDeps.findings) {
+      out.push({
+        id: `mcp-deps:${f.agent}:${f.server}`,
+        label: `MCP ${f.kind}: ${f.agent} → ${f.server}`,
+        status: f.severity === "error" ? "error" : "warn",
+        detail:
+          f.kind === "required"
+            ? `bundle requires '${f.server}' but it's not configured in any platform MCP config`
+            : `bundle expects '${f.server}' (peer; not strictly required)`,
+      });
+    }
+  }
+  // (Other z.unknown() sections that may land in the future are still not
+  // flattened — they remain available on the report for future expansion
+  // without forcing a schema bump.)
   return out;
 }

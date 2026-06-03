@@ -39,6 +39,24 @@ const ManualPlatform = z.object({
 export const DoctorPlatformReport = z.union([OpencodePlatform, ManualPlatform]);
 export type DoctorPlatformReport = z.infer<typeof DoctorPlatformReport>;
 
+/**
+ * mcp-deps audit findings. One entry per declared `mcp.required` /
+ * `mcp.peer` server name that is missing from the union of platform MCP
+ * configs. `kind` distinguishes required (hard dependency) from peer
+ * (recommended companion); `severity` mirrors the CLI rollup's exit-code
+ * impact (error → exit 2, warning → exit 1).
+ */
+const McpDepFinding = z.object({
+  agent: z.string(),
+  server: z.string(),
+  kind: z.enum(["required", "peer"]),
+  severity: z.enum(["error", "warning"]),
+});
+
+const McpDepsReport = z.object({
+  findings: z.array(McpDepFinding),
+});
+
 /** Atlassian skills runtime status (when atlassian-skills is installed). */
 const AtlassianSkillsRuntimeStatus = z.object({
   installed: z.literal(true),
@@ -117,7 +135,7 @@ export const DoctorReport = z.object({
   duplicateCatalogs: z.unknown().optional(),
   knowledgeRefresh: z.unknown().optional(),
   mcpSpawnCommands: z.unknown().optional(),
-  mcpDeps: z.unknown().optional(),
+  mcpDeps: McpDepsReport.optional(),
   knowledgeConsistency: z.unknown().optional(),
   exitCode: z.union([z.literal(0), z.literal(1), z.literal(2)]),
 });

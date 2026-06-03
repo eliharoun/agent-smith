@@ -138,3 +138,84 @@ describe("flattenChecks", () => {
     expect(flattenChecks(r).find((c) => c.id === "atlassianAuth")?.status).toBe("warn");
   });
 });
+
+describe("flattenChecks: mcpDeps section", () => {
+  it("emits an error FlatCheck per required-missing finding", () => {
+    const r = {
+      ...baseReport,
+      mcpDeps: {
+        findings: [
+          {
+            agent: "my-agent",
+            server: "internal-mcp",
+            kind: "required" as const,
+            severity: "error" as const,
+          },
+        ],
+      },
+    };
+    const checks = flattenChecks(r);
+    const found = checks.find((c) => c.id === "mcp-deps:my-agent:internal-mcp");
+    expect(found).toBeDefined();
+    expect(found?.status).toBe("error");
+    expect(found?.label).toMatch(/required/);
+    expect(found?.detail).toMatch(/internal-mcp/);
+  });
+
+  it("emits a warn FlatCheck per peer-missing finding", () => {
+    const r = {
+      ...baseReport,
+      mcpDeps: {
+        findings: [
+          {
+            agent: "a",
+            server: "opt",
+            kind: "peer" as const,
+            severity: "warning" as const,
+          },
+        ],
+      },
+    };
+    const found = flattenChecks(r).find((c) => c.id === "mcp-deps:a:opt");
+    expect(found?.status).toBe("warn");
+    expect(found?.label).toMatch(/peer/);
+  });
+
+  it("required-missing flips overall health to unhealthy", () => {
+    const r = {
+      ...baseReport,
+      mcpDeps: {
+        findings: [
+          {
+            agent: "a",
+            server: "x",
+            kind: "required" as const,
+            severity: "error" as const,
+          },
+        ],
+      },
+    };
+    expect(deriveOverallHealth(r)).toBe("unhealthy");
+  });
+
+  it("peer-missing flips overall health to degraded", () => {
+    const r = {
+      ...baseReport,
+      mcpDeps: {
+        findings: [
+          {
+            agent: "a",
+            server: "x",
+            kind: "peer" as const,
+            severity: "warning" as const,
+          },
+        ],
+      },
+    };
+    expect(deriveOverallHealth(r)).toBe("degraded");
+  });
+
+  it("absent mcpDeps means no mcp-deps FlatChecks", () => {
+    expect(flattenChecks(baseReport).filter((c) => c.id.startsWith("mcp-deps"))).toEqual([]);
+  });
+});

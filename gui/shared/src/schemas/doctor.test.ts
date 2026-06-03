@@ -103,6 +103,39 @@ describe("DoctorReport (real CLI shape)", () => {
   });
 });
 
+describe("DoctorReport mcpDeps section", () => {
+  it("parses a report with typed mcpDeps findings", () => {
+    const real = {
+      generatedAt: "2026-05-20T10:00:00.000Z",
+      platforms: [],
+      skippedPlatforms: [],
+      atlassianAuth: { status: "missing" },
+      mcpDeps: {
+        findings: [
+          { agent: "a", server: "s1", kind: "required", severity: "error" },
+          { agent: "a", server: "s2", kind: "peer", severity: "warning" },
+        ],
+      },
+      exitCode: 2,
+    };
+    expect(DoctorReport.safeParse(real).success).toBe(true);
+  });
+
+  it("rejects mcpDeps with an unknown kind", () => {
+    const bad = {
+      generatedAt: "2026-05-20T10:00:00.000Z",
+      platforms: [],
+      skippedPlatforms: [],
+      atlassianAuth: { status: "missing" },
+      mcpDeps: {
+        findings: [{ agent: "a", server: "s", kind: "optional", severity: "warning" }],
+      },
+      exitCode: 0,
+    };
+    expect(DoctorReport.safeParse(bad).success).toBe(false);
+  });
+});
+
 describe("DoctorRefusal", () => {
   it("parses the no-platform-detected short-circuit", () => {
     const refusal = {
