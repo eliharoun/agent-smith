@@ -1,4 +1,6 @@
+import type { KnowledgeSource } from "gui-shared";
 import { useState } from "react";
+import { useAgent, useSaveAgentConfig } from "@/hooks/useAgents";
 import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { ConfluenceForm } from "./sourceForms/ConfluenceForm";
@@ -46,16 +48,77 @@ interface Props {
  * form's onSubmit payload, builds a `knowledge.add` JobRequest, and
  * dispatches via useStartJob. JobCompletionListener invalidates
  * ['knowledge', agent] on exit (Task 19).
+ *
+ * Routing-aware save (v1.4): when the URL form returns a `via` pick, the
+ * modal does NOT go through `knowledge.add` (the CLI doesn't accept a
+ * `--via` flag — its picker is interactive). Instead it writes the new
+ * source directly to `agent.config.json#knowledge` via PUT, mirroring the
+ * Edit modal. This keeps the round-trip aligned with the schema (the
+ * canonical KnowledgeBlockSchema is the source of truth) and lets the
+ * modal extend `mcpServers[]` atomically when the picked server isn't
+ * already declared.
  */
 export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) {
   const [type, setType] = useState<SourceType | null>(null);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
   const start = useStartJob();
+  const detail = useAgent(agent);
+  const saveConfig = useSaveAgentConfig(agent);
   const formId = "knowledge-add-form";
 
   const Form = type ? FORMS[type] : null;
 
-  const handleSubmit = (s: FormSubmit) => {
+  const handleSubmit = async (s: FormSubmit) => {
+    setSubmitErr(null);
     if (s.errors && Object.keys(s.errors).length > 0) return;
+
+    if (s.via) {
+      // Routed-URL save path: skip the `knowledge.add` job (no --via flag)
+      // and write the source straight to agent.config.json. We round-trip
+      // the entire knowledge block + mcpServers array; the server replaces
+      // both in one write so the install pipeline sees the consistent
+      // post-add state on its next materialize.
+      const config = (detail.data?.config as Record<string, unknown> | undefined) ?? {};
+      const existingBlock =
+        (config.knowledge as { sources?: KnowledgeSource[]; [k: string]: unknown } | undefined) ??
+        {};
+      const existingSources = (existingBlock.sources ?? []) as KnowledgeSource[];
+      const newSource: Record<string, unknown> = {
+        id: s.request.id,
+        type: "url",
+        url: s.request.typeOrUrl,
+        delivery: s.request.delivery ?? "auto",
+        via: { server: s.via.server, tool: s.via.tool },
+      };
+      if (s.request.description) newSource.description = s.request.description;
+      if (s.request.optional) newSource.optional = true;
+      const nextBlock = { ...existingBlock, sources: [...existingSources, newSource] };
+
+      // Extend the bundle's mcpServers[] when the picked server is new.
+      // Mirrors the CLI's `chosenServerToAdd` arm in knowledge add: the
+      // declaration is what the install pipeline reads to wire the server.
+      const existingServers = Array.isArray(config.mcpServers)
+        ? (config.mcpServers as unknown[]).filter((v): v is string => typeof v === "string")
+        : [];
+      const nextServers =
+        s.via.serverWasAdded && !existingServers.includes(s.via.server)
+          ? [...existingServers, s.via.server]
+          : null;
+
+      const patch: Record<string, unknown> = {
+        knowledge: nextBlock as unknown as Record<string, unknown>,
+      };
+      if (nextServers) patch.mcpServers = nextServers;
+
+      try {
+        await saveConfig.mutateAsync(patch as Parameters<typeof saveConfig.mutateAsync>[0]);
+        onClose();
+      } catch (err) {
+        setSubmitErr(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
     start.mutate({ command: "knowledge.add", agent, ...s.request });
     onClose();
   };
@@ -104,12 +167,28 @@ export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) 
                 // {type}
               </span>
             </div>
-            {Form && <Form existingIds={existingIds} onSubmit={handleSubmit} formId={formId} />}
+            {Form && (
+              <Form
+                agent={agent}
+                existingIds={existingIds}
+                onSubmit={handleSubmit}
+                formId={formId}
+              />
+            )}
+            {submitErr && (
+              <div className="font-mono text-[10px] text-matrix-red mt-3" role="alert">
+                // error: {submitErr}
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-matrix-line">
               <Button variant="ghost" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" form={formId} disabled={start.isPending}>
+              <Button
+                type="submit"
+                form={formId}
+                disabled={start.isPending || saveConfig.isPending}
+              >
                 Save
               </Button>
             </div>

@@ -21,6 +21,7 @@ import { registerJackOutRoute } from "./routes/jack-out";
 import { registerJobsRoutes } from "./routes/jobs";
 import { registerKnowledgeRoute } from "./routes/knowledge";
 import { registerMcpRoutes } from "./routes/mcp";
+import { registerMcpPickerRoute } from "./routes/mcp-picker";
 import { registerModelConfigRoute } from "./routes/model-config";
 import { registerOnboardingRoute } from "./routes/onboarding";
 import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
@@ -186,6 +187,7 @@ export function createApp(deps: AppDeps) {
     ...(deps.mcpConfigPathsFor ? { configPathsFor: deps.mcpConfigPathsFor } : {}),
     ...(deps.detectMcpPlatforms ? { detectInstalled: deps.detectMcpPlatforms } : {}),
   });
+  registerMcpPickerRoute(app, { registryPath });
   registerAtlassianRoute(app, {
     envDeps: { smithEnvPath: join(agentSmithHome, ".env") },
     registryPath,

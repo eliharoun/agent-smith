@@ -5,6 +5,7 @@ exports[`v1 surface — REST inventory of registered routes is stable 1`] = `
   "GET     /api/agents",
   "GET     /api/agents/:name",
   "GET     /api/agents/:name/installed-status",
+  "GET     /api/agents/:name/mcp-servers-and-tools",
   "GET     /api/agents/:name/mcp-wiring-plan",
   "GET     /api/agents/:name/refresh-manifest",
   "GET     /api/agents/installed-statuses",

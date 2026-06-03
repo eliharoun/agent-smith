@@ -260,3 +260,42 @@ export const RefreshSummary = z.object({
   failingCount: z.number().int().nonnegative(),
 });
 export type RefreshSummary = z.infer<typeof RefreshSummary>;
+
+// ─── MCP server/tool picker (GET /api/agents/:name/mcp-servers-and-tools) ─
+//
+// Mirrors the CLI's `pickViaInteractively` (src/cli/commands/knowledge/pick-via.ts):
+// the union of bundle-declared mcpServers[] and servers smith finds in the
+// user's AI client configs, plus per-server URL-shaped tools (filtered via
+// `detectUrlParam`). The Add Knowledge Source modal feeds the response into
+// two dropdowns — server then tool — and writes the resulting `via:` block
+// onto the new source.
+const McpServerSource = z.enum(["bundle", "available", "both"]);
+export type McpServerSource = z.infer<typeof McpServerSource>;
+
+const McpUrlParamKind = z.enum(["string", "string-array"]);
+export type McpUrlParamKind = z.infer<typeof McpUrlParamKind>;
+
+export const McpUrlShapedTool = z.object({
+  name: z.string().min(1),
+  urlParam: z
+    .object({
+      kind: McpUrlParamKind,
+      key: z.string().min(1),
+    })
+    .nullable(),
+});
+export type McpUrlShapedTool = z.infer<typeof McpUrlShapedTool>;
+
+export const McpServerAndToolsView = z.object({
+  servers: z.array(
+    z.object({
+      name: z.string().min(1),
+      source: McpServerSource,
+      /** Populated when smith couldn't spawn or list tools on this server. */
+      error: z.string().optional(),
+    }),
+  ),
+  /** Map of server name → URL-shaped tools. Servers with `error` are absent here. */
+  toolsByServer: z.record(z.string(), z.array(McpUrlShapedTool)),
+});
+export type McpServerAndToolsView = z.infer<typeof McpServerAndToolsView>;
