@@ -4,6 +4,43 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-06-03
+
+Per-agent knowledge MCP keys: each bundle's knowledge MCP server now
+uses a unique per-agent key (`<agent>-knowledge`) so multiple bundles
+can be wired into the same AI client without clobbering each other.
+
+### Added
+
+- smith knowledge wire <agent> [--platforms ...]: wire a bundle's
+  knowledge MCP server into detected AI client configs (claude.json,
+  opencode.json, codex/config.toml, kiro/.../mcp.json) and add the
+  per-agent key to the bundle's mcpServers[]. Mirrors the GUI toggle.
+- smith knowledge unwire <agent> [--platforms ...]: removes the
+  per-agent key from bundle config and AI client configs.
+
+### Changed
+
+- Knowledge MCP server key: was the singleton "agent-smith-knowledge";
+  now derived per-agent as "<agent>-knowledge". For the agent-smith
+  bundle the key is unchanged ("agent-smith-knowledge"). For other
+  bundles, the key is unique (e.g. "billing-expert-knowledge").
+- The MCP server's serverInfo.name advertised over JSON-RPC is now
+  also the per-agent key. AI clients see distinct servers per agent.
+- The "wire MCP" GUI modal now skips bundle-config writes and the
+  follow-up reinstall when the saved state already matches the
+  desired state. The button is replaced with a Close action when
+  every platform AND the bundle config are already in the desired
+  state, eliminating the previous "wire 0 platforms" no-op.
+
+### Migration
+
+If you previously wired the agent-smith bundle, no migration is
+needed — the key for that bundle is unchanged. If you have multiple
+bundles whose knowledge you want exposed as MCP servers, run
+`smith knowledge wire <agent>` for each one; the per-agent keys
+coexist without overwriting.
+
 ## [1.5.0] — 2026-06-03
 
 Major change to `smith knowledge compile`: it now operates entirely

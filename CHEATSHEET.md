@@ -86,7 +86,7 @@ back to the page over SSE.
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
 | Construct | `/catalogs/register` | `smith {agent,skill} register` |
 | Knowledge | `/knowledge` | `smith knowledge list` across agents |
-| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes `agent-smith-knowledge` from the bundle's `mcpServers` (v2.1) |
+| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers` (v2.1; CLI: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`) |
 | Knowledge | `/knowledge/refresh-history` | refresh-mode timeline across agents |
 | Knowledge | `/knowledge/:agent/refresh-history` | per-agent refresh history |
 | Knowledge | `/system/atlassian-setup` | Atlassian credential setup (Confluence/Jira) |
@@ -584,6 +584,34 @@ Serve an agent's knowledge over MCP — `knowledge.search` (BM25) + `knowledge.f
 **Exit codes:** `0` — server exited cleanly on stdin EOF. `1` — runtime error. `2` — agent not registered; `--stdio false` passed.
 
 See [guide/16 — `smith knowledge serve --stdio`](./guide/16-knowledge-compiler.md#smith-knowledge-serve---stdio).
+
+#### `smith knowledge wire <agent>`
+
+Wire a bundle's knowledge MCP server into the AI client configs that smith detects (Claude Code, OpenCode, Codex, Kiro). Adds the per-agent key (`<agent>-knowledge`) to the bundle's `mcpServers[]` and writes the spawn entry into each platform's MCP config. Mirrors the GUI MCP-wiring toggle.
+
+**Synopsis:** `smith knowledge wire <agent> [--platforms <list>]`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--platforms <list>` | string | all detected | Comma-separated subset of `claude-code,opencode,codex,kiro`. |
+
+**Example:**
+```bash
+smith knowledge wire billing-expert
+smith knowledge wire billing-expert --platforms claude-code,codex
+```
+
+#### `smith knowledge unwire <agent>`
+
+Inverse of `wire`: removes the per-agent key from the bundle's `mcpServers[]` and deletes the spawn entry from each AI client's MCP config.
+
+**Synopsis:** `smith knowledge unwire <agent> [--platforms <list>]`
+
+**Example:**
+```bash
+smith knowledge unwire billing-expert
+```
 
 #### `smith knowledge remove <agent> <source-id>`
 

@@ -20,6 +20,6 @@ export const agentHelp: Record<string, FieldHelpEntry> = {
     help: "Lets the AI client re-pull this agent's network knowledge sources at session start. Off by default for safety — only flip on for trusted sources you want auto-updated.",
   },
   "agent.mcpToggle": {
-    help: "When ON, this agent declares the bundled `agent-smith-knowledge` MCP server. smith writes spawn config into each AI client's MCP file (Claude Code, OpenCode, Codex, Kiro) so `knowledge.search` / `knowledge.fetch` are available at session start.",
+    help: "When ON, this agent declares its own per-agent MCP server (`<agent>-knowledge`). smith writes spawn config into each AI client's MCP file so `knowledge.search`/`knowledge.fetch` are available at session start. Each bundle owns its own key, so multiple bundles never collide.",
   },
 };

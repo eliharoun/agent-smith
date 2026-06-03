@@ -63,6 +63,8 @@ duplication and surfaces only in tests, not user-visible output.
 | [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
 | [`knowledge route`](#smith-knowledge-route-agent) | Run the MCP picker against existing URL sources to set `via:` in bulk | [04](./04-knowledge.md) |
 | [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (BM25 search + fetch, stdio) | [16](./16-knowledge-compiler.md) |
+| [`knowledge wire`](#smith-knowledge-wire-agent) | Wire a bundle's knowledge MCP server into AI client configs (per-agent key) | [16](./16-knowledge-compiler.md) |
+| [`knowledge unwire`](#smith-knowledge-unwire-agent) | Inverse of `wire`: remove the per-agent key from bundle and AI client configs | [16](./16-knowledge-compiler.md) |
 | [`knowledge validate`](#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents | [04](./04-knowledge.md) |
 | [`migrate-clones`](#smith-migrate-clones) | Migrate rc.1 external-repo clones from config to state dir | [13](./13-paths-and-state.md) |
 | [`skill bootstrap`](#smith-skill-bootstrap) | Install the bundled `the-architect` and `the-keymaker` skills to all platforms | [01](./01-getting-started.md) |
@@ -1891,6 +1893,91 @@ $ smith knowledge serve my-agent --stdio    # MCP-aware tool spawns this
 ```
 
 **See also:** [Knowledge compiler — `smith knowledge serve --stdio`](./16-knowledge-compiler.md#smith-knowledge-serve---stdio).
+
+---
+
+### `smith knowledge wire <agent>`
+
+**Synopsis:** `smith knowledge wire <agent> [--platforms <list>]`
+
+**Description:** Wire a bundle's knowledge MCP server into the AI client
+configs that smith detects on disk (Claude Code's `~/.claude.json`,
+OpenCode's `opencode.json`, Codex's `~/.codex/config.toml`, Kiro's
+`~/.kiro/settings/mcp.json`). Two effects in one command:
+
+1. Adds the **per-agent key** `<agent>-knowledge` to the bundle's
+   `mcpServers: string[]` (and to `mcp.required[]` so install preflight
+   sees it). For the `agent-smith` bundle the key is
+   `agent-smith-knowledge` — for any other bundle, it's
+   `<agent>-knowledge` (e.g. `billing-expert-knowledge`). Per-agent keys
+   mean two bundles wired into the same client never collide.
+2. Writes the spawn entry (`{ command: "smith", args: ["knowledge",
+   "serve", "<agent>", "--stdio"] }`) under the per-agent key into each
+   targeted platform's MCP config.
+
+This is the CLI mirror of the GUI's MCP-wiring toggle on the
+`/knowledge/:agent` page. Idempotent — re-running with the same target
+state is a no-op.
+
+**Arguments:**
+
+- `<agent>` — agent name. Must be a registered bundle.
+
+**Flags:**
+
+- `--platforms <list>` — comma-separated subset of
+  `claude-code,opencode,codex,kiro`. Default: every platform smith
+  detects on disk that the bundle targets.
+
+**Exit codes:**
+
+- `0` — wired (or already wired).
+- `1` — agent not found; platform config write failure.
+- `2` — unknown platform value (`usage-error`).
+
+**Examples:**
+
+```bash
+$ smith knowledge wire billing-expert
+$ smith knowledge wire billing-expert --platforms claude-code,codex
+```
+
+**See also:** [Knowledge compiler — GUI: per-source editor and MCP toggle](./16-knowledge-compiler.md#gui-per-source-editor-and-mcp-toggle).
+
+---
+
+### `smith knowledge unwire <agent>`
+
+**Synopsis:** `smith knowledge unwire <agent> [--platforms <list>]`
+
+**Description:** Inverse of `smith knowledge wire`: removes the
+per-agent key (`<agent>-knowledge`) from the bundle's `mcpServers[]`
+and deletes the spawn entry from each AI client's MCP config. Other
+entries in the AI client's MCP config are untouched. Idempotent.
+
+**Arguments:**
+
+- `<agent>` — agent name.
+
+**Flags:**
+
+- `--platforms <list>` — comma-separated subset of
+  `claude-code,opencode,codex,kiro`. Default: every detected platform.
+
+**Exit codes:**
+
+- `0` — unwired (or already absent).
+- `1` — agent not found; platform config write failure.
+- `2` — unknown platform value (`usage-error`).
+
+**Examples:**
+
+```bash
+$ smith knowledge unwire billing-expert
+$ smith knowledge unwire billing-expert --platforms codex
+```
+
+**See also:** [`smith knowledge wire <agent>`](#smith-knowledge-wire-agent).
 
 ---
 
