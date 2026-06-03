@@ -209,6 +209,7 @@ export function filenameFromUrl(url: string, contentType?: string): string {
   if (!last.includes(".")) {
     if (contentType?.includes("html")) last += ".html";
     else if (contentType?.includes("json")) last += ".json";
+    else if (contentType?.includes("markdown")) last += ".md";
     else if (contentType?.includes("pdf")) last += ".pdf";
     else last += ".txt";
   }
