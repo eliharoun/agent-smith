@@ -39,7 +39,15 @@ export async function acquireViaMcp(
   assertViaToolAllowed(via);
   const client = await opts.pool.acquire(via.server, opts.spawnOptsFor(via.server));
   const args = await resolveArgs(via, url, client);
-  const result = await client.callTool(via.tool, args);
+  let result;
+  try {
+    result = await client.callTool(via.tool, args);
+  } catch (err) {
+    if (isMethodNotFoundError(err)) {
+      throw await methodNotFoundSmithError(client, via);
+    }
+    throw err;
+  }
   if (result.isError) {
     const errText = result.content
       .filter((c) => c.type === "text" && c.text)
@@ -101,6 +109,49 @@ async function resolveArgs(
     // error if the tool genuinely doesn't accept that shape.
   }
   return { url };
+}
+
+/**
+ * JSON-RPC -32601 ("method not found") detection. McpClient's `callRaw`
+ * formats every JSON-RPC error as `mcp error <code>: <message>`, so we
+ * match the leading code rather than the human-facing message string.
+ */
+function isMethodNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\bmcp error -32601\b/.test(msg);
+}
+
+/**
+ * Build a SmithError that names the missing tool and lists the URL-shaped
+ * tools the server actually exposes, so authors can pick a real name
+ * without consulting the server's docs separately. If listing tools also
+ * fails (e.g. the server has since disconnected) we surface a simpler
+ * fallback error.
+ */
+async function methodNotFoundSmithError(client: McpClient, via: Via): Promise<SmithError> {
+  let tools;
+  try {
+    tools = await client.listTools();
+  } catch {
+    return new SmithError({
+      code: "validation-failed",
+      what: `via.tool '${via.tool}'`,
+      reasons: [
+        `tool not found on server '${via.server}', and listing available tools also failed`,
+        `verify the server is still running and the tool name is correct`,
+      ],
+    });
+  }
+  const urlShaped = tools.filter((t) => detectUrlParam(t) !== null);
+  return new SmithError({
+    code: "validation-failed",
+    what: `via.tool '${via.tool}' on server '${via.server}'`,
+    reasons: [
+      `tool not found on the server. The server reports these URL-shaped tools available:`,
+      ...urlShaped.map((t) => `  - ${t.name}`),
+      `update your bundle's via.tool to one of the names above, or run smith knowledge add again to use the picker.`,
+    ],
+  });
 }
 
 function filenameFromUrl(url: string): string {
