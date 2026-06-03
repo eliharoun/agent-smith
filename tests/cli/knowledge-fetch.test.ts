@@ -282,7 +282,9 @@ describe("knowledgeFetch", () => {
       loadRegistry: stubLoadRegistry(),
       loadAllBundles: stubLoadBundles([fakeBundle("agent-x", sources)]),
       acquireSource: acquireStub as unknown as NonNullable<KnowledgeFetchDeps["acquireSource"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       readRefreshCache: readStub as unknown as NonNullable<KnowledgeFetchDeps["readRefreshCache"]>,
       now: () => now,
       cacheRoot: () => dir,
@@ -327,7 +329,9 @@ describe("knowledgeFetch", () => {
       loadRegistry: stubLoadRegistry(),
       loadAllBundles: stubLoadBundles([fakeBundle("agent-y", sources)]),
       acquireSource: acquireStub as unknown as NonNullable<KnowledgeFetchDeps["acquireSource"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       readRefreshCache: readStub as unknown as NonNullable<KnowledgeFetchDeps["readRefreshCache"]>,
       now: () => now,
       cacheRoot: () => dir,
@@ -371,7 +375,9 @@ describe("knowledgeFetch", () => {
       loadAllBundles: stubLoadBundles([fakeBundle("agent-z", sources)]),
       refreshSource: refreshSourceFn as unknown as NonNullable<KnowledgeFetchDeps["refreshSource"]>,
       rerenderPrompts: rerenderFn as unknown as NonNullable<KnowledgeFetchDeps["rerenderPrompts"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       now: () => "2026-05-21T12:00:00.000Z",
       cacheRoot: () => dir,
       knowledgePaths: { agentSmithHome: dir },
@@ -406,7 +412,9 @@ describe("knowledgeFetch", () => {
       loadRegistry: stubLoadRegistry(),
       loadAllBundles: stubLoadBundles([fakeBundle("agent-fail", sources)]),
       acquireSource: acquireStub as unknown as NonNullable<KnowledgeFetchDeps["acquireSource"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       readRefreshCache: readStub as unknown as NonNullable<KnowledgeFetchDeps["readRefreshCache"]>,
       now: () => "2026-05-21T12:00:00.000Z",
       cacheRoot: () => dir,
@@ -439,7 +447,9 @@ describe("knowledgeFetch", () => {
       loadRegistry: stubLoadRegistry(),
       loadAllBundles: stubLoadBundles([fakeBundle("agent-ok", sources)]),
       acquireSource: acquireStub as unknown as NonNullable<KnowledgeFetchDeps["acquireSource"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       readRefreshCache: readStub as unknown as NonNullable<KnowledgeFetchDeps["readRefreshCache"]>,
       now: () => "2026-05-21T12:00:00.000Z",
       cacheRoot: () => dir,
@@ -573,6 +583,109 @@ describe("knowledgeFetch", () => {
     expect(errOutput).toContain("rerender");
   });
 
+  // ============================================================
+  // via routing (v1.2): pool lifecycle + spawn-opts threading
+  // ============================================================
+
+  it("routes a via-declared source through MCP on the surgical (--source) path", async () => {
+    // Tempdir bundle so refreshSource can write into <home>/knowledge/<agent>/sources/.
+    // The echo fixture echoes the request args back as JSON; refreshSource
+    // materializes that into a file under sources/<id>/, which we then read
+    // to confirm the via routing actually fired.
+    const ECHO_FIXTURE = join(import.meta.dir, "..", "_fixtures", "echo-mcp-server.ts");
+    const bundleDir = await mkdtemp(join(tmpdir(), "smith-kf-via-bundle-"));
+    try {
+      const sources = [
+        {
+          id: "via-src",
+          type: "url",
+          delivery: "file",
+          url: "https://example.com/x",
+          via: { server: "echo", tool: "Fetch" },
+        },
+      ];
+      const installFn = mock(async () => 0);
+      // readAvailableMcpServers stub returns the echo fixture spawn opts so
+      // the resolver in fetch.ts builds against THIS map (no real $HOME read).
+      const readAvailable = mock(async () => ({
+        echo: { command: "bun", args: [ECHO_FIXTURE] },
+      }));
+      const rerenderFn = mock(async () => ({ ok: true as const }));
+      const code = await knowledgeFetch("agent-via", "via-src", {
+        install: installFn,
+        loadRegistry: stubLoadRegistry(),
+        loadAllBundles: stubLoadBundles([
+          { bundlePath: bundleDir, config: { name: "agent-via", knowledge: { sources } } },
+        ]),
+        rerenderPrompts: rerenderFn as unknown as NonNullable<
+          KnowledgeFetchDeps["rerenderPrompts"]
+        >,
+        readAvailableMcpServers: readAvailable as unknown as NonNullable<
+          KnowledgeFetchDeps["readAvailableMcpServers"]
+        >,
+        knowledgePaths: { agentSmithHome: dir },
+      });
+      expect(code).toBe(0);
+      expect(installFn).not.toHaveBeenCalled();
+      // The materialized artifact should contain the echoed URL, proving the
+      // request went through the echo MCP server (not direct HTTP).
+      const sourcesDir = join(dir, "knowledge", "agent-via", "sources", "via-src");
+      const entries = await fsPromises.readdir(sourcesDir);
+      expect(entries.length).toBeGreaterThan(0);
+      const firstFile = entries[0];
+      if (!firstFile) throw new Error("no materialized artifact");
+      const body = await fsPromises.readFile(join(sourcesDir, firstFile), "utf8");
+      expect(body).toContain("example.com");
+    } finally {
+      await rm(bundleDir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("surfaces a clear error when via.server isn't configured anywhere", async () => {
+    const errSpy = spyOn(console, "error").mockImplementation(() => {});
+    spies.push(errSpy as unknown as ReturnType<typeof spyOn>);
+    const bundleDir = await mkdtemp(join(tmpdir(), "smith-kf-via-bundle-"));
+    try {
+      const sources = [
+        {
+          id: "via-missing",
+          type: "url",
+          delivery: "file",
+          url: "https://example.com/x",
+          via: { server: "ghost", tool: "Fetch" },
+        },
+      ];
+      const installFn = mock(async () => 0);
+      // Empty available-map: 'ghost' is not configured anywhere.
+      const readAvailable = mock(async () => ({}));
+      const rerenderFn = mock(async () => ({ ok: true as const }));
+      const code = await knowledgeFetch("agent-ghost", "via-missing", {
+        install: installFn,
+        loadRegistry: stubLoadRegistry(),
+        loadAllBundles: stubLoadBundles([
+          { bundlePath: bundleDir, config: { name: "agent-ghost", knowledge: { sources } } },
+        ]),
+        rerenderPrompts: rerenderFn as unknown as NonNullable<
+          KnowledgeFetchDeps["rerenderPrompts"]
+        >,
+        readAvailableMcpServers: readAvailable as unknown as NonNullable<
+          KnowledgeFetchDeps["readAvailableMcpServers"]
+        >,
+        knowledgePaths: { agentSmithHome: dir },
+      });
+      expect(code).toBe(1);
+      const errOutput = errSpy.mock.calls.map((c) => c[0]).join("\n");
+      // Error must mention the missing server name and the source id so
+      // the user knows what to fix.
+      expect(errOutput).toContain("ghost");
+      expect(errOutput).toContain("via-missing");
+      expect(rerenderFn).not.toHaveBeenCalled();
+      expect(installFn).not.toHaveBeenCalled();
+    } finally {
+      await rm(bundleDir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it("no --source path falls through to install + meta-writes (regression)", async () => {
     const sources = [{ id: "src-reg", type: "file", delivery: "file", path: "a.md" }];
     const installFn = mock(async () => 0);
@@ -599,7 +712,9 @@ describe("knowledgeFetch", () => {
       refreshSource: refreshSourceFn as unknown as NonNullable<KnowledgeFetchDeps["refreshSource"]>,
       rerenderPrompts: rerenderFn as unknown as NonNullable<KnowledgeFetchDeps["rerenderPrompts"]>,
       acquireSource: acquireStub as unknown as NonNullable<KnowledgeFetchDeps["acquireSource"]>,
-      writeRefreshCache: writeStub as unknown as NonNullable<KnowledgeFetchDeps["writeRefreshCache"]>,
+      writeRefreshCache: writeStub as unknown as NonNullable<
+        KnowledgeFetchDeps["writeRefreshCache"]
+      >,
       readRefreshCache: readStub as unknown as NonNullable<KnowledgeFetchDeps["readRefreshCache"]>,
       now: () => "2026-05-27T00:00:00.000Z",
       cacheRoot: () => dir,

@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import pc from "picocolors";
 import { urlCacheKey as defaultUrlCacheKey } from "../../../core/knowledge/acquire";
@@ -16,8 +17,13 @@ import type {
   RefreshSourceResult,
 } from "../../../core/knowledge/refresh-source";
 import { refreshSource as defaultRefreshSource } from "../../../core/knowledge/refresh-source";
+import { SmithError } from "../../../core/smith-error";
 import { defaultCacheRoot } from "../../../io/cache-root";
 import { cacheDirFor, type KnowledgePaths } from "../../../io/knowledge-paths";
+import type { McpClientOpts } from "../../../io/mcp-client";
+import { McpClientPool } from "../../../io/mcp-client-pool";
+import type { AvailableMap } from "../../../io/mcp-config-readers";
+import { createSpawnOptsResolver } from "../../../io/mcp-spawn-resolver";
 import { canonicalRegistryPath, loadRegistry as defaultLoadRegistry } from "../../../io/registry";
 import { rerenderPrompts as defaultRerenderPrompts } from "../../../io/rerender-prompts";
 import { assertValidAgentName } from "../../agent-name";
@@ -39,6 +45,11 @@ export interface KnowledgeFetchDeps {
   cacheRoot?: () => string;
   refreshSource?: (opts: RefreshSourceOpts) => Promise<RefreshSourceResult>;
   rerenderPrompts?: (agent: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Read available MCP servers (for via-routed sources). Tests inject to
+   *  avoid touching the real `$HOME`. When provided, the live spawn-opts
+   *  resolver is skipped — the test must wire its own resolver via the
+   *  injected `refreshSource` / `acquireSource` stubs if it needs one. */
+  readAvailableMcpServers?: () => Promise<AvailableMap>;
 }
 
 /**
@@ -73,6 +84,34 @@ export interface KnowledgeFetchDeps {
  * `deps` is exposed for testability (bun's `spyOn` cannot reliably patch ES
  * module re-exports, so we inject the IO seams instead).
  */
+
+/**
+ * Build a `spawnOptsFor` resolver around a pre-fetched `AvailableMap`. Used
+ * when tests inject `readAvailableMcpServers` so via-routed sources still
+ * resolve through the test's stubbed map (instead of touching real `$HOME`).
+ * Mirrors `createSpawnOptsResolver` but skips the homedir read.
+ */
+function buildResolverFromMap(map: AvailableMap): (name: string) => McpClientOpts {
+  return (name: string): McpClientOpts => {
+    const entry = map[name];
+    if (!entry) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: `mcp server '${name}'`,
+        reasons: [
+          `'${name}' is not configured in any platform MCP config (~/.claude.json, ~/.codex/config.toml, ~/.config/opencode/opencode.json, ~/.kiro/settings/mcp.json)`,
+          `install it with your platform's documented procedure`,
+        ],
+      });
+    }
+    return {
+      command: entry.command,
+      ...(entry.args ? { args: entry.args } : {}),
+      ...(entry.env ? { env: entry.env } : {}),
+    };
+  };
+}
+
 export async function knowledgeFetch(
   agent: string,
   sourceId?: string,
@@ -91,159 +130,190 @@ export async function knowledgeFetch(
   const now = deps.now ?? (() => new Date().toISOString());
   const cacheRoot = deps.cacheRoot ?? defaultCacheRoot;
 
-  // Load the bundle ONCE — used for both pre-install per-source clearing
-  // (so we know each source's type/url to derive its cache path) and the
-  // post-install .meta.json writes. If bundle lookup fails or the agent
-  // isn't found, fall through to install() unchanged — install will surface
-  // any real misconfiguration. Errors here must NOT abort the command.
-  let bundle: Awaited<ReturnType<typeof loadAllBundles>>["bundles"][number] | undefined;
+  // Pool for via-routed URL sources. Lifetime = this command invocation.
+  // Both the surgical (--source) path and the broad path's post-install
+  // re-acquire can hit `acquireSource` for via-declared sources, so we
+  // create a single pool here and shutdown in `finally` so child MCP
+  // servers never leak past command exit. Bundles without via-routed
+  // sources never trigger an acquire-via path; the pool stays empty.
+  const pool = new McpClientPool();
+  // Spawn-opts resolver matches install's wiring. When tests inject
+  // `readAvailableMcpServers`, build a resolver around the injected map
+  // so via-routed sources still resolve; otherwise read from `$HOME`.
+  const spawnOptsFor = deps.readAvailableMcpServers
+    ? buildResolverFromMap(await deps.readAvailableMcpServers())
+    : await createSpawnOptsResolver({ homeDir: homedir() });
+
   try {
-    const reg = await loadRegistry(canonicalRegistryPath());
-    const loadResult = await loadAllBundles(reg);
-    bundle = loadResult.bundles.find((b) => b.config.name === agent);
-  } catch {
-    bundle = undefined;
-  }
+    // Load the bundle ONCE — used for both pre-install per-source clearing
+    // (so we know each source's type/url to derive its cache path) and the
+    // post-install .meta.json writes. If bundle lookup fails or the agent
+    // isn't found, fall through to install() unchanged — install will surface
+    // any real misconfiguration. Errors here must NOT abort the command.
+    let bundle: Awaited<ReturnType<typeof loadAllBundles>>["bundles"][number] | undefined;
+    try {
+      const reg = await loadRegistry(canonicalRegistryPath());
+      const loadResult = await loadAllBundles(reg);
+      bundle = loadResult.bundles.find((b) => b.config.name === agent);
+    } catch {
+      bundle = undefined;
+    }
 
-  if (sourceId && !bundle) {
-    console.warn(
-      pc.yellow(
-        `warning: could not load bundle metadata for ${agent}; ` +
-          `skipping per-source cache clear, install will use any existing cache`,
-      ),
-    );
-  }
+    if (sourceId && !bundle) {
+      console.warn(
+        pc.yellow(
+          `warning: could not load bundle metadata for ${agent}; ` +
+            `skipping per-source cache clear, install will use any existing cache`,
+        ),
+      );
+    }
 
-  const cacheDir = cacheDirFor(agent, knowledgePaths);
+    const cacheDir = cacheDirFor(agent, knowledgePaths);
 
-  // Pre-install: surgically clear ONLY the requested source's acquirer cache.
-  // Per-source paths come from the acquirers themselves (acquire.ts:237-239
-  // for url, acquire.ts:367 for git) and are derived via `urlCacheKey`.
-  // EACCES / other non-ENOENT errors propagate; install must NOT run with
-  // a stale cache the user explicitly asked us to refresh.
-  if (sourceId && bundle) {
-    const allSources = bundle.config.knowledge?.sources ?? [];
-    const target = allSources.filter((s) => s.id === sourceId && isAcquirable(s.type));
-    for (const src of target) {
-      try {
-        if (src.type === "url") {
-          const key = urlCacheKey(src.url);
-          await rm(join(cacheDir, `${key}.json`), { force: true });
-          await rm(join(cacheDir, `${key}.bin`), { force: true });
-          console.log(pc.dim(`cleared URL cache for source ${src.id}`));
-        } else if (src.type === "git") {
-          const key = urlCacheKey(src.url);
-          await rm(join(cacheDir, "git", key), { recursive: true, force: true });
-          console.log(pc.dim(`cleared git cache for source ${src.id}`));
+    // Pre-install: surgically clear ONLY the requested source's acquirer cache.
+    // Per-source paths come from the acquirers themselves (acquire.ts:237-239
+    // for url, acquire.ts:367 for git) and are derived via `urlCacheKey`.
+    // EACCES / other non-ENOENT errors propagate; install must NOT run with
+    // a stale cache the user explicitly asked us to refresh.
+    if (sourceId && bundle) {
+      const allSources = bundle.config.knowledge?.sources ?? [];
+      const target = allSources.filter((s) => s.id === sourceId && isAcquirable(s.type));
+      for (const src of target) {
+        try {
+          if (src.type === "url") {
+            const key = urlCacheKey(src.url);
+            await rm(join(cacheDir, `${key}.json`), { force: true });
+            await rm(join(cacheDir, `${key}.bin`), { force: true });
+            console.log(pc.dim(`cleared URL cache for source ${src.id}`));
+          } else if (src.type === "git") {
+            const key = urlCacheKey(src.url);
+            await rm(join(cacheDir, "git", key), { recursive: true, force: true });
+            console.log(pc.dim(`cleared git cache for source ${src.id}`));
+          }
+          // file/dir/glob: no acquirer cache.
+          // confluence/jira: cache exists but per-source clear not yet wired —
+          // broad refresh still works.
+          // (npm is filtered out above by isAcquirable, so never reaches here.)
+        } catch (err) {
+          // `force: true` already swallows ENOENT, so any error here is a real
+          // problem (EACCES on a read-only cache, EROFS, etc.). Surface it with
+          // the source id so the user knows which source failed to clear, and
+          // skip install — running install with a stale cache the user
+          // explicitly asked us to refresh would silently defeat the request.
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`failed to clear cache for source ${src.id}: ${msg}`);
         }
-        // file/dir/glob: no acquirer cache.
-        // confluence/jira: cache exists but per-source clear not yet wired —
-        // broad refresh still works.
-        // (npm is filtered out above by isAcquirable, so never reaches here.)
-      } catch (err) {
-        // `force: true` already swallows ENOENT, so any error here is a real
-        // problem (EACCES on a read-only cache, EROFS, etc.). Surface it with
-        // the source id so the user knows which source failed to clear, and
-        // skip install — running install with a stale cache the user
-        // explicitly asked us to refresh would silently defeat the request.
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`failed to clear cache for source ${src.id}: ${msg}`);
       }
     }
-  }
 
-  // Surgical path: when --source is given AND we have a bundle with the
-  // source definition, route through refreshSource + rerenderPrompts instead
-  // of the full install() rebuild.
-  if (sourceId && bundle) {
-    const doRefresh = deps.refreshSource ?? defaultRefreshSource;
-    const doRerender =
-      deps.rerenderPrompts ??
-      ((a: string) => defaultRerenderPrompts(a, { agentSmithHome: knowledgePaths.agentSmithHome }));
-    const allSources = bundle.config.knowledge?.sources ?? [];
-    const source = allSources.find((s) => s.id === sourceId);
-    if (source) {
-      try {
-        await doRefresh({
-          agentSmithHome: knowledgePaths.agentSmithHome,
-          agent,
-          source,
-          bundleDir: bundle.bundlePath,
-          cacheRoot: cacheDir,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(pc.red(`smith: refresh of ${sourceId} for ${agent} failed: ${msg}`));
-        console.error(
-          "  on-disk knowledge state has been preserved; previous content for this source is intact.",
-        );
-        return 1;
+    // Surgical path: when --source is given AND we have a bundle with the
+    // source definition, route through refreshSource + rerenderPrompts instead
+    // of the full install() rebuild.
+    if (sourceId && bundle) {
+      const doRefresh = deps.refreshSource ?? defaultRefreshSource;
+      const doRerender =
+        deps.rerenderPrompts ??
+        ((a: string) =>
+          defaultRerenderPrompts(a, { agentSmithHome: knowledgePaths.agentSmithHome }));
+      const allSources = bundle.config.knowledge?.sources ?? [];
+      const source = allSources.find((s) => s.id === sourceId);
+      if (source) {
+        try {
+          await doRefresh({
+            agentSmithHome: knowledgePaths.agentSmithHome,
+            agent,
+            source,
+            bundleDir: bundle.bundlePath,
+            cacheRoot: cacheDir,
+            mcpPool: pool,
+            spawnOptsFor,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(pc.red(`smith: refresh of ${sourceId} for ${agent} failed: ${msg}`));
+          console.error(
+            "  on-disk knowledge state has been preserved; previous content for this source is intact.",
+          );
+          return 1;
+        }
+        const rerender = await doRerender(agent);
+        if (!rerender.ok) {
+          console.error(pc.red(`smith: rerender failed for ${agent}: ${rerender.error}`));
+          return 1;
+        }
+        return 0;
       }
-      const rerender = await doRerender(agent);
-      if (!rerender.ok) {
-        console.error(pc.red(`smith: rerender failed for ${agent}: ${rerender.error}`));
-        return 1;
-      }
-      return 0;
     }
-  }
 
-  const exitCode = await deps.install(agent);
+    const exitCode = await deps.install(agent);
 
-  if (exitCode !== 0) {
-    // Don't write meta files when install failed — the on-disk state is
-    // the prior successful state (atomic swap preserved it), and the
-    // sources we'd write meta for may have never materialized in this
-    // run. Writing 'ok: true' meta would lie about disk state.
-    console.error(pc.red(`smith: knowledge fetch failed for ${agent} (install exit ${exitCode})`));
-    console.error(`  on-disk knowledge state has been preserved; previous content is intact.`);
-    console.error(`  to retry: smith knowledge fetch ${agent}`);
+    if (exitCode !== 0) {
+      // Don't write meta files when install failed — the on-disk state is
+      // the prior successful state (atomic swap preserved it), and the
+      // sources we'd write meta for may have never materialized in this
+      // run. Writing 'ok: true' meta would lie about disk state.
+      console.error(
+        pc.red(`smith: knowledge fetch failed for ${agent} (install exit ${exitCode})`),
+      );
+      console.error(`  on-disk knowledge state has been preserved; previous content is intact.`);
+      console.error(`  to retry: smith knowledge fetch ${agent}`);
+      return exitCode;
+    }
+
+    // Post-install: re-derive outcomes and write .meta.json per source so the
+    // GUI's loadRefreshCacheEntries() has data. Best-effort: any error in this
+    // block must not change the install exit code (install already succeeded
+    // and wrote the bundle; the cache file is a separate artifact).
+    try {
+      if (!bundle) return exitCode;
+
+      const root = cacheRoot();
+      const allSources = bundle.config.knowledge?.sources ?? [];
+      const sources = allSources.filter((s) => {
+        if (sourceId !== undefined && s.id !== sourceId) return false;
+        // inline/auto delivery has no on-disk source artifact to track; skip
+        // to match refresh-source.ts's `inline-only` early return.
+        if (s.delivery === "inline" || s.delivery === "auto") return false;
+        // Delegate the "is this type actually acquirable?" decision to
+        // isAcquirable() so its exhaustive switch flags any future
+        // KnowledgeSourceType variants at compile time.
+        if (!isAcquirable(s.type)) return false;
+        return true;
+      });
+
+      for (const src of sources) {
+        const ts = now();
+        const prior = await readRefreshCache(root, agent, src.id);
+        let outcome: { ok: true } | { ok: false; error: string };
+        try {
+          await acquireSource(src, {
+            bundleDir: bundle.bundlePath,
+            cacheDir,
+            mcpPool: pool,
+            spawnOptsFor,
+          });
+          outcome = { ok: true };
+        } catch (err) {
+          outcome = {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+        const entry = mergeCacheEntry({ now: ts, outcome, prior });
+        await writeRefreshCache(root, agent, src.id, entry);
+      }
+    } catch (err) {
+      // Best-effort: surface a warning but don't fail the command — install
+      // already succeeded.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(pc.yellow(`warn: failed to update refresh cache: ${msg}`));
+    }
+
     return exitCode;
+  } finally {
+    // Pool lifetime ends here so via-routed acquires can finish before we
+    // tear down their connections. shutdown() is idempotent and safe even
+    // when nothing was acquired (e.g. no via-routed sources in any bundle).
+    await pool.shutdown();
   }
-
-  // Post-install: re-derive outcomes and write .meta.json per source so the
-  // GUI's loadRefreshCacheEntries() has data. Best-effort: any error in this
-  // block must not change the install exit code (install already succeeded
-  // and wrote the bundle; the cache file is a separate artifact).
-  try {
-    if (!bundle) return exitCode;
-
-    const root = cacheRoot();
-    const allSources = bundle.config.knowledge?.sources ?? [];
-    const sources = allSources.filter((s) => {
-      if (sourceId !== undefined && s.id !== sourceId) return false;
-      // inline/auto delivery has no on-disk source artifact to track; skip
-      // to match refresh-source.ts's `inline-only` early return.
-      if (s.delivery === "inline" || s.delivery === "auto") return false;
-      // Delegate the "is this type actually acquirable?" decision to
-      // isAcquirable() so its exhaustive switch flags any future
-      // KnowledgeSourceType variants at compile time.
-      if (!isAcquirable(s.type)) return false;
-      return true;
-    });
-
-    for (const src of sources) {
-      const ts = now();
-      const prior = await readRefreshCache(root, agent, src.id);
-      let outcome: { ok: true } | { ok: false; error: string };
-      try {
-        await acquireSource(src, { bundleDir: bundle.bundlePath, cacheDir });
-        outcome = { ok: true };
-      } catch (err) {
-        outcome = {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-      const entry = mergeCacheEntry({ now: ts, outcome, prior });
-      await writeRefreshCache(root, agent, src.id, entry);
-    }
-  } catch (err) {
-    // Best-effort: surface a warning but don't fail the command — install
-    // already succeeded.
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(pc.yellow(`warn: failed to update refresh cache: ${msg}`));
-  }
-
-  return exitCode;
 }
