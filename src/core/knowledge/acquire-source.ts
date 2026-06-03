@@ -38,6 +38,14 @@ export interface AcquireSourceOpts {
   /** v1.2: resolver for spawn opts of a named MCP server. Required when
    *  `mcpPool` is set. */
   spawnOptsFor?: (server: string) => McpClientOpts;
+  /** Phase 3: per-user routing cache (Layer 3). */
+  routeCache?: import("./route-cache").RouteCache;
+  /** Phase 3: _meta claims from bundle's MCP servers (Layer 2). */
+  metaClaims?: import("./route-meta").MetaClaim[];
+  /** Phase 3: probe-on-failure callback. Caller decides whether to enable. */
+  probeOnFailure?: (url: string) => Promise<{ server: string; tool: string } | null>;
+  /** Phase 3: callback to record a confirmed route into the cache. */
+  recordRoute?: (route: { url: string; server: string; tool: string }) => Promise<void>;
 }
 
 /** Returns true if `acquireSource` has a real dispatch case for this source
@@ -81,6 +89,14 @@ function resolveSourcePath(p: string, bundleDir: string): string {
   return isAbsolute(p) ? p : resolve(bundleDir, p);
 }
 
+function isProbeRecoverable(err: unknown): boolean {
+  if (!(err instanceof SmithError)) return false;
+  const code = err.payload.code;
+  // Probe is appropriate when direct HTTP couldn't succeed for an auth-
+  // or network-shaped reason. Don't probe on schema/usage errors.
+  return code === "network-error" || code === "permission-denied" || code === "http-error";
+}
+
 async function dispatch(
   src: KnowledgeSource,
   opts: AcquireSourceOpts,
@@ -98,9 +114,7 @@ async function dispatch(
     case "glob":
       return acquireGlob(src.path, opts.bundleDir);
     case "url": {
-      // v1.2 routing: only EXPLICIT `via:` routes through MCP at
-      // acquire/refresh time. The curated registry is suggestion-only
-      // (used by `knowledge add`, NOT here).
+      // Explicit via wins (Phase 1).
       if (src.via) {
         if (!opts.mcpPool || !opts.spawnOptsFor) {
           throw new SmithError({
@@ -113,9 +127,50 @@ async function dispatch(
           spawnOptsFor: opts.spawnOptsFor,
         });
       }
-      return acquireUrl(src.url, opts.cacheDir, {
-        ...(src.auth ? { auth: src.auth } : {}),
-      });
+
+      // Phase 3: three-layer resolver.
+      if (opts.routeCache !== undefined && opts.mcpPool && opts.spawnOptsFor) {
+        const { resolveRoute } = await import("./route-resolver");
+        const resolved = resolveRoute({
+          url: src.url,
+          cache: opts.routeCache,
+          metaClaims: opts.metaClaims ?? [],
+        });
+        if (resolved) {
+          return acquireViaMcp(
+            { server: resolved.server, tool: resolved.tool },
+            src.url,
+            { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
+          );
+        }
+      }
+
+      // Direct HTTP (Phase 1 baseline).
+      try {
+        return await acquireUrl(src.url, opts.cacheDir, {
+          ...(src.auth ? { auth: src.auth } : {}),
+        });
+      } catch (err) {
+        // Phase 3: probe on auth/network failure.
+        if (
+          opts.probeOnFailure &&
+          opts.mcpPool &&
+          opts.spawnOptsFor &&
+          isProbeRecoverable(err)
+        ) {
+          const probed = await opts.probeOnFailure(src.url);
+          if (probed) {
+            if (opts.recordRoute) {
+              await opts.recordRoute({ url: src.url, server: probed.server, tool: probed.tool });
+            }
+            return acquireViaMcp(probed, src.url, {
+              pool: opts.mcpPool,
+              spawnOptsFor: opts.spawnOptsFor,
+            });
+          }
+        }
+        throw err;
+      }
     }
     case "git": {
       const gitOpts: import("./acquire").AcquireGitOpts = {

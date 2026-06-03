@@ -17,6 +17,7 @@ import type {
 } from "../../../src/core/knowledge/types";
 import { McpClientPool } from "../../../src/io/mcp-client-pool";
 import { SmithError } from "../../../src/core/smith-error";
+import { EMPTY_CACHE, type RouteCache } from "../../../src/core/knowledge/route-cache";
 
 async function makeTmp(label: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `acquire-source-${label}-`));
@@ -283,4 +284,132 @@ describe("acquire-source: via routing", () => {
     expect(msg).not.toMatch(/internal-error/i);
     expect(msg).not.toMatch(/mcpPool/i);
   }, 30_000);
+});
+
+describe("acquire-source: Phase 3 resolver", () => {
+  let pool: McpClientPool | null = null;
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "as-phase3-"));
+    pool = null;
+  });
+  afterEach(async () => {
+    if (pool) await pool.shutdown();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("uses cached route when available", async () => {
+    pool = new McpClientPool();
+    // Cache entry for example.com → echo.Fetch. The dispatch should route
+    // through MCP and never make an HTTP call. Echo's Fetch tool returns
+    // the call args as JSON — we assert the URL appears in the artifact.
+    const cache: RouteCache = {
+      schemaVersion: 1,
+      entries: [
+        {
+          urlPattern: "https://example.com/**",
+          server: "echo",
+          tool: "Fetch",
+          learnedAt: "2026-06-02T00:00:00.000Z",
+          hits: 1,
+        },
+      ],
+    };
+    const src: UrlSource = {
+      type: "url",
+      id: "u-cache",
+      delivery: "file",
+      url: "https://example.com/some-doc",
+    };
+    const probeOnFailure = async () => {
+      throw new Error("probe must NOT be called when a cached route exists");
+    };
+    const r = await acquireSource(src, {
+      bundleDir: dir,
+      cacheDir: dir,
+      mcpPool: pool,
+      spawnOptsFor: () => ({ command: "bun", args: [ECHO_FIXTURE] }),
+      routeCache: cache,
+      probeOnFailure,
+    });
+    // Echo's Fetch tool echoes args back as JSON; the URL must appear in
+    // the artifact bytes. This proves we routed through MCP, not HTTP.
+    const body = r.artifacts[0]?.bytes.toString("utf8") ?? "";
+    expect(body).toContain("example.com/some-doc");
+  }, 30_000);
+
+  it("probes on auth failure when callback provided", async () => {
+    pool = new McpClientPool();
+    const probeCalls: string[] = [];
+    const recordedRoutes: { url: string; server: string; tool: string }[] = [];
+    const probeOnFailure = async (url: string) => {
+      probeCalls.push(url);
+      return { server: "echo", tool: "Fetch" };
+    };
+    const recordRoute = async (r: { url: string; server: string; tool: string }) => {
+      recordedRoutes.push(r);
+    };
+    // Use a URL that will fail at the network layer (TCP refused) — this
+    // surfaces as `network-error`, which isProbeRecoverable accepts.
+    const src: UrlSource = {
+      type: "url",
+      id: "u-probe",
+      delivery: "file",
+      url: "https://127.0.0.1:1/auth-blocked",
+    };
+    const r = await acquireSource(src, {
+      bundleDir: dir,
+      cacheDir: dir,
+      mcpPool: pool,
+      spawnOptsFor: () => ({ command: "bun", args: [ECHO_FIXTURE] }),
+      routeCache: EMPTY_CACHE,
+      probeOnFailure,
+      recordRoute,
+    });
+    expect(probeCalls).toEqual(["https://127.0.0.1:1/auth-blocked"]);
+    expect(recordedRoutes).toEqual([
+      { url: "https://127.0.0.1:1/auth-blocked", server: "echo", tool: "Fetch" },
+    ]);
+    const body = r.artifacts[0]?.bytes.toString("utf8") ?? "";
+    expect(body).toContain("127.0.0.1");
+  }, 30_000);
+
+  it("does NOT probe on schema/usage errors", async () => {
+    pool = new McpClientPool();
+    let probeCalled = false;
+    const probeOnFailure = async () => {
+      probeCalled = true;
+      return null;
+    };
+    // Force a non-recoverable failure by making `cacheDir` a regular file
+    // — `acquireUrl` calls `mkdir(cacheDir, { recursive: true })` first,
+    // which throws a generic node `Error` (NOT a SmithError) when the
+    // path exists as a file. `isProbeRecoverable` returns false for any
+    // non-SmithError, so the probe callback must never run.
+    const fileAsCache = join(dir, "not-a-dir");
+    await writeFile(fileAsCache, "x", "utf8");
+    const src: UrlSource = {
+      type: "url",
+      id: "u-noprobe",
+      delivery: "file",
+      url: "https://example.com/whatever",
+    };
+    let caught: unknown;
+    try {
+      await acquireSource(src, {
+        bundleDir: dir,
+        cacheDir: fileAsCache,
+        mcpPool: pool,
+        spawnOptsFor: () => ({ command: "bun", args: [ECHO_FIXTURE] }),
+        routeCache: EMPTY_CACHE,
+        probeOnFailure,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect(caught).not.toBeInstanceOf(SmithError);
+    expect(probeCalled).toBe(false);
+  });
 });
