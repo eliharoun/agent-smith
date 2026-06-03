@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { install } from "../../src/cli/commands/install";
+import { installLockPath } from "../../src/core/knowledge/refresh-lock";
 import type { RouteCache } from "../../src/core/knowledge/route-cache";
 import { SmithError } from "../../src/core/smith-error";
 import type { AgentBundle, InstallPaths } from "../../src/core/types";
@@ -612,6 +617,93 @@ describe("cli/install", () => {
       expect(persisted.entries[0]?.urlPattern).toBe("https://wiki.test/**");
       expect(persisted.entries[0]?.server).toBe("atlassian");
       expect(persisted.entries[0]?.tool).toBe("fetch");
+    });
+  });
+
+  describe("--force-unlock", () => {
+    test("removes a held install lock and proceeds with install", async () => {
+      const home = await mkdtemp(join(tmpdir(), "smith-funlk-"));
+      try {
+        // Pre-create a 0-byte install lock — the canonical "previous run was
+        // killed mid-flight" shape. install must remove it before
+        // buildAndInstall is called and proceed normally.
+        const lockPath = installLockPath(home, "foo");
+        await mkdir(join(home, "agents", "foo"), { recursive: true });
+        await writeFile(lockPath, "");
+        expect(existsSync(lockPath)).toBe(true);
+
+        const printed: string[] = [];
+        const errs: string[] = [];
+        let buildCalled = false;
+        const code = await install({
+          name: "foo",
+          paths,
+          forceUnlock: true,
+          agentSmithHome: home,
+          loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+          loadAllBundles: async () => ({
+            bundles: [fakeBundle("foo")],
+            failures: [],
+          }),
+          buildAndInstall: async () => {
+            buildCalled = true;
+            // The lock must be gone by the time buildAndInstall runs so its
+            // own acquireInstallLock can take ownership cleanly.
+            expect(existsSync(lockPath)).toBe(false);
+            return emptyResult;
+          },
+          readAvailableMcpServers: async () => ({}),
+          loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+          print: (m) => printed.push(m),
+          printErr: (m) => errs.push(m),
+        });
+        expect(code).toBe(0);
+        expect(buildCalled).toBe(true);
+        expect(existsSync(lockPath)).toBe(false);
+        // Warning surfaces the path so the user sees what was released.
+        expect(
+          errs.some((e) => e.includes("forcing release") && e.includes(".install.lock")),
+        ).toBe(true);
+        expect(errs.some((e) => e.includes("held since"))).toBe(true);
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    });
+
+    test("is a silent no-op when no lock exists", async () => {
+      const home = await mkdtemp(join(tmpdir(), "smith-funlk-noop-"));
+      try {
+        const lockPath = installLockPath(home, "foo");
+        expect(existsSync(lockPath)).toBe(false);
+
+        const errs: string[] = [];
+        let buildCalled = false;
+        const code = await install({
+          name: "foo",
+          paths,
+          forceUnlock: true,
+          agentSmithHome: home,
+          loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+          loadAllBundles: async () => ({
+            bundles: [fakeBundle("foo")],
+            failures: [],
+          }),
+          buildAndInstall: async () => {
+            buildCalled = true;
+            return emptyResult;
+          },
+          readAvailableMcpServers: async () => ({}),
+          loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+          print: () => {},
+          printErr: (m) => errs.push(m),
+        });
+        expect(code).toBe(0);
+        expect(buildCalled).toBe(true);
+        // No "forcing release" warning when there was nothing to release.
+        expect(errs.some((e) => e.includes("forcing release"))).toBe(false);
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
     });
   });
 });

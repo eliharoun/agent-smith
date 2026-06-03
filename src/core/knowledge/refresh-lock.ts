@@ -31,7 +31,11 @@ function manifestLockPath(agentSmithHome: string, agent: string): string {
   return join(agentSmithHome, "agents", safe, ".manifest.lock");
 }
 
-function installLockPath(agentSmithHome: string, agent: string): string {
+/** Resolve the on-disk path for an agent's install lock. Exposed so the
+ *  CLI's `--force-unlock` flag and the lock-contention error message can
+ *  reference / remove the lock without re-implementing the sanitize +
+ *  join logic. Pure function — does NOT touch disk. */
+export function installLockPath(agentSmithHome: string, agent: string): string {
   const safe = sanitize(agent);
   return join(agentSmithHome, "agents", safe, ".install.lock");
 }

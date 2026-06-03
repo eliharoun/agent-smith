@@ -289,6 +289,14 @@ describe("io/orchestrator", () => {
         lockedError!.messages.some((m) => m.includes("another install/refresh is in progress")),
       ).toBe(true);
       expect(lockedError!.messages.some((m) => m.includes("locked-agent"))).toBe(true);
+      // The error must surface the lock path so the user has a recovery path
+      // (manual rm or --force-unlock) without grepping the source.
+      expect(
+        lockedError!.messages.some(
+          (m) => m.includes(".install.lock") && m.includes("locked-agent"),
+        ),
+      ).toBe(true);
+      expect(lockedError!.messages.some((m) => m.includes("--force-unlock"))).toBe(true);
       // Existing orchestrator semantics: any per-bundle error aborts the
       // entire batch (all-or-nothing install). The free-agent's render was
       // collected but installRendered was never called.

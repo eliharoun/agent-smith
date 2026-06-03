@@ -232,11 +232,22 @@ knowledgeCmd
   .command("fetch <agent>")
   .description("Fetch (or refresh) <agent>'s knowledge sources into its bundle")
   .option("--source <id>", "Fetch only the source with this id")
+  .option(
+    "--force-unlock",
+    "Drop a stuck per-agent install lock (left by a killed run) before fetching",
+  )
   .action(
-    wrap("knowledge fetch", async (agent: string, opts: { source?: string }) => {
-      const { knowledgeFetch } = await import("./cli/commands/knowledge/fetch");
-      return knowledgeFetch(agent, opts.source);
-    }),
+    wrap(
+      "knowledge fetch",
+      async (agent: string, opts: { source?: string; forceUnlock?: boolean }) => {
+        const { knowledgeFetch } = await import("./cli/commands/knowledge/fetch");
+        const { install } = await import("./cli/commands/install");
+        return knowledgeFetch(agent, opts.source, {
+          install,
+          ...(opts.forceUnlock ? { forceUnlock: true } : {}),
+        });
+      },
+    ),
   );
 
 knowledgeCmd

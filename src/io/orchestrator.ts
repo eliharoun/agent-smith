@@ -5,7 +5,11 @@ import { assembleBody } from "../core/assembler";
 import type { CompiledKnowledge } from "../core/knowledge/compile";
 import { runKnowledgeStage } from "../core/knowledge/pipeline";
 import { mergeCacheEntry, writeRefreshCache } from "../core/knowledge/refresh-cache";
-import { acquireInstallLock, releaseRefreshLock } from "../core/knowledge/refresh-lock";
+import {
+  acquireInstallLock,
+  installLockPath,
+  releaseRefreshLock,
+} from "../core/knowledge/refresh-lock";
 import { loadAndMergeKnowledge } from "../core/knowledge/sidecar";
 import type { KnowledgeSection } from "../core/knowledge/types";
 import { DEFAULT_INLINE_BUDGET } from "../core/knowledge/validator";
@@ -304,10 +308,16 @@ export async function buildAndInstall(
       bundle.config.name,
     );
     if (!installLock) {
+      const lockPath = installLockPath(
+        resolvedKnowledgePaths.agentSmithHome,
+        bundle.config.name,
+      );
       errors.push({
         agent: bundle.config.name,
         messages: [
           `install: another install/refresh is in progress for '${bundle.config.name}'; retry in a moment`,
+          `if you know no other process is running, remove the lock manually: rm "${lockPath}"`,
+          `or pass --force-unlock to retake the lock`,
         ],
       });
       continue;

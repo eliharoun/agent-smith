@@ -1,6 +1,8 @@
+import { rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import pc from "picocolors";
 import { probeRoute } from "../../core/knowledge/probe-route";
+import { installLockPath } from "../../core/knowledge/refresh-lock";
 import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refresh-manifest";
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
 import {
@@ -214,6 +216,16 @@ export interface InstallCliOptions {
    * `~/.config/agent-smith/url-routing.json`.
    */
   saveRouteCache?: (cache: RouteCache) => Promise<void>;
+  /**
+   * Forcibly release a stale per-agent install lock before acquiring it.
+   * When set, the install reads `<agentSmithHome>/agents/<agent>/.install.lock`
+   * (if any), logs a warning with the lock's mtime, and removes the file
+   * before proceeding. Recovery hatch for the case where a previous
+   * `smith agent install` or `smith knowledge fetch` was killed mid-flight
+   * and left the lock behind (the 60-min staleness threshold otherwise
+   * blocks every retry until it expires). CLI flag: `--force-unlock`.
+   */
+  forceUnlock?: boolean;
 }
 
 export interface InstallBareHelpfulErrorOptions {

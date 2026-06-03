@@ -1,8 +1,9 @@
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import pc from "picocolors";
 import { urlCacheKey as defaultUrlCacheKey } from "../../../core/knowledge/acquire";
+import { installLockPath } from "../../../core/knowledge/refresh-lock";
 import {
   acquireSource as defaultAcquireSource,
   isAcquirable as defaultIsAcquirable,
@@ -72,6 +73,12 @@ export interface KnowledgeFetchDeps {
   /** TTY detector DI seam (defaults to `process.stdin.isTTY`). Tests pass
    *  `() => false` to assert the non-interactive path skips probing. */
   isTTY?: () => boolean;
+  /** Forcibly drop a stale per-agent install lock before proceeding.
+   *  Recovery hatch when a previous run was killed mid-flight and left
+   *  the 60-min lock behind. The fetch removes the lock at the top of
+   *  the function; the broad path then delegates to install() which
+   *  re-acquires it cleanly. CLI flag: `--force-unlock`. */
+  forceUnlock?: boolean;
 }
 
 /**
@@ -151,6 +158,26 @@ export async function knowledgeFetch(
   const knowledgePaths = deps.knowledgePaths ?? defaultKnowledgePaths();
   const now = deps.now ?? (() => new Date().toISOString());
   const cacheRoot = deps.cacheRoot ?? defaultCacheRoot;
+
+  // --force-unlock: drop a stale per-agent install lock before any acquire
+  // attempt downstream. Same contract as `smith agent install --force-unlock`:
+  // the broad (no --source) path delegates to install() which has its own
+  // lock-acquire site, and the surgical path runs alongside any held
+  // install lock — applying the unlock here covers both. ENOENT is silent.
+  if (deps.forceUnlock) {
+    const lockPath = installLockPath(knowledgePaths.agentSmithHome, agent);
+    try {
+      const st = await stat(lockPath);
+      console.error(
+        pc.yellow(
+          `warn: forcing release of install lock at ${lockPath} (held since ${st.mtime.toISOString()})`,
+        ),
+      );
+      await rm(lockPath, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
 
   // Pool for via-routed URL sources. Lifetime = this command invocation.
   // Both the surgical (--source) path and the broad path's post-install

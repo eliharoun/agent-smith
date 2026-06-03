@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { InstallCliOptions } from "../../src/cli/commands/install";
 import { type KnowledgeFetchDeps, knowledgeFetch } from "../../src/cli/commands/knowledge/fetch";
 import { urlCacheKey } from "../../src/core/knowledge/acquire";
+import { installLockPath } from "../../src/core/knowledge/refresh-lock";
 import type { RouteCache } from "../../src/core/knowledge/route-cache";
 import { SmithError } from "../../src/core/smith-error";
 import { cacheDirFor } from "../../src/io/knowledge-paths";
@@ -909,5 +910,64 @@ describe("knowledgeFetch", () => {
     expect(persisted.entries[0]?.urlPattern).toBe("https://wiki.test/**");
     expect(persisted.entries[0]?.server).toBe("atlassian");
     expect(persisted.entries[0]?.tool).toBe("fetch");
+  });
+
+  describe("--force-unlock", () => {
+    it("removes a held install lock and proceeds with fetch", async () => {
+      // Pre-create a 0-byte install lock — the canonical "previous run was
+      // killed mid-flight" shape. knowledgeFetch must remove it before
+      // delegating to install().
+      const lockPath = installLockPath(dir, "my-agent");
+      await mkdir(join(dir, "agents", "my-agent"), { recursive: true });
+      await writeFile(lockPath, "");
+      expect(existsSync(lockPath)).toBe(true);
+
+      const errSpy = spyOn(console, "error").mockImplementation(() => {});
+      spies.push(errSpy as unknown as ReturnType<typeof spyOn>);
+
+      const installFn = mock(async (_opts: string | InstallCliOptions) => {
+        // The lock must be gone by the time install runs so its own
+        // acquireInstallLock can take ownership cleanly.
+        expect(existsSync(lockPath)).toBe(false);
+        return 0;
+      });
+      const code = await knowledgeFetch("my-agent", undefined, {
+        install: installFn,
+        loadRegistry: stubLoadRegistry(),
+        loadAllBundles: stubLoadBundles([]),
+        knowledgePaths: { agentSmithHome: dir },
+        forceUnlock: true,
+      });
+      expect(code).toBe(0);
+      expect(installFn).toHaveBeenCalled();
+      expect(existsSync(lockPath)).toBe(false);
+      // Warning surfaces the path and mtime so the user sees what was released.
+      const warnings = errSpy.mock.calls.map((c) => String(c[0]));
+      expect(
+        warnings.some((w) => w.includes("forcing release") && w.includes(".install.lock")),
+      ).toBe(true);
+      expect(warnings.some((w) => w.includes("held since"))).toBe(true);
+    });
+
+    it("is a silent no-op when no lock exists", async () => {
+      const lockPath = installLockPath(dir, "my-agent");
+      expect(existsSync(lockPath)).toBe(false);
+
+      const errSpy = spyOn(console, "error").mockImplementation(() => {});
+      spies.push(errSpy as unknown as ReturnType<typeof spyOn>);
+
+      const installFn = mock(async (_opts: string | InstallCliOptions) => 0);
+      const code = await knowledgeFetch("my-agent", undefined, {
+        install: installFn,
+        loadRegistry: stubLoadRegistry(),
+        loadAllBundles: stubLoadBundles([]),
+        knowledgePaths: { agentSmithHome: dir },
+        forceUnlock: true,
+      });
+      expect(code).toBe(0);
+      // No warning when there was nothing to release.
+      const warnings = errSpy.mock.calls.map((c) => String(c[0]));
+      expect(warnings.some((w) => w.includes("forcing release"))).toBe(false);
+    });
   });
 });

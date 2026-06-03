@@ -270,6 +270,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
       "Alias for --platform-conventions=reject-all (this run only; doesn't persist)",
     )
     .option("--verbose", "Show info-level warnings (pattern fallbacks, platform truisms)")
+    .option(
+      "--force-unlock",
+      "Drop a stuck per-agent install lock (left by a killed run) before installing",
+    )
     .action(
       wrap(
         "agent install",
@@ -292,6 +296,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             force?: boolean;
             platformConventions?: string | false;
             verbose?: boolean;
+            forceUnlock?: boolean;
           },
         ) => {
           // --from supersedes the "missing name" early-error: the install
@@ -347,6 +352,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(opts.force ? { force: true } : {}),
             ...(conventionsStrategy ? { platformConventions: conventionsStrategy } : {}),
             ...(opts.verbose ? { verbose: true } : {}),
+            ...(opts.forceUnlock ? { forceUnlock: true } : {}),
           });
         },
       ),
