@@ -34,7 +34,7 @@ Define a bundle:
 
 Then `smith agent install` emits the right native config for every platform you target.
 
-A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool standard that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read. Bundles whose materialized knowledge would overflow the inline budget auto-compile into a TOC stanza + on-demand fetch (smart default since v2.1; smith decides, you can override). One bundle reaches every AGENTS.md-aware runtime with progressive-disclosure pointers instead of inlined-and-truncated prose. See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
+A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool standard that Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all read. Bundles whose materialized knowledge would overflow the inline budget auto-compile into a TOC stanza + on-demand fetch (smart default — smith decides, you can override). URLs routed through declared MCP tools are materialized as clean markdown with provenance frontmatter. One bundle reaches every AGENTS.md-aware runtime with progressive-disclosure pointers instead of inlined-and-truncated prose. See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 > "Me. Me. Me too." — Agent Smith
 
@@ -147,7 +147,13 @@ smith skill validate <name>                # validate a skill's frontmatter
 
 smith config get [key]                     # show model resolution settings
 smith agent reconfigure <name>             # grant/revoke refresh hooks for an agent
-smith knowledge remove <agent> <source-id> # remove a knowledge source from a bundle
+
+smith knowledge fetch <agent> [--source <id>]   # refresh URL/git caches; --source for surgical per-source refresh
+smith knowledge compile <agent>                 # offline re-derive compile-manifest from materialized files
+smith knowledge wire <agent>                    # wire <agent>-knowledge MCP server into detected AI clients
+smith knowledge unwire <agent>                  # remove that wiring
+smith knowledge serve <agent> --stdio           # stdio MCP server (BM25 search + range-bounded fetch)
+smith knowledge remove <agent> <source-id>      # remove a knowledge source from a bundle
 
 smith doctor                               # platform health, schema drift, registry hygiene
 smith status                               # registry + paths

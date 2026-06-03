@@ -86,7 +86,7 @@ back to the page over SSE.
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
 | Construct | `/catalogs/register` | `smith {agent,skill} register` |
 | Knowledge | `/knowledge` | `smith knowledge list` across agents |
-| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers` (v2.1; CLI: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`) |
+| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers`. CLI parity: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`. |
 | Knowledge | `/knowledge/refresh-history` | refresh-mode timeline across agents |
 | Knowledge | `/knowledge/:agent/refresh-history` | per-agent refresh history |
 | Knowledge | `/system/atlassian-setup` | Atlassian credential setup (Confluence/Jira) |
@@ -432,7 +432,7 @@ Health check across up to 17 sections: `opencode`, `claude-code`, `codex`, `kiro
 | `--json` | bool | `false` | Machine-readable JSON output; disables spinners. Includes a `skippedPlatforms: PlatformId[]` field (always present, empty when all four are installed). |
 | `--skip-model-resolution` | bool | `false` | Skip the v0.6.0 model-resolution check (faster but less complete). Auto-skipped when OpenCode is not on PATH. |
 | `--fix-knowledge-refresh` | bool | `false` | Auto-repair drift in the `knowledgeRefresh` section: `missing-hook` and `orphaned-consent` route through `smith agent reconfigure`; `corrupt-cache` removes the bad meta file (next refresh repopulates). `unmanaged-codex-hooks` is **not** auto-fixed — prints a hint to run `smith knowledge migrate-codex`. See [guide/14 — Knowledge-refresh drift](./guide/14-cli-reference.md#knowledge-refresh-drift-and-auto-repair). |
-| `--fix-knowledge-compile` | bool | `false` | v2. Auto-repair drift in the `knowledgeCompile` section: re-runs `smith knowledge compile <agent>` for every `missing-manifest` or `drift` finding. Both kinds repair via the same path because a re-compile both re-materializes sources and overwrites a stale or corrupt `compile-manifest.json`. See [guide/14 — Knowledge-compile drift](./guide/14-cli-reference.md#knowledge-compile-drift-and-auto-repair). |
+| `--fix-knowledge-compile` | bool | `false` | Auto-repair drift in the `knowledgeCompile` section: re-runs `smith knowledge compile <agent>` for every `missing-manifest` or `drift` finding. Both kinds repair via the same path because a re-compile rebuilds the TOC stanza and overwrites a stale or corrupt `compile-manifest.json` from the already-materialized files. See [guide/14 — Knowledge-compile drift](./guide/14-cli-reference.md#knowledge-compile-drift-and-auto-repair). |
 
 **Notes:**
 - Exit code is its own taxonomy: `0` = clean, `1` = drift detected, `2` = network error. `smith update` propagates this verbatim.
@@ -445,7 +445,7 @@ smith doctor --offline --no-cache              # full diagnostic, no network
 smith doctor --verbose                          # full per-section detail (the pre-v0.13 default)
 smith doctor --json | jq '.sections[].status'  # quick status check
 smith doctor --fix-knowledge-refresh           # auto-repair refresh-hook drift
-smith doctor --fix-knowledge-compile           # auto-repair compile-manifest drift (v2)
+smith doctor --fix-knowledge-compile           # auto-repair compile-manifest drift
 ```
 
 #### `smith update`
@@ -514,6 +514,8 @@ Remove a model-resolution config value from `~/.config/agent-smith/.env` (revert
 
 Bare `smith knowledge` exits `2` with a hint to pass a subcommand.
 
+Materialized URL sources land as `.html` / `.md` files with YAML frontmatter (`title`, `source_url`, `fetched_at`). Use this metadata to cite sources or audit when a corpus was last refreshed.
+
 #### `smith knowledge list <agent>`
 
 Print materialized knowledge for one agent, or — if the agent declares sources but hasn't been installed — print the unmaterialized list with a hint to run `smith agent install <agent>`.
@@ -546,7 +548,7 @@ smith knowledge fetch code-reviewer --source api-docs
 
 #### `smith knowledge compile [name]`
 
-Force-compile a bundle's knowledge sources into a TOC stanza + `compile-manifest.json` (v2 progressive disclosure). Compiles regardless of the v2.1 smart-default threshold or the explicit `compile.progressive` opt-in/opt-out — the user explicitly typed it. `smith agent install` makes the implicit decision via the smart default; this command is for offline iteration, CI drift checks, or pre-warming the manifest.
+Force-compile a bundle's already-materialized knowledge sources into a TOC stanza + `compile-manifest.json` (progressive disclosure). Reads the materialized files written by the most recent `smith knowledge fetch` / `smith agent install` — does **not** re-fetch from the network or spawn MCP servers. Exits with a "run smith knowledge fetch first" hint if a source has never been materialized. Compiles regardless of the smart-default threshold or an explicit `compile.progressive` opt-in/opt-out (the user explicitly typed it). `smith agent install` makes the implicit decision via the smart default; this command is for offline iteration, CI drift checks, or pre-warming the manifest.
 
 **Synopsis:** `smith knowledge compile [name] [--all]`
 

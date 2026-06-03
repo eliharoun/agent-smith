@@ -55,7 +55,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`init-user`](#smith-init-user) | Open `USER.md` in `$EDITOR` | [01](./01-getting-started.md) |
 | [`jack-out`](#smith-jack-out) | Full offboarding: uninstall everything and remove `~/.config/agent-smith` | [11](./11-update-and-uninstall.md) |
 | [`knowledge add`](#smith-knowledge-add-agent-type-or-url-path-or-url) | Add a knowledge source to an agent's config | [04](./04-knowledge.md) |
-| [`knowledge compile`](#smith-knowledge-compile-name) | Compile a bundle's knowledge sources into a TOC stanza + manifest (v2) | [16](./16-knowledge-compiler.md) |
+| [`knowledge compile`](#smith-knowledge-compile-name) | Compile a bundle's knowledge sources into a TOC stanza + manifest | [16](./16-knowledge-compiler.md) |
 | [`knowledge fetch`](#smith-knowledge-fetch-agent) | Re-acquire knowledge sources for an agent and re-install | [04](./04-knowledge.md) |
 | [`knowledge migrate-codex`](#smith-knowledge-migrate-codex) | Take ownership of a pre-existing `~/.codex/hooks.json` (upgrade helper) | [04](./04-knowledge.md) |
 | [`knowledge refresh-session`](#smith-knowledge-refresh-session) | Refresh session-mode sources for installed agents (soft-fail; for hook use) | [04](./04-knowledge.md) |
@@ -994,7 +994,7 @@ $ smith skill install --from ~/work/my-skill --as my-skill
 $ smith skill install my-skill --targets opencode,claude-code
 $ smith skill install --from git@github.com:acme/team-skills.git
 $ smith skill install codex-helper \
-    --from https://github.com/acme/team-skills.git --git-ref v1.2.0
+    --from https://github.com/acme/team-skills.git --git-ref release-2026-05
 ```
 
 **See also:** [`smith skill sync`](#smith-skill-sync-name),
@@ -1349,7 +1349,7 @@ $ smith agent install the-architect --no-skills
 $ smith agent install --from git@github.com:acme/team-agents.git
                                                   # single-bundle remote
 $ smith agent install code-reviewer \
-    --from https://github.com/acme/team-agents.git --ref v1.4.0
+    --from https://github.com/acme/team-agents.git --ref release-2026-05
 ```
 
 **See also:** [`smith agent sync`](#smith-agent-sync-name),
@@ -1571,10 +1571,12 @@ Type 'jack-out' to confirm: jack-out
 
 ## Knowledge
 
-The `knowledge` parent command groups four real Commander subcommands
-(`list`, `fetch`, `add`, `validate`) defined in `src/index.ts`. Commander
-rejects unknown flags and prints per-subcommand `--help`. Every
-subcommand is invoked as `smith knowledge <sub> ...`.
+The `knowledge` parent command groups twelve real Commander subcommands
+defined in `src/index.ts` (`add`, `list`, `fetch`, `validate`, `compile`,
+`serve`, `wire`, `unwire`, `remove`, `route`, `refresh-session`,
+`migrate-codex`). Commander rejects unknown flags and prints
+per-subcommand `--help`. Every subcommand is invoked as
+`smith knowledge <sub> ...`.
 
 ### `smith knowledge add <agent> <type-or-url> [path-or-url]`
 
@@ -1754,10 +1756,19 @@ $ smith knowledge list my-agent
 
 **Synopsis:** `smith knowledge fetch <agent> [--source <id>]`
 
-**Description:** Re-acquire knowledge sources for an agent and re-run
-`install`. When `--source <id>` is given, currently clears the
-**entire** `<knowledgeDir>/.cache/` directory (not just the targeted
-source) before re-installing. Source: `src/cli/commands/knowledge/fetch.ts`.
+**Description:** Re-acquire knowledge sources for an agent. Without
+`--source`, smith re-runs `install` and reuses the existing HTTP cache
+(ETag/Last-Modified revalidation) and existing git clones (branch refs
+hard-reset to `origin/<ref>`, tags/SHAs reused unchanged). With
+`--source <id>`, smith surgically clears that one source's acquirer
+cache before re-fetching: `<knowledgeDir>/.cache/<sha256(url)>.bin` plus
+the sibling `.json` headers for `type: url`, and
+`<knowledgeDir>/.cache/git/<sha256(url)>/` for `type: git`. Other
+sources' caches are left untouched. After clearing, smith re-acquires
+the single source through the three-layer URL resolver, materializes
+it, re-renders the agent's prompts, and prints
+`refreshed <id>: <N> file(s), <B> byte(s) in <Xms>ms`. Source:
+`src/cli/commands/knowledge/fetch.ts`.
 
 **Arguments:**
 
@@ -1765,13 +1776,15 @@ source) before re-installing. Source: `src/cli/commands/knowledge/fetch.ts`.
 
 **Flags:**
 
-- `--source <id>` — clear cache for URL sources before re-install.
-  (Currently clears the whole cache.)
+- `--source <id>` — surgically clear only that source's URL or git
+  cache before re-fetching. `confluence`/`jira` per-source clearing is
+  not yet wired — use the broad form (no `--source`) to refresh those.
 
 **Exit codes:** same as `smith agent install <agent>`.
 
 - `0` — re-fetched and installed.
-- `1` — agent not found; build error.
+- `1` — agent not found; build error; surgical refresh failed (prior
+  on-disk content is preserved).
 - `2` — missing `<agent>` argument.
 - `3` — agent exists but failed to load; cache removal error (partial
   failure).
@@ -1781,6 +1794,7 @@ source) before re-installing. Source: `src/cli/commands/knowledge/fetch.ts`.
 ```bash
 $ smith knowledge fetch my-agent
 $ smith knowledge fetch my-agent --source runbook
+refreshed runbook: 4 file(s), 28940 byte(s) in 612ms
 ```
 
 **See also:** [Knowledge](./04-knowledge.md).
@@ -1791,8 +1805,8 @@ $ smith knowledge fetch my-agent --source runbook
 
 **Synopsis:** `smith knowledge compile [name] [--all]`
 
-**Description:** Forces the v2 compile stage for one or every registered
-bundle that has knowledge sources, regardless of v2.1 smart-default
+**Description:** Forces the compile stage for one or every registered
+bundle that has knowledge sources, regardless of smart-default
 thresholds or the explicit `compile.progressive` opt-in/opt-out. The
 user explicitly typed the command; honour that. Persists
 `compile-manifest.json` under the agent's knowledge dir. Reads the
@@ -2466,7 +2480,7 @@ explicitly opts in to progressive compile
 between the persisted manifest and a fresh `compile()` over the
 agent's current materialized sources. This covers both bundles with
 an explicit `progressive: true` flag and bundles that auto-compiled
-under the v2.1 smart default (large corpora without an explicit
+under the smart default (large corpora without an explicit
 override).
 
 | Finding | Meaning | Auto-fixable by `--fix-knowledge-compile`? |
@@ -2475,11 +2489,14 @@ override).
 | `drift` | Manifest exists and parses, but its recorded `contentHash` does not match a fresh `compile()` over the agent's current `_manifest.json` materialized sources (i.e. the bundle's knowledge has changed since the last compile). | yes — runs `smith knowledge compile <agent>`. |
 
 Both findings repair through the same path: re-run
-[`smith knowledge compile <agent>`](#smith-knowledge-compile-name)
-which both re-materializes sources (so any underlying source change is
-picked up) and overwrites `compile-manifest.json` with a fresh hash.
-Per-agent errors print and the loop continues — one bad repair does not
-abort sibling repairs.
+[`smith knowledge compile <agent>`](#smith-knowledge-compile-name),
+which reads the current `_manifest.json` plus the materialized
+`sources/` tree and overwrites `compile-manifest.json` with a fresh
+hash. Compile is offline — when the underlying source bytes have
+changed, run `smith knowledge fetch <agent>` first to re-materialize,
+then `smith doctor --fix-knowledge-compile` (or `smith knowledge
+compile <agent>`) to refresh the manifest. Per-agent errors print and
+the loop continues — one bad repair does not abort sibling repairs.
 
 The section is informational only; findings never affect doctor's exit
 code. Use the GUI's `/system/doctor` route or the CLI flag below to

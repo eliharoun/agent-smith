@@ -2,7 +2,7 @@
 
 You author one bundle. Smith renders five platform-specific outputs. The diagrams below show where each step lives, what data moves between the parts, and what happens when you run the single most important command in the system.
 
-> **What's new in v2.** v2.0 added a **compile stage** (progressive-disclosure TOC + sidecars) between materialize and translate, a fifth install target — **AGENTS.md** (Cursor / Windsurf / Aider / Copilot / Codex CLI / Junie / Roo / Zed / Warp / Gemini CLI) — and an optional per-agent **BM25 retrieval MCP server** (`smith knowledge serve`). v2.1 made compile the smart default (auto-flips when the corpus overflows the inline budget) and added a GUI per-source editor + MCP-wiring toggle. Operational depth lives in [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md) and the v2 design plan (`docs/plans/2026-05-31-knowledge-compiler-v2-design.md`); this doc is a summary refresh.
+> **30-second orientation.** Smith's pipeline has a **compile stage** between materialize and translate (progressive-disclosure TOC + sidecars), five install targets (OpenCode / Claude Code / Codex / Kiro / AGENTS.md — the last consumed by Cursor / Windsurf / Aider / Copilot / Codex CLI / Junie / Roo / Zed / Warp / Gemini CLI), and an optional per-agent **BM25 retrieval MCP server** (`smith knowledge serve`). Compile is the smart default (auto-flips when the corpus would overflow the inline budget); a GUI per-source editor and MCP-wiring toggle drive the same machinery via `smith knowledge wire`. Operational depth lives in [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md); this doc is the system-level overview.
 
 > **30-second mental model**
 >
@@ -26,8 +26,8 @@ The terms below appear in every diagram. Long-tail terms live in the [full gloss
 | **Catalog** | A directory of bundles, registered with smith. Three kinds: `user-global` (your default `~/.config/agent-smith/agents/`), `project` (per-repo), `registered` (typically a shared git remote). |
 | **Install target** | A platform smith can render into: **OpenCode**, **Claude Code**, **Codex**, **Kiro**, or **AGENTS.md**. Each target has its own file layout and frontmatter shape; AGENTS.md is the cross-tool plain-markdown convention read by Cursor / Windsurf / Aider / Copilot / Codex CLI / Junie / Roo / Zed / Warp / Gemini CLI. |
 | **Knowledge source** | External content (file, URL, git repo, Confluence page, Jira issue) attached to an agent in `agent.config.json`. Fetched once, cached, then inlined, written as a sidecar, or rolled into a compiled TOC at install time. |
-| **Compile stage** | The v2 pipeline step between materialize and translate. Turns the materialized knowledge cache into a TOC stanza (≤150 lines) + sidecars + `compile-manifest.json`. Smart-default in v2.1: flips on automatically when the corpus would overflow the inline budget. See [`guide/16`](./guide/16-knowledge-compiler.md). |
-| **Retrieval server** | Optional per-agent stdio MCP server (`smith knowledge serve <agent> --stdio`) that exposes `knowledge.search` (BM25) and `knowledge.fetch` over the materialized cache. Off by default; opted into via the bundle's `mcpServers` block. |
+| **Compile stage** | The pipeline step between materialize and translate. Turns the materialized knowledge cache into a TOC stanza (≤150 lines) + sidecars + `compile-manifest.json`. Smart default: flips on automatically when the corpus would overflow the inline budget. See [`guide/16`](./guide/16-knowledge-compiler.md). |
+| **Retrieval server** | Optional per-agent stdio MCP server (`smith knowledge serve <agent> --stdio`) that exposes `knowledge.search` (BM25) and `knowledge.fetch` over the materialized cache. Off by default; opted into via the bundle's `mcpServers` block. Advertises `serverInfo.name = "<agent>-knowledge"` so multiple bundles coexist in one client. |
 | **Translator** | The platform-specific code that converts the canonical assembled agent into the right shape for one target. One translator per platform (5 total), in `src/core/translators/`. |
 | **USER.md** | Your shared cross-agent context. Symlinked into personal bundles so every agent on your machine inherits it; stubbed in shared catalogs so the bundle is safe to commit. |
 
@@ -133,7 +133,7 @@ flowchart LR
     URLSrc -.->|smith knowledge add url/confluence/jira| KnowledgeData
     GitSrc -.->|catalog pull| RegistryData
 
-    KnowledgeData -->|"compile<br/>(smart-default v2.1)"| Compiled
+    KnowledgeData -->|"compile<br/>(smart default)"| Compiled
 
     BundleData -->|assembler + translator| OCOut
     BundleData -->|assembler + translator| CCOut
@@ -156,7 +156,7 @@ flowchart LR
 
 **What this tells you:**
 - You write **one** bundle. Smith renders **five** outputs (one per supported platform: OpenCode, Claude Code, Codex, Kiro, and AGENTS.md).
-- Knowledge sources come from anywhere (local files, the web, Confluence, Jira, git repos) — they get *materialized* into smith's state directory first. The v2 **compile stage** (smart-default in v2.1) then turns the cache into a TOC stanza + sidecars; small corpora skip compile and stay v1-inline.
+- Knowledge sources come from anywhere (local files, the web, Confluence, Jira, git repos) — they get *materialized* into smith's state directory first. The **compile stage** (smart default) then turns the cache into a TOC stanza + sidecars; small corpora skip compile and stay inline.
 - The same compiled output feeds every translator — translators don't know whether they're consuming a v1 inline body or a v2 TOC.
 - Shared agent catalogs are versioned in git. Smith pulls them just like any other source.
 
@@ -207,7 +207,7 @@ sequenceDiagram
         K-->>CLI: materialized + token-budgeted
     end
 
-    CLI->>Cmp: Compile (smart-default v2.1)
+    CLI->>Cmp: Compile (smart default)
     Note over Cmp: When corpus > inline budget<br/>(or compile.progressive=true):<br/>build TOC stanza + sidecars,<br/>write compile-manifest.json
     Cmp-->>CLI: CompiledKnowledge (TOC + sidecars)
 
@@ -270,7 +270,7 @@ Every term that appears in this document, alphabetized. The first six are summar
 | **BM25 index** | Lexical-only (no embeddings) ranking index built in-memory at retrieval-server startup over the agent's materialized knowledge dir. ~200 LOC, ms-scale build, no model dependency. | `src/core/knowledge/bm25.ts` |
 | **Bundle** | A folder with the four persona files (IDENTITY/EXPERTISE/SOUL/USER) and `agent.config.json`. The canonical source-of-truth for an agent. | `~/.config/agent-smith/agents/<name>/` (user-global) or any registered catalog. |
 | **Catalog** | A directory containing one or more bundles, registered with smith. Agent kinds: `user-global`, `project`, `registered`. Skill kinds: `user-global`, `user-local`, `team-shared`. | Anywhere on disk; tracked in `registry.json` / `skill-catalogs.json`. |
-| **Compile stage** | The v2 pipeline step between materialize and translate. Produces a TOC stanza (≤150 lines), sidecars, and `compile-manifest.json`. Smart-default in v2.1: flips on automatically when the materialized corpus would overflow the inline budget; explicit `compile.progressive: true/false` overrides; explicit `delivery: "inline"` on any source pins the bundle to v1. Manual entry point: `smith knowledge compile <agent>`. | `src/core/knowledge/compile.ts`; `src/core/knowledge/pipeline.ts` (`shouldAutoCompile`). |
+| **Compile stage** | The pipeline step between materialize and translate. Produces a TOC stanza (≤150 lines), sidecars, and `compile-manifest.json`. Smart default: flips on automatically when the materialized corpus would overflow the inline budget; explicit `compile.progressive: true/false` overrides; explicit `delivery: "inline"` on any source pins the bundle to inline-only. Manual entry point: `smith knowledge compile <agent>` (offline — reads already-materialized files). | `src/core/knowledge/compile.ts`; `src/core/knowledge/pipeline.ts` (`shouldAutoCompile`). |
 | **compile-manifest.json** | Per-source TOC line, on-disk path, retrieval mode, content hash, byte / token totals — the v2 record of "what compiled to what." Drives idempotency, doctor's `knowledge-compile` drift detection, and the GUI's per-source preview. | `~/.config/agent-smith/knowledge/<agent>/compile-manifest.json` |
 | **Daemon** | Optional background watcher. On a 15-minute tick, it `git pull`s every `registered` catalog (agents and skills); on a separate 5-minute tick, it refreshes `ttl`-mode knowledge sources. Writes a heartbeat file to `~/.local/state/agent-smith/daemon.heartbeat.json`. Does **not** pull the agent-smith install itself — that's `smith update`. | `smith daemon start/stop/status` |
 | **Doctor** | Health-check command. Verifies platform installs, model resolution, skill drift, registry hygiene, Atlassian credentials, knowledge-refresh hooks, knowledge-prompt-disk-consistency, remote-catalogs, and duplicate-catalogs. | `smith doctor` |
@@ -279,7 +279,7 @@ Every term that appears in this document, alphabetized. The first six are summar
 | **installed-agents.json** | Manifest of every rendered agent file: path + content hash per platform. Drives idempotent reinstall, `would-clobber` refusal, and hash-mismatch refusal on uninstall. | `~/.config/agent-smith/installed-agents.json` |
 | **installed-skills.json** | Same manifest pattern, for skills. | `~/.config/agent-smith/installed-skills.json` |
 | **Install target** | A platform smith renders agents into: **OpenCode**, **Claude Code**, **Codex**, **Kiro**, or **AGENTS.md** (cross-tool). Each has its own file layout and frontmatter shape. | `~/.config/opencode/agents/`, `~/.claude/agents/`, `~/.agents/skills/<name>/SKILL.md`, `~/.kiro/agents/<name>.json`, `~/AGENTS.md` (or configured path). |
-| **Knowledge source** | External content (file, dir, glob, URL, git repo, Confluence space, Jira query) attached to an agent. Fetched once, cached, then either inlined (v1 / explicit `delivery: "inline"`), written as a sidecar (v1 / `delivery: "file"`), or rolled into a compiled TOC + sidecar (v2 compile stage). | Declared in `agent.config.json`; materialized to `~/.config/agent-smith/knowledge/<agent>/`. |
+| **Knowledge source** | External content (file, dir, glob, URL, git repo, Confluence space, Jira query) attached to an agent. Fetched once, cached, then either inlined (v1 / explicit `delivery: "inline"`), written as a sidecar (v1 / `delivery: "file"`), or rolled into a compiled TOC + sidecar (v2 compile stage). URL-typed sources may set `via: { server, tool }` to route fetches through an MCP server (resolved by a three-layer cache → `_meta` → curated-registry resolver). | Declared in `agent.config.json`; materialized to `~/.config/agent-smith/knowledge/<agent>/`. |
 | **Permission preset** | One of `read-only`, `read-edit`, `full`. Maps to platform-specific permission JSON during translation. Custom rules via `--permission-json`. | Set per bundle; applied by translators. |
 | **Platform conventions** | Optional per-platform context smith can inject at install time. Kiro is the first registered case (workspace + global steering files). Bundles opt-in via `platformConventions` in config. | `src/core/platform-conventions.ts`; user-global preference at `~/.config/agent-smith/conventions.json`. |
 | **registry.json** | Smith's record of every agent catalog it knows about. | `~/.config/agent-smith/registry.json` |
@@ -348,7 +348,7 @@ flowchart TB
     subgraph MCP["MCP wiring (when any source has retrieval: bm25)"]
         BundleMcp[("agent.config.json<br/>mcpServers: ['&lt;agent&gt;-knowledge']<br/><sub>declarative — names only<br/>per-agent: agent-smith-knowledge,<br/>billing-expert-knowledge, ...</sub>")]
         Cfg -.->|"if any source has<br/>retrieval.mode: bm25"| BundleMcp
-        ClientCfg[("AI-client MCP config<br/><sub>~/.claude.json<br/>~/.kiro/settings/mcp.json<br/>opencode.json / config.toml</sub>")]
+        ClientCfg[("AI-client MCP config<br/><sub>~/.claude.json<br/>~/.kiro/settings/mcp.json<br/>~/.config/opencode/opencode.json<br/>~/.codex/config.toml</sub>")]
         BundleMcp -->|"GUI MCP toggle<br/>writes spawn config"| ClientCfg
         BundleMcp -.->|"per-platform translator<br/>emits per-agent decl"| Render
     end
@@ -418,13 +418,14 @@ Notes:
 
 | Concern | Files |
 |---|---|
-| Materialize | `src/core/knowledge/pipeline.ts`, `src/core/knowledge/acquire-source.ts`, `src/io/{git,confluence,jira}.ts` |
+| Materialize | `src/core/knowledge/{pipeline,acquire-source,materialize,sniff-content,wiki-platform,frontmatter}.ts`, `src/io/{git,confluence,jira}.ts` |
+| URL routing (3-layer resolver) | `src/core/knowledge/{route-resolver,route-cache,route-meta,routing-registry,probe-route,acquire-via}.ts` |
 | Smart-default heuristic | `src/core/knowledge/pipeline.ts:shouldAutoCompile` |
 | Compile stage | `src/core/knowledge/compile.ts`, `src/core/knowledge/compile-manifest.ts` |
 | Sidecar emission + Knowledge Index | `src/core/assembler.ts`, `src/core/knowledge/sidecar.ts`, `src/core/knowledge/permission-grant.ts` |
 | Per-platform per-agent MCP emission | `src/core/translators/{kiro,claude-code,opencode,codex,agents-md}.ts`, `src/core/translators/mcp-helpers.ts` |
 | Retrieval server | `src/core/knowledge/serve-mcp.ts` (stdio MCP), `src/core/knowledge/bm25.ts` (pure index) |
-| GUI MCP toggle | `gui/server/src/services/mcp-config.ts` (writes platform configs), `gui/web/src/panels/KnowledgeSources/KnowledgeSources.tsx` (toggle UI) |
+| Shared MCP wire/unwire | `src/io/mcp-wiring.ts` (canonical writer/detector — used by `smith knowledge wire/unwire` and re-exported through `gui/server/src/services/mcp-config.ts`), `gui/web/src/panels/KnowledgeSources/KnowledgeSources.tsx` (toggle UI) |
 | smith launcher (spawn-context fix) | `bin/install` Step 6, `src/io/launcher.ts` |
 | Doctor drift detection | `src/core/freshness/check-knowledge-compile.ts` (compile manifests), `src/core/freshness/check-mcp-spawn.ts` (fragile bare commands) |
 
@@ -543,7 +544,7 @@ flowchart LR
 
 The compile function is **pure**: same `(sources, options, env)` triple always produces the same `(tocStanza, manifest, warnings)` triple. The pipeline (`pipeline.ts`) is the only side-effecting caller — it materializes sources, runs `shouldAutoCompile`, calls `compile()`, then `writeCompileManifest()`s the result and threads `tocStanza` through to the assembler.
 
-> **Want detail?** [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md#smart-default-v21) walks through the v2.1 smart-default rationale and the `compile` block knobs end-to-end.
+> **Want detail?** [`guide/16 — Knowledge compiler`](./guide/16-knowledge-compiler.md#smart-default) walks through the smart-default rationale and the `compile` block knobs end-to-end.
 
 ---
 
@@ -586,7 +587,7 @@ The smith bundle stays platform-neutral: smith renders AGENTS.md from the same c
 
 ### 7.4 Implication for "all five targets"
 
-A bundle that targets `["opencode", "claude-code", "codex", "kiro", "agents-md"]` produces six rendered files: four discrete subagents (under each platform's agents/skills dir) plus AGENTS.md at `$HOME` (or the configured path) plus the 1-line CLAUDE.md pointer. The four subagents remain summonable by name within their own runtimes; AGENTS.md picks up every other AGENTS.md-aware tool the user happens to be running on the same workspace. The pointer keeps Claude Code from drifting against its sibling. This is the v2.1 "render once, reach everyone" story — see §1's component map and §3's concrete trace for the on-disk layout.
+A bundle that targets `["opencode", "claude-code", "codex", "kiro", "agents-md"]` produces six rendered files: four discrete subagents (under each platform's agents/skills dir) plus AGENTS.md at `$HOME` (or the configured path) plus the 1-line CLAUDE.md pointer. The four subagents remain summonable by name within their own runtimes; AGENTS.md picks up every other AGENTS.md-aware tool the user happens to be running on the same workspace. The pointer keeps Claude Code from drifting against its sibling. This is the "render once, reach everyone" story — see §1's component map and §3's concrete trace for the on-disk layout.
 
 > **Want detail?** [`guide/16 — The agents-md target`](./guide/16-knowledge-compiler.md#the-agents-md-target) covers the publish-surface use case and the `emitAgentsMd` shorthand.
 
@@ -647,6 +648,6 @@ There is no `smith agent export --to-apm`. Smith → APM export is not implement
 
 ## Future work
 
-This refresh updates the diagrams and glossary for v2/v2.1 factual accuracy, adds Section 5 (knowledge loading end-to-end), and Sections 6–8 (compile internals, AGENTS.md target deep dive, APM import).
+This document is the system-level overview: component map, data flow, install lifecycle, knowledge loading end-to-end, compile internals, AGENTS.md target deep dive, and APM import.
 
 No major architecture topics are deferred at this time. Operational depth that genuinely belongs in user-facing docs (per-platform install troubleshooting, daemon tuning, model-resolution edge cases) lives in the [`guide/`](./guide/) spokes — this doc stays the system-level overview.

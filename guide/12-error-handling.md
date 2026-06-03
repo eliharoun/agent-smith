@@ -348,6 +348,7 @@ Every smith command, alphabetised. The exit codes listed are the codes the comma
 | `jack-out` | full removal succeeded; dry-run succeeded | confirmation token mismatch | bad flag | at least one removal failed |
 | `knowledge add` | source added | bundle not found; write failure | bad flag; invalid source schema | — |
 | `knowledge fetch` | every source materialised | bundle not found | bad flag | at least one source failed to materialise |
+| `knowledge compile` | every requested bundle compiled (or `--all` skipped non-knowledge bundles cleanly) | one or more sources have never been materialised (run `smith knowledge fetch <name>` first); other runtime failure | bundle has no `knowledge` block / no sources to compile; bad flag | — |
 | `knowledge list` | reported | bundle not found; manifest unreadable | bad flag | — |
 | `knowledge validate` | clean | unrecoverable failure | bad flag; validation failed | — |
 | `agent list` | reported (even if registry empty) | could not load registry | bad flag | — |

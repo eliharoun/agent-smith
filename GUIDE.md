@@ -1,6 +1,6 @@
 # Agent Smith — Guide
 
-`agent-smith` is a tool for authoring and operating AI coding agents. You write a single canonical bundle (persona files plus an `agent.config.json`) and the `smith` CLI renders it into the platform-specific files that OpenCode, Claude Code, Codex, and Kiro each expect. The same machinery installs reusable **skills** (Anthropic open Agent Skills format) and per-agent **knowledge** (files, repos, Confluence pages, Jira issues) across all four platforms from one source of truth. This guide is the source of truth for everything `smith` does.
+`agent-smith` is a tool for authoring and operating AI coding agents. You write a single canonical bundle (persona files plus an `agent.config.json`) and the `smith` CLI renders it into the platform-specific files that OpenCode, Claude Code, Codex, Kiro, and any AGENTS.md-aware tool each expect. The same machinery installs reusable **skills** (Anthropic open Agent Skills format) and per-agent **knowledge** (files, repos, Confluence pages, Jira issues) across these targets from one source of truth. This guide is the source of truth for everything `smith` does.
 
 This document is a router. It orients you, points at the right spoke, and answers "where do I find X?" The depth lives in the spokes under [`guide/`](./guide/).
 
@@ -22,19 +22,19 @@ Two surfaces drive the same machinery:
 
 Knowledge, skills, and permissions are **orthogonal concerns** layered on top:
 
-- **Knowledge** is materialized once into the per-agent OpenCode knowledge directory; Claude Code, Codex, and Kiro agents reach it via cross-platform read-grants injected at install time.
+- **Knowledge** is materialized once into smith's own state home (`~/.config/agent-smith/knowledge/<agent>/`); every translator emits a permission grant or sidecar pointer to that location, so all targets read the same bytes.
 - **Skills** install per-platform (`~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`, `~/.kiro/skills/`) and are referenced from a bundle either as `requires.skills` (delivery — install these for me) or `permission.skill` (runtime — let me invoke these via the `Skill` tool).
 - **Permissions** are declared once in the canonical `permission` block; each platform translator drops the groups its target doesn't support and warns appropriately.
 - **Platform conventions** are non-bundle context paths (e.g. `.kiro/steering/**/*.md` for Kiro) that the bundle can request and the user can govern globally; resolved at render time and injected into the platform-native output. See [06 — Permissions and platforms](./guide/06-permissions-and-platforms.md).
 
 ```
-                       canonical bundle
-                              │
-              ┌───────────────┼───────────────┬───────────────┐
-              ▼               ▼               ▼               ▼
-        OpenCode .md     Claude Code .md   Codex SKILL.md   Kiro .json
-   ~/.config/opencode/   ~/.claude/        ~/.agents/skills/  ~/.kiro/
-        agents/<n>.md    agents/<n>.md     <n>/SKILL.md       agents/<n>.json
+                              canonical bundle
+                                      │
+        ┌─────────────┬────────────┬────────────┬────────────┬────────────┐
+        ▼             ▼            ▼            ▼            ▼            ▼
+   OpenCode .md  Claude Code .md  Codex SKILL.md  Kiro .json     AGENTS.md
+~/.config/opencode/  ~/.claude/   ~/.agents/skills/  ~/.kiro/      ~/AGENTS.md
+   agents/<n>.md   agents/<n>.md   <n>/SKILL.md    agents/<n>.json  (or project root)
 ```
 
 ---
@@ -51,7 +51,7 @@ The 16 spokes are grouped by intent. Each one is a self-contained reference for 
 
 - [02 — Bundle anatomy](./guide/02-bundle-anatomy.md). The five files inside a bundle, the complete `agent.config.json` schema, validation rules.
 - [04 — Knowledge](./guide/04-knowledge.md). Per-agent knowledge sources: file, dir, glob, url, git, confluence, jira. Delivery (inline / file / auto), inline budget, sidecar `knowledge.json`, Atlassian credential resolution.
-- [16 — Knowledge compiler](./guide/16-knowledge-compiler.md). Progressive disclosure: smart-default compile (v2.1) + overrides, `agents-md` target, `smith knowledge compile` / `smith knowledge serve`, GUI per-source editor + MCP toggle, APM import.
+- [16 — Knowledge compiler](./guide/16-knowledge-compiler.md). Progressive disclosure: smart-default compile + overrides, `agents-md` target, `smith knowledge compile` / `smith knowledge serve`, GUI per-source editor + MCP toggle, APM import.
 - [05 — Skills](./guide/05-skills.md). The skill catalog model, the eleven `smith skill` subcommands, `requires.skills` semantics (canonical home), drift detection.
 - [06 — Permissions and platforms](./guide/06-permissions-and-platforms.md). Permission presets and JSON, per-platform translator behavior, capability gaps, MCP server declarations.
 - [07 — Models](./guide/07-models.md). Tier resolution (`balanced|fast|high|inherit`; legacy aliases `opus|sonnet|haiku`), per-platform handling, OpenCode live-resolution opt-out.
@@ -111,9 +111,15 @@ Every `smith` command, alphabetical. Follow the link for full synopsis, flags, e
 | [`smith agent destroy <name>`](./guide/14-cli-reference.md#smith-agent-destroy-name) | Inverse of `agent init`: remove a user-global source bundle (refuses non-`user-global` catalogs) |
 | [`smith jack-out`](./guide/14-cli-reference.md#smith-jack-out) | Full offboarding: uninstall all agents and remove `~/.config/agent-smith/` |
 | [`smith knowledge add`](./guide/14-cli-reference.md#smith-knowledge-add-agent-type-path-or-url) | Add a knowledge source to an agent's config and auto-materialize via `smith agent install` (use `--no-install` to skip) |
-| [`smith knowledge fetch`](./guide/14-cli-reference.md#smith-knowledge-fetch-agent) | Re-acquire knowledge sources and re-install |
+| [`smith knowledge compile`](./guide/14-cli-reference.md#smith-knowledge-compile-name) | Offline re-derive the TOC stanza + `compile-manifest.json` from already-materialized files |
+| [`smith knowledge fetch`](./guide/14-cli-reference.md#smith-knowledge-fetch-agent) | Re-acquire knowledge sources and re-install (`--source <id>` for surgical per-source refresh) |
 | [`smith knowledge list`](./guide/14-cli-reference.md#smith-knowledge-list-agent) | Show knowledge state for an agent: not-found, no sources, declared-but-not-materialized, or full manifest |
+| [`smith knowledge remove`](./guide/14-cli-reference.md#smith-knowledge-remove-agent-source-id) | Remove a knowledge source by id from an agent's `agent.config.json` |
+| [`smith knowledge route`](./guide/14-cli-reference.md#smith-knowledge-route) | Inspect or invalidate the URL → MCP-tool route resolver cache |
+| [`smith knowledge serve`](./guide/14-cli-reference.md#smith-knowledge-serve-name) | Stdio MCP server (BM25 search + range-bounded fetch) — wired into AI clients |
 | [`smith knowledge validate`](./guide/14-cli-reference.md#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents |
+| [`smith knowledge wire`](./guide/14-cli-reference.md#smith-knowledge-wire-agent) | Wire the bundle's `<agent>-knowledge` MCP server into every detected AI client |
+| [`smith knowledge unwire`](./guide/14-cli-reference.md#smith-knowledge-unwire-agent) | Inverse of `wire`: remove the per-agent key from the bundle and the spawn entry from each AI client |
 | [`smith agent list`](./guide/14-cli-reference.md#smith-agent-list) | List every agent across registered catalogs |
 | [`smith agent register <path>`](./guide/14-cli-reference.md#smith-agent-register-path) | Register a directory as an agent catalog |
 | [`smith agent sync [name]`](./guide/14-cli-reference.md#smith-agent-sync-name) | Pull updates for one or all remote-backed agent catalogs (use `--check` for an offline drift probe) |
@@ -176,8 +182,8 @@ Definitions for the vocabulary used across the spokes. Each entry links to the s
 - **Install** — `smith agent install <name>` builds the bundle, resolves required skills and the model tier, materializes knowledge, and writes per-platform files. See [03 — Installing and rendering](./guide/03-installing-and-rendering.md).
 - **Jack-out** — `smith jack-out`. Full offboarding in a single command: uninstalls every agent and every installed skill, removes `~/.config/agent-smith/`, the `~/.local/bin/smith` symlink, the agent-smith marker block from your shell rc, and the `~/.agent-smith/` source clone itself. Does NOT remove the doctor schema cache (`~/.cache/agent-smith/`). See [11 — Update and uninstall, "`smith jack-out`"](./guide/11-update-and-uninstall.md#smith-jack-out).
 - **Knowledge sidecar** — an optional `knowledge.json` file alongside `agent.config.json` whose contents merge into the bundle's `knowledge` block (per-source-id, sidecar wins on collision). See [02 — Bundle anatomy, "`knowledge.json` sidecar"](./guide/02-bundle-anatomy.md#knowledgejson-sidecar).
-- **Knowledge source** — a per-agent declaration of where to fetch reference material from: `file`, `dir`, `glob`, `url`, `git`, `confluence`, or `jira`. Materialized into the per-agent OpenCode knowledge directory at install time. See [04 — Knowledge](./guide/04-knowledge.md).
-- **MCP** — Model Context Protocol. `mcpServers` in a bundle is documentation-only — `smith` reads each platform's MCP config to advise on missing servers, but does not write or install them. See [06 — Permissions and platforms, "MCP server dependencies"](./guide/06-permissions-and-platforms.md#mcp-server-dependencies).
+- **Knowledge source** — a per-agent declaration of where to fetch reference material from: `file`, `dir`, `glob`, `url`, `git`, `confluence`, or `jira`. Materialized once into smith's own state home (`~/.config/agent-smith/knowledge/<agent>/`) at install time; every translator emits a permission grant or sidecar pointer to that location, so all targets read the same bytes. See [04 — Knowledge](./guide/04-knowledge.md).
+- **MCP** — Model Context Protocol. `mcpServers` in a bundle is normally documentation-only; the per-agent knowledge MCP server is the one exception — `smith knowledge wire <agent>` and the GUI toggle write spawn entries into the detected AI-client configs. See [06 — Permissions and platforms, "MCP server dependencies"](./guide/06-permissions-and-platforms.md#mcp-server-dependencies).
 - **modelTier** — the portable tier name (`balanced`, `fast`, `high`, `inherit`; legacy aliases `opus`, `sonnet`, `haiku`) declared in `agent.config.json`. Resolved per platform at install time. See [07 — Models](./guide/07-models.md).
 - **Permission preset** — one of `read-only`, `read-edit`, `full`. Expands at validation time to a `PermissionConfig` block; each platform translator drops the groups it doesn't support. See [06 — Permissions and platforms, "The three permission presets"](./guide/06-permissions-and-platforms.md#the-three-permission-presets).
 - **Persona** — the four bundle files that define an agent's voice and capability: `IDENTITY.md` (who), `EXPERTISE.md` (what), `SOUL.md` (how), `USER.md` (your shared context, symlinked from canonical). See [02 — Bundle anatomy, "Persona files"](./guide/02-bundle-anatomy.md#persona-files).
@@ -186,7 +192,7 @@ Definitions for the vocabulary used across the spokes. Each entry links to the s
 - **Render** — the build step that concatenates `IDENTITY → EXPERTISE → SOUL → USER → KNOWLEDGE → SKILLS` into a single system prompt body, then hands the result to a per-platform translator. See [03 — Installing and rendering, "What 'build' means"](./guide/03-installing-and-rendering.md#what-build-means).
 - **Skill** — a reusable instruction/workflow unit identified by a `SKILL.md` file at the root of its directory. Installed across platforms by `smith skill install`. See [05 — Skills](./guide/05-skills.md).
 - **`source-missing`** — a drift status indicating that the catalog an installed skill came from is no longer registered (or was removed without first uninstalling the skill). Recorded in `installed-skills.json`; remediated by re-registering the catalog or uninstalling the skill. See [05 — Skills, "Drift and doctor"](./guide/05-skills.md#drift-and-doctor).
-- **Target** — one of `opencode`, `claude-code`, `codex`, `kiro`. Declared per-bundle in `targets`; controls which translators run at install time. See [03 — Installing and rendering, "Per-platform output"](./guide/03-installing-and-rendering.md#per-platform-output).
+- **Target** — one of `opencode`, `claude-code`, `codex`, `kiro`, `agents-md`. Declared per-bundle in `targets`; controls which translators run at install time. See [03 — Installing and rendering, "Per-platform output"](./guide/03-installing-and-rendering.md#per-platform-output).
 - **Manifest (installed-agents.json)** — the per-host record of which agents `smith` has installed and the SHA-256 of each rendered file. Used for hash-mismatch refusal (`smith` won't overwrite a file it doesn't recognize without `--force`), lazy-claim on hash-match, and idempotent reinstall. See [03 — Installing and rendering](./guide/03-installing-and-rendering.md) and [13 — Paths and state](./guide/13-paths-and-state.md).
 - **Platform convention** — a non-bundle context path (e.g. Kiro's `.kiro/steering/**/*.md`) that the bundle can request and the user can govern via `~/.config/agent-smith/conventions.json`. Resolved at render time via a 3-tier precedence (bundle declaration → user-global override → CLI/prompt) and injected into the platform-native output. See [06 — Permissions and platforms](./guide/06-permissions-and-platforms.md).
 - **`--force`** — install/uninstall flag that bypasses the manifest's hash-mismatch refusal. Always opt-in: never silent, never default. See [11 — Update and uninstall](./guide/11-update-and-uninstall.md) and [14 — CLI reference](./guide/14-cli-reference.md).
