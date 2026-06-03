@@ -442,4 +442,155 @@ describe("cli/install", () => {
 
     expect(printed.join("\n")).not.toContain("knowledge");
   });
+
+  describe("Phase 3 routing (cache + probe + record)", () => {
+    test("forwards cached routeCache into buildAndInstall via injected loader", async () => {
+      const cache = {
+        schemaVersion: 1 as const,
+        entries: [
+          {
+            urlPattern: "https://wiki.test/**",
+            server: "atlassian",
+            tool: "fetch",
+            learnedAt: "2026-06-02T00:00:00.000Z",
+            hits: 7,
+          },
+        ],
+      };
+      let receivedOptions: unknown;
+      await install({
+        name: "foo",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({ bundles: [fakeBundle("foo")], failures: [] }),
+        buildAndInstall: async (_b, _p, options) => {
+          receivedOptions = options;
+          return emptyResult;
+        },
+        // Inject readAvailableMcpServers so install skips the live spawn-opts
+        // resolver (the bundle declares no MCP servers anyway). This mirrors
+        // the existing preflight tests' DI pattern and keeps the test
+        // hermetic — no real `$HOME` reads.
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => cache,
+        print: () => {},
+        printErr: () => {},
+      });
+      const opts = receivedOptions as {
+        routeCache?: typeof cache;
+        metaClaims?: unknown[];
+        recordRoute?: (r: { url: string; server: string; tool: string }) => Promise<void>;
+      };
+      expect(opts.routeCache).toEqual(cache);
+      // metaClaims is always forwarded (empty array when no servers/declared)
+      expect(opts.metaClaims).toEqual([]);
+      // recordRoute is always forwarded — record-on-probe is a no-op until
+      // a probe actually fires.
+      expect(typeof opts.recordRoute).toBe("function");
+    });
+
+    test("non-TTY → no probeOnFailure forwarded", async () => {
+      let receivedOptions: unknown;
+      await install({
+        name: "foo",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({ bundles: [fakeBundle("foo")], failures: [] }),
+        buildAndInstall: async (_b, _p, options) => {
+          receivedOptions = options;
+          return emptyResult;
+        },
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+        isTTY: () => false,
+        print: () => {},
+        printErr: () => {},
+      });
+      const opts = receivedOptions as { probeOnFailure?: unknown };
+      expect(opts.probeOnFailure).toBeUndefined();
+    });
+
+    test("TTY → probeOnFailure forwarded as a function", async () => {
+      let receivedOptions: unknown;
+      await install({
+        name: "foo",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({ bundles: [fakeBundle("foo")], failures: [] }),
+        buildAndInstall: async (_b, _p, options) => {
+          receivedOptions = options;
+          return emptyResult;
+        },
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+        isTTY: () => true,
+        print: () => {},
+        printErr: () => {},
+      });
+      const opts = receivedOptions as { probeOnFailure?: unknown };
+      expect(typeof opts.probeOnFailure).toBe("function");
+    });
+
+    test("recordRoute callback persists confirmed routes via saveRouteCache", async () => {
+      // Drive the recordRoute callback directly to assert persistence: the
+      // probe path is exercised in core/knowledge/probe-route tests; here
+      // we only verify the CLI's persistence wiring writes to the same
+      // stateHome we'd load from.
+      const tmp = await import("node:fs/promises").then((fs) =>
+        fs.mkdtemp(
+          require("node:path").join(require("node:os").tmpdir(), "smith-route-cache-"),
+        ),
+      );
+      try {
+        const xdg = process.env.XDG_CONFIG_HOME;
+        process.env.XDG_CONFIG_HOME = tmp;
+        try {
+          let captured:
+            | ((r: { url: string; server: string; tool: string }) => Promise<void>)
+            | undefined;
+          await install({
+            name: "foo",
+            paths,
+            loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+            loadAllBundles: async () => ({
+              bundles: [fakeBundle("foo")],
+              failures: [],
+            }),
+            buildAndInstall: async (_b, _p, options) => {
+              captured = options?.recordRoute;
+              return emptyResult;
+            },
+            readAvailableMcpServers: async () => ({}),
+            loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+            print: () => {},
+            printErr: () => {},
+          });
+          expect(captured).toBeDefined();
+          await captured!({
+            url: "https://wiki.test/team/foo",
+            server: "atlassian",
+            tool: "fetch",
+          });
+
+          const { loadRouteCache } = await import(
+            "../../src/core/knowledge/route-cache"
+          );
+          const reloaded = await loadRouteCache({
+            stateHome: require("node:path").join(tmp, "agent-smith"),
+          });
+          expect(reloaded.entries).toHaveLength(1);
+          expect(reloaded.entries[0]?.urlPattern).toBe("https://wiki.test/**");
+          expect(reloaded.entries[0]?.server).toBe("atlassian");
+          expect(reloaded.entries[0]?.tool).toBe("fetch");
+        } finally {
+          if (xdg === undefined) delete process.env.XDG_CONFIG_HOME;
+          else process.env.XDG_CONFIG_HOME = xdg;
+        }
+      } finally {
+        await import("node:fs/promises").then((fs) =>
+          fs.rm(tmp, { recursive: true, force: true }),
+        );
+      }
+    });
+  });
 });

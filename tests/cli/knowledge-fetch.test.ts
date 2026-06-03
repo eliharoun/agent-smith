@@ -728,4 +728,191 @@ describe("knowledgeFetch", () => {
     // Meta writes happened
     expect(writes).toEqual(["src-reg"]);
   });
+
+  // ============================================================
+  // Phase 3 routing (cache + probe + record) — DI seams
+  // ============================================================
+
+  it("forwards cached routeCache into refreshSource on the surgical path", async () => {
+    const sources = [
+      { id: "src-cache", type: "url", delivery: "file", url: "https://wiki.test/team/foo" },
+    ];
+    const cache = {
+      schemaVersion: 1 as const,
+      entries: [
+        {
+          urlPattern: "https://wiki.test/**",
+          server: "atlassian",
+          tool: "fetch",
+          learnedAt: "2026-06-02T00:00:00.000Z",
+          hits: 4,
+        },
+      ],
+    };
+    let received: unknown;
+    const refreshSourceFn = mock(async (opts: unknown) => {
+      received = opts;
+      return {
+        kind: "refreshed" as const,
+        sourceId: "src-cache",
+        bytes: 100,
+        entries: 1,
+        tokens: 0,
+        durationMs: 10,
+      };
+    });
+    const rerenderFn = mock(async () => ({ ok: true as const }));
+    const installFn = mock(async () => 0);
+
+    const code = await knowledgeFetch("agent-cached", "src-cache", {
+      install: installFn,
+      loadRegistry: stubLoadRegistry(),
+      loadAllBundles: stubLoadBundles([fakeBundle("agent-cached", sources)]),
+      refreshSource: refreshSourceFn as unknown as NonNullable<KnowledgeFetchDeps["refreshSource"]>,
+      rerenderPrompts: rerenderFn as unknown as NonNullable<KnowledgeFetchDeps["rerenderPrompts"]>,
+      readAvailableMcpServers: async () => ({}),
+      loadRouteCache: async () => cache,
+      knowledgePaths: { agentSmithHome: dir },
+    });
+    expect(code).toBe(0);
+    const opts = received as {
+      routeCache?: typeof cache;
+      metaClaims?: unknown[];
+      recordRoute?: unknown;
+    };
+    expect(opts.routeCache).toEqual(cache);
+    expect(opts.metaClaims).toEqual([]);
+    expect(typeof opts.recordRoute).toBe("function");
+  });
+
+  it("non-TTY → no probeOnFailure forwarded into refreshSource", async () => {
+    const sources = [
+      { id: "src-ntty", type: "url", delivery: "file", url: "https://example.com/x" },
+    ];
+    let received: unknown;
+    const refreshSourceFn = mock(async (opts: unknown) => {
+      received = opts;
+      return {
+        kind: "refreshed" as const,
+        sourceId: "src-ntty",
+        bytes: 10,
+        entries: 1,
+        tokens: 0,
+        durationMs: 1,
+      };
+    });
+    const rerenderFn = mock(async () => ({ ok: true as const }));
+    const installFn = mock(async () => 0);
+
+    const code = await knowledgeFetch("agent-ntty", "src-ntty", {
+      install: installFn,
+      loadRegistry: stubLoadRegistry(),
+      loadAllBundles: stubLoadBundles([fakeBundle("agent-ntty", sources)]),
+      refreshSource: refreshSourceFn as unknown as NonNullable<KnowledgeFetchDeps["refreshSource"]>,
+      rerenderPrompts: rerenderFn as unknown as NonNullable<KnowledgeFetchDeps["rerenderPrompts"]>,
+      readAvailableMcpServers: async () => ({}),
+      loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+      isTTY: () => false,
+      knowledgePaths: { agentSmithHome: dir },
+    });
+    expect(code).toBe(0);
+    const opts = received as { probeOnFailure?: unknown };
+    expect(opts.probeOnFailure).toBeUndefined();
+  });
+
+  it("TTY → probeOnFailure forwarded into refreshSource as a function", async () => {
+    const sources = [
+      { id: "src-tty", type: "url", delivery: "file", url: "https://example.com/x" },
+    ];
+    let received: unknown;
+    const refreshSourceFn = mock(async (opts: unknown) => {
+      received = opts;
+      return {
+        kind: "refreshed" as const,
+        sourceId: "src-tty",
+        bytes: 10,
+        entries: 1,
+        tokens: 0,
+        durationMs: 1,
+      };
+    });
+    const rerenderFn = mock(async () => ({ ok: true as const }));
+    const installFn = mock(async () => 0);
+
+    const code = await knowledgeFetch("agent-tty", "src-tty", {
+      install: installFn,
+      loadRegistry: stubLoadRegistry(),
+      loadAllBundles: stubLoadBundles([fakeBundle("agent-tty", sources)]),
+      refreshSource: refreshSourceFn as unknown as NonNullable<KnowledgeFetchDeps["refreshSource"]>,
+      rerenderPrompts: rerenderFn as unknown as NonNullable<KnowledgeFetchDeps["rerenderPrompts"]>,
+      readAvailableMcpServers: async () => ({}),
+      loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+      isTTY: () => true,
+      knowledgePaths: { agentSmithHome: dir },
+    });
+    expect(code).toBe(0);
+    const opts = received as { probeOnFailure?: unknown };
+    expect(typeof opts.probeOnFailure).toBe("function");
+  });
+
+  it("recordRoute callback persists confirmed routes via saveRouteCache", async () => {
+    const sources = [
+      { id: "src-rec", type: "url", delivery: "file", url: "https://example.com/x" },
+    ];
+    const xdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = dir;
+    try {
+      let captured:
+        | ((r: { url: string; server: string; tool: string }) => Promise<void>)
+        | undefined;
+      const refreshSourceFn = mock(async (opts: unknown) => {
+        captured = (opts as { recordRoute?: typeof captured }).recordRoute;
+        return {
+          kind: "refreshed" as const,
+          sourceId: "src-rec",
+          bytes: 1,
+          entries: 1,
+          tokens: 0,
+          durationMs: 1,
+        };
+      });
+      const rerenderFn = mock(async () => ({ ok: true as const }));
+      const installFn = mock(async () => 0);
+
+      const code = await knowledgeFetch("agent-rec", "src-rec", {
+        install: installFn,
+        loadRegistry: stubLoadRegistry(),
+        loadAllBundles: stubLoadBundles([fakeBundle("agent-rec", sources)]),
+        refreshSource: refreshSourceFn as unknown as NonNullable<
+          KnowledgeFetchDeps["refreshSource"]
+        >,
+        rerenderPrompts: rerenderFn as unknown as NonNullable<
+          KnowledgeFetchDeps["rerenderPrompts"]
+        >,
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+        knowledgePaths: { agentSmithHome: dir },
+      });
+      expect(code).toBe(0);
+      expect(captured).toBeDefined();
+      await captured!({
+        url: "https://wiki.test/team/foo",
+        server: "atlassian",
+        tool: "fetch",
+      });
+
+      const { loadRouteCache } = await import(
+        "../../src/core/knowledge/route-cache"
+      );
+      const reloaded = await loadRouteCache({
+        stateHome: join(dir, "agent-smith"),
+      });
+      expect(reloaded.entries).toHaveLength(1);
+      expect(reloaded.entries[0]?.urlPattern).toBe("https://wiki.test/**");
+      expect(reloaded.entries[0]?.server).toBe("atlassian");
+    } finally {
+      if (xdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = xdg;
+    }
+  });
 });

@@ -59,6 +59,19 @@ export interface RunKnowledgeStageOpts {
   /** Resolver for spawn opts of a named MCP server. Required when
    *  `mcpPool` is set. */
   spawnOptsFor?: (server: string) => McpClientOpts;
+  /** Phase 3: per-user routing cache (Layer 3). Forwarded into
+   *  `acquireSource` so URL sources without explicit `via:` can resolve
+   *  through the cached route before falling back to direct HTTP. */
+  routeCache?: import("./route-cache").RouteCache;
+  /** Phase 3: _meta claims pre-extracted from the bundle's MCP servers
+   *  (Layer 2). Forwarded into `acquireSource`. */
+  metaClaims?: import("./route-meta").MetaClaim[];
+  /** Phase 3: probe-on-failure callback. Caller decides whether to enable
+   *  (typically TTY-gated). Forwarded into `acquireSource`. */
+  probeOnFailure?: (url: string) => Promise<{ server: string; tool: string } | null>;
+  /** Phase 3: callback to record a confirmed route into the cache.
+   *  Forwarded into `acquireSource`. */
+  recordRoute?: (route: { url: string; server: string; tool: string }) => Promise<void>;
 }
 
 const DEFAULT_INLINE_BUDGET = 8000;
@@ -291,6 +304,10 @@ export async function runKnowledgeStage(
           ...(opts.gitSpawner ? { gitSpawner: opts.gitSpawner } : {}),
           ...(opts.mcpPool ? { mcpPool: opts.mcpPool } : {}),
           ...(opts.spawnOptsFor ? { spawnOptsFor: opts.spawnOptsFor } : {}),
+          ...(opts.routeCache !== undefined ? { routeCache: opts.routeCache } : {}),
+          ...(opts.metaClaims !== undefined ? { metaClaims: opts.metaClaims } : {}),
+          ...(opts.probeOnFailure ? { probeOnFailure: opts.probeOnFailure } : {}),
+          ...(opts.recordRoute ? { recordRoute: opts.recordRoute } : {}),
         });
         const materializedTexts: ProcessedSource["materializedTexts"] = [];
         for (const a of artifacts) {

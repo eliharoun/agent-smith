@@ -196,6 +196,29 @@ export interface BuildAndInstallOptions {
    * `acquireSource` via the pipeline.
    */
   spawnOptsFor?: (server: string) => McpClientOpts;
+  /**
+   * Phase 3: per-user routing cache (Layer 3). Forwarded into
+   * `runKnowledgeStage` → `acquireSource` so URL sources without explicit
+   * `via:` resolve through cached routes before falling back to direct HTTP.
+   * The CLI loads this from `<stateHome>/url-routing.json` on each install.
+   */
+  routeCache?: import("../core/knowledge/route-cache").RouteCache;
+  /**
+   * Phase 3: _meta claims (Layer 2) pre-extracted from the bundle's
+   * declared MCP servers. The CLI eagerly fetches these once per install
+   * and forwards them through every per-source acquire.
+   */
+  metaClaims?: import("../core/knowledge/route-meta").MetaClaim[];
+  /**
+   * Phase 3: probe-on-failure callback. The CLI constructs this only when
+   * `process.stdin.isTTY` is true; non-interactive runs skip probing.
+   */
+  probeOnFailure?: (url: string) => Promise<{ server: string; tool: string } | null>;
+  /**
+   * Phase 3: callback that records a confirmed route into the user's
+   * routing cache. Invoked after a successful probe.
+   */
+  recordRoute?: (route: { url: string; server: string; tool: string }) => Promise<void>;
 }
 
 /**
@@ -335,6 +358,10 @@ export async function buildAndInstall(
           {
             ...(options.mcpPool ? { mcpPool: options.mcpPool } : {}),
             ...(options.spawnOptsFor ? { spawnOptsFor: options.spawnOptsFor } : {}),
+            ...(options.routeCache !== undefined ? { routeCache: options.routeCache } : {}),
+            ...(options.metaClaims !== undefined ? { metaClaims: options.metaClaims } : {}),
+            ...(options.probeOnFailure ? { probeOnFailure: options.probeOnFailure } : {}),
+            ...(options.recordRoute ? { recordRoute: options.recordRoute } : {}),
           },
         );
         if (stage.errors.length > 0) {

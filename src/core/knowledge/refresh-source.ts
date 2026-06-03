@@ -54,6 +54,18 @@ export interface RefreshSourceOpts {
   mcpPool?: import("../../io/mcp-client-pool").McpClientPool;
   /** Resolves a server name to spawn options. Paired with `mcpPool`. */
   spawnOptsFor?: (server: string) => import("../../io/mcp-client").McpClientOpts;
+  /** Phase 3: per-user routing cache (Layer 3). Forwarded into
+   *  `acquireSource` so URL sources without explicit `via:` resolve through
+   *  cached routes before falling back to direct HTTP. */
+  routeCache?: import("./route-cache").RouteCache;
+  /** Phase 3: _meta claims (Layer 2) pre-extracted from the bundle's
+   *  declared MCP servers. */
+  metaClaims?: import("./route-meta").MetaClaim[];
+  /** Phase 3: probe-on-failure callback. Forwarded into `acquireSource`. */
+  probeOnFailure?: (url: string) => Promise<{ server: string; tool: string } | null>;
+  /** Phase 3: callback that records a confirmed route into the user's
+   *  routing cache. */
+  recordRoute?: (route: { url: string; server: string; tool: string }) => Promise<void>;
 }
 
 export type RefreshSourceResult =
@@ -269,6 +281,10 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
       ...(opts.gitSpawner ? { gitSpawner: opts.gitSpawner } : {}),
       ...(opts.mcpPool ? { mcpPool: opts.mcpPool } : {}),
       ...(opts.spawnOptsFor ? { spawnOptsFor: opts.spawnOptsFor } : {}),
+      ...(opts.routeCache !== undefined ? { routeCache: opts.routeCache } : {}),
+      ...(opts.metaClaims !== undefined ? { metaClaims: opts.metaClaims } : {}),
+      ...(opts.probeOnFailure ? { probeOnFailure: opts.probeOnFailure } : {}),
+      ...(opts.recordRoute ? { recordRoute: opts.recordRoute } : {}),
     });
     artifacts = acquired.artifacts;
   } catch (err) {

@@ -7,6 +7,7 @@ import {
   acquireSource as defaultAcquireSource,
   isAcquirable as defaultIsAcquirable,
 } from "../../../core/knowledge/acquire-source";
+import { probeRoute } from "../../../core/knowledge/probe-route";
 import {
   readRefreshCache as defaultReadRefreshCache,
   writeRefreshCache as defaultWriteRefreshCache,
@@ -17,6 +18,13 @@ import type {
   RefreshSourceResult,
 } from "../../../core/knowledge/refresh-source";
 import { refreshSource as defaultRefreshSource } from "../../../core/knowledge/refresh-source";
+import {
+  loadRouteCache as defaultLoadRouteCache,
+  recordRoute as recordCacheRoute,
+  type RouteCache,
+  saveRouteCache,
+} from "../../../core/knowledge/route-cache";
+import { extractMetaClaims, type MetaClaim } from "../../../core/knowledge/route-meta";
 import { SmithError } from "../../../core/smith-error";
 import { defaultCacheRoot } from "../../../io/cache-root";
 import { cacheDirFor, type KnowledgePaths } from "../../../io/knowledge-paths";
@@ -26,6 +34,7 @@ import type { AvailableMap } from "../../../io/mcp-config-readers";
 import { createSpawnOptsResolver } from "../../../io/mcp-spawn-resolver";
 import { canonicalRegistryPath, loadRegistry as defaultLoadRegistry } from "../../../io/registry";
 import { rerenderPrompts as defaultRerenderPrompts } from "../../../io/rerender-prompts";
+import { stateHome } from "../../../io/state-home";
 import { assertValidAgentName } from "../../agent-name";
 import { defaultKnowledgePaths } from "../../install-paths";
 import { loadAllBundles as defaultLoadAllBundles } from "../../load-all";
@@ -50,6 +59,14 @@ export interface KnowledgeFetchDeps {
    *  resolver is skipped — the test must wire its own resolver via the
    *  injected `refreshSource` / `acquireSource` stubs if it needs one. */
   readAvailableMcpServers?: () => Promise<AvailableMap>;
+  /** Phase 3 DI seam for the per-user routing cache loader. Production
+   *  omits and gets `loadRouteCache({ stateHome: stateHome() })`; tests
+   *  inject a fake to avoid touching the real
+   *  `~/.config/agent-smith/url-routing.json`. */
+  loadRouteCache?: () => Promise<RouteCache>;
+  /** TTY detector DI seam (defaults to `process.stdin.isTTY`). Tests pass
+   *  `() => false` to assert the non-interactive path skips probing. */
+  isTTY?: () => boolean;
 }
 
 /**
@@ -168,6 +185,64 @@ export async function knowledgeFetch(
       );
     }
 
+    // Phase 3: per-user routing cache + _meta claims + probe callback +
+    // record callback. Threaded into both the surgical (--source) path
+    // (`refreshSource` → `acquireSource`) and the post-install meta-write
+    // re-acquire so URL sources without explicit `via:` resolve through
+    // the three-layer resolver. Tests inject `loadRouteCache` to avoid
+    // touching the user's real `~/.config/agent-smith/url-routing.json`.
+    const loadRouteCacheFn =
+      deps.loadRouteCache ?? (() => defaultLoadRouteCache({ stateHome: stateHome() }));
+    let mutableRouteCache: RouteCache = await loadRouteCacheFn();
+
+    // Eagerly fetch _meta claims from the bundle's declared MCP servers.
+    // Best-effort: a server not running locally surfaces here as a silent
+    // skip; the resolver tolerates an empty claim list.
+    const allMetaClaims: MetaClaim[] = [];
+    if (bundle && deps.readAvailableMcpServers === undefined) {
+      // When tests inject `readAvailableMcpServers`, the spawn-opts
+      // resolver was built off the test's stubbed map — eagerly probing
+      // declared servers there would spawn real processes for fixture
+      // names. Skip the eager fetch in that case; tests that need
+      // metaClaims can pass a populated cache directly.
+      const declaredServers = bundle.config.mcpServers ?? [];
+      for (const serverName of declaredServers) {
+        try {
+          const client = await pool.acquire(serverName, spawnOptsFor(serverName));
+          const tools = await client.listTools();
+          allMetaClaims.push(...extractMetaClaims(serverName, tools));
+        } catch {
+          // Silent: server may not be configured/running locally.
+        }
+      }
+    }
+
+    const isTtyForProbe = deps.isTTY ? deps.isTTY() : Boolean(process.stdin.isTTY);
+    const bundleMcpServers = bundle?.config.mcpServers ?? [];
+    const probeOnFailure = isTtyForProbe
+      ? (url: string) =>
+          probeRoute({
+            url,
+            bundleMcpServers,
+            pool,
+            spawnOptsFor,
+            prompt: async (msg: string) => {
+              process.stdout.write(msg);
+              return new Promise<string>((resolve) => {
+                process.stdin.once("data", (b) => resolve(b.toString().trim()));
+              });
+            },
+          })
+      : undefined;
+
+    const recordRoute = async (r: { url: string; server: string; tool: string }) => {
+      mutableRouteCache = recordCacheRoute(mutableRouteCache, {
+        ...r,
+        now: new Date().toISOString(),
+      });
+      await saveRouteCache({ stateHome: stateHome() }, mutableRouteCache);
+    };
+
     const cacheDir = cacheDirFor(agent, knowledgePaths);
 
     // Pre-install: surgically clear ONLY the requested source's acquirer cache.
@@ -227,6 +302,10 @@ export async function knowledgeFetch(
             cacheRoot: cacheDir,
             mcpPool: pool,
             spawnOptsFor,
+            routeCache: mutableRouteCache,
+            metaClaims: allMetaClaims,
+            ...(probeOnFailure ? { probeOnFailure } : {}),
+            recordRoute,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -291,6 +370,10 @@ export async function knowledgeFetch(
             cacheDir,
             mcpPool: pool,
             spawnOptsFor,
+            routeCache: mutableRouteCache,
+            metaClaims: allMetaClaims,
+            ...(probeOnFailure ? { probeOnFailure } : {}),
+            recordRoute,
           });
           outcome = { ok: true };
         } catch (err) {

@@ -1,7 +1,15 @@
 import { homedir } from "node:os";
 import pc from "picocolors";
+import { probeRoute } from "../../core/knowledge/probe-route";
 import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refresh-manifest";
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
+import {
+  loadRouteCache as defaultLoadRouteCache,
+  recordRoute as recordCacheRoute,
+  type RouteCache,
+  saveRouteCache,
+} from "../../core/knowledge/route-cache";
+import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
 import { SmithError } from "../../core/smith-error";
 import type { AgentBundle, CanonicalConfig, InstallPaths, Target } from "../../core/types";
 import { registerAgentInCodexHooks } from "../../io/codex-hooks";
@@ -25,6 +33,7 @@ import {
 import type { Registry } from "../../io/registry";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { installSkill } from "../../io/skill-installer";
+import { stateHome } from "../../io/state-home";
 import { formatInstallSummary } from "../format-install";
 import { formatKnowledgeLines } from "../format";
 import {
@@ -50,6 +59,36 @@ import { preflightMcp } from "./agent/preflight-mcp";
 async function defaultLoadInstalledSkillNames(): Promise<string[]> {
   const file = await loadInstalledSkills();
   return file.installed.map((e) => e.name);
+}
+
+/**
+ * Build a `spawnOptsFor` resolver around a pre-fetched `AvailableMap`. Used
+ * when tests inject `readAvailableMcpServers` so via-routed sources and
+ * the Phase 3 probe callback still resolve through the test's stubbed
+ * map (instead of touching real `$HOME`). Mirrors
+ * `createSpawnOptsResolver` but skips the homedir read.
+ */
+function buildResolverFromMap(
+  map: AvailableMap,
+): (name: string) => import("../../io/mcp-client").McpClientOpts {
+  return (name: string) => {
+    const entry = map[name];
+    if (!entry) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: `mcp server '${name}'`,
+        reasons: [
+          `'${name}' is not configured in any platform MCP config`,
+          `install it with your platform's documented procedure`,
+        ],
+      });
+    }
+    return {
+      command: entry.command,
+      ...(entry.args ? { args: entry.args } : {}),
+      ...(entry.env ? { env: entry.env } : {}),
+    };
+  };
 }
 
 /**
@@ -160,6 +199,14 @@ export interface InstallCliOptions {
    * `AvailableMap` to exercise the preflight branches without touching disk.
    */
   readAvailableMcpServers?: () => Promise<AvailableMap>;
+  /**
+   * Phase 3 DI seam for the per-user routing cache loader. Production omits
+   * and gets `loadRouteCache({ stateHome: stateHome() })`; tests inject a
+   * function that returns a synthetic `RouteCache` so a cached route can
+   * short-circuit HTTP without touching the user's real
+   * `~/.config/agent-smith/url-routing.json`.
+   */
+  loadRouteCache?: () => Promise<RouteCache>;
 }
 
 export interface InstallBareHelpfulErrorOptions {
@@ -396,11 +443,85 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   const pool = new McpClientPool();
   // Spawn-opts resolver mirrors the available-map: built once per install
   // off the same `$HOME` so via-routed sources resolve consistently with
-  // the preflight check. Skipped when an injected `readAvailableMcpServers`
-  // makes it clear we're in a test that doesn't need the live resolver.
-  const spawnOptsFor = o.readAvailableMcpServers
-    ? undefined
-    : await createSpawnOptsResolver({ homeDir: homedir() });
+  // the preflight check. When tests inject `readAvailableMcpServers`,
+  // build the resolver around the injected map so via-routed sources and
+  // the Phase 3 probe callback still resolve through the test's stubbed
+  // map (not real `$HOME`).
+  const spawnOptsFor: (server: string) => import("../../io/mcp-client").McpClientOpts =
+    o.readAvailableMcpServers
+      ? buildResolverFromMap(available)
+      : await createSpawnOptsResolver({ homeDir: homedir() });
+
+  // Phase 3: per-user routing cache + _meta claims + probe callback +
+  // record callback. Loaded once per install, threaded through the build
+  // → orchestrator → pipeline → `acquireSource` chain so URL sources
+  // without explicit `via:` resolve through the three-layer resolver.
+  // Tests inject `loadRouteCache` to avoid touching the user's real
+  // `~/.config/agent-smith/url-routing.json`.
+  const loadRouteCacheFn =
+    o.loadRouteCache ?? (() => defaultLoadRouteCache({ stateHome: stateHome() }));
+  let mutableRouteCache: RouteCache = await loadRouteCacheFn();
+
+  // Eagerly fetch _meta claims from each declared bundle MCP server.
+  // Best-effort: a server not running locally, refusing connections, or
+  // simply not advertising the `dev.agent-smith/fetchDomains` key all
+  // surface here as silent skips — preflight already covered the
+  // required-vs-peer story, and the resolver tolerates an empty claim list.
+  // Tests inject `readAvailableMcpServers` to skip the live $HOME read; we
+  // also skip the eager probe in that case since the resolver would throw
+  // for fixture server names not present in the synthetic map.
+  const allMetaClaims: MetaClaim[] = [];
+  if (!o.readAvailableMcpServers) {
+    for (const b of bundles) {
+      const declaredServers = b.config.mcpServers ?? [];
+      for (const serverName of declaredServers) {
+        try {
+          const client = await pool.acquire(serverName, spawnOptsFor(serverName));
+          const tools = await client.listTools();
+          allMetaClaims.push(...extractMetaClaims(serverName, tools));
+        } catch {
+          // Silent: server may not be installed locally; preflight already
+          // covered the required-vs-peer story.
+        }
+      }
+    }
+  }
+
+  // probe-on-failure callback. Constructed only when stdin is a TTY so
+  // non-interactive runs (cron, daemon, CI) never block on user input.
+  // The closure captures the pool, spawn-opts resolver, and a stdin-reading
+  // prompt that returns the trimmed first line.
+  const isTtyForProbe = o.isTTY ? o.isTTY() : Boolean(process.stdin.isTTY);
+  const allBundleMcpServers = Array.from(
+    new Set(bundles.flatMap((b) => b.config.mcpServers ?? [])),
+  );
+  const probeOnFailure = isTtyForProbe
+    ? (url: string) =>
+        probeRoute({
+          url,
+          bundleMcpServers: allBundleMcpServers,
+          pool,
+          spawnOptsFor,
+          prompt: async (msg: string) => {
+            process.stdout.write(msg);
+            return new Promise<string>((resolve) => {
+              process.stdin.once("data", (b) => resolve(b.toString().trim()));
+            });
+          },
+        })
+    : undefined;
+
+  // Record callback: persist a confirmed probe result back to the cache so
+  // subsequent installs skip the prompt. Updates the in-memory cache view
+  // and re-saves on every record. Race with concurrent installs is
+  // benign — last-writer-wins with idempotent recordCacheRoute upserts.
+  const recordRoute = async (r: { url: string; server: string; tool: string }) => {
+    mutableRouteCache = recordCacheRoute(mutableRouteCache, {
+      ...r,
+      now: new Date().toISOString(),
+    });
+    await saveRouteCache({ stateHome: stateHome() }, mutableRouteCache);
+  };
 
   try {
   // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
@@ -514,7 +635,11 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // touching the user's skill set — installing a required skill for an
   // agent that didn't ship would leave a confusing partial state.
   // `mcpPool` + `spawnOptsFor` thread to `acquireSource` for via-routed
-  // knowledge sources.
+  // knowledge sources. `routeCache` + `metaClaims` + `probeOnFailure` +
+  // `recordRoute` thread the Phase 3 three-layer resolver through the
+  // pipeline so URL sources without explicit `via:` get cached/advertised
+  // routing and can prompt to probe declared servers on direct-fetch
+  // failure.
   const result = await build(bundles, paths, {
     withRefreshHooksFor,
     ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
@@ -524,7 +649,11 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
       ? { platformConventions: o.platformConventions }
       : {}),
     mcpPool: pool,
-    ...(spawnOptsFor ? { spawnOptsFor } : {}),
+    spawnOptsFor,
+    routeCache: mutableRouteCache,
+    metaClaims: allMetaClaims,
+    ...(probeOnFailure ? { probeOnFailure } : {}),
+    recordRoute,
   });
   if (result.errors.length > 0) {
     for (const e of result.errors) {
