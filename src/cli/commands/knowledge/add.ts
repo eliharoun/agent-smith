@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import pc from "picocolors";
 import { parseConfig } from "../../../core/config-schema";
 import { type AtlassianAuth, resolveAtlassianAuth } from "../../../io/atlassian-auth";
+import { findRoute } from "../../../core/knowledge/routing-registry";
 import type {
   ConfluenceFormat,
   ConfluencePageRef,
@@ -151,6 +152,10 @@ export interface KnowledgeAddOptions {
     /** When present, triggers title-based id derivation for confluence. */
     titleId?: { title: string | null; numericId: number };
   };
+  /** v1.2 DI: prompt user for confirmation. Returns "y" / "n" / "". */
+  prompt?: (msg: string) => Promise<string>;
+  /** v1.2 DI: whether stdin is a TTY (drives auto-confirm vs print-only). */
+  isTTY?: () => boolean;
 }
 
 function deriveId(opts: KnowledgeAddOptions): string {
@@ -285,7 +290,48 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   } else {
     id = deriveId(opts);
   }
+
+  // v1.2: routing-registry suggestion for type=url sources. The registry
+  // is suggestion-only: smith never auto-sets via without explicit user
+  // confirmation. Reasoning: real upstream MCP tool names vary by server
+  // distribution; auto-setting would silently produce -32601 method-not-
+  // found errors against real servers. Author confirmation forces the
+  // human to verify against their actual server's tools/list.
+  let suggestedVia: { server: string; tool: string } | undefined;
+  if (opts.type === "url") {
+    const route = findRoute(opts.pathOrUrl);
+    if (route) {
+      const isTty = opts.isTTY ? opts.isTTY() : Boolean(process.stdin.isTTY);
+      const note = (route as { note?: string }).note;
+      console.log(
+        pc.dim("•"),
+        `URL matches a known pattern. Smith can route fetches through:`,
+      );
+      console.log(`    ${pc.cyan(`${route.server}.${route.tool}`)}`);
+      if (note) console.log(pc.dim(`    note: ${note}`));
+      console.log(pc.dim(`    (verify the tool name against your server's tools/list)`));
+
+      if (isTty && opts.prompt) {
+        const answer = (await opts.prompt(`  use this routing? [y/N] `)).trim().toLowerCase();
+        if (answer === "y" || answer === "yes") {
+          suggestedVia = { server: route.server, tool: route.tool };
+          console.log(pc.green("→"), `routing through ${route.server}.${route.tool}`);
+        } else {
+          console.log(pc.dim("  saving as direct-HTTP URL source (no routing)"));
+        }
+      } else {
+        console.log(pc.dim("  non-interactive: saving without routing. To opt in, edit"));
+        console.log(pc.dim(`  agent.config.json and add via: { server, tool } to source ${id}.`));
+      }
+    }
+  }
+
   const newSource = constructSource(opts, id);
+
+  // Apply confirmed routing decision.
+  if (suggestedVia) {
+    (newSource as unknown as Record<string, unknown>).via = suggestedVia;
+  }
 
   // Atlassian-auth presence check for confluence/jira sources.
   // Probes env vars + the agent-smith .env file (no network). On miss,

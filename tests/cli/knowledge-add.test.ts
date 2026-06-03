@@ -514,3 +514,95 @@ describe("deriveId for confluence/jira", () => {
     expect(cfg.knowledge.sources[0].id).not.toMatch(/-$/);
   });
 });
+
+describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
+  let bundleDir: string;
+  beforeEach(async () => {
+    bundleDir = await mkdtemp(join(tmpdir(), "smith-ka-route-"));
+    await writeFile(
+      join(bundleDir, "agent.config.json"),
+      JSON.stringify({
+        name: "x",
+        description: "Use to test routing.",
+        targets: ["opencode"],
+        modelTier: "balanced",
+      }),
+    );
+  });
+  afterEach(async () => {
+    await rm(bundleDir, { recursive: true, force: true });
+  });
+
+  it("auto-confirms via on TTY when user answers 'y'", async () => {
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
+      delivery: "file",
+      isTTY: () => true,
+      prompt: async () => "y",
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toBeDefined();
+    expect(source.via.server).toMatch(/atlassian/);
+  });
+
+  it("does NOT set via when user answers 'n'", async () => {
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
+      delivery: "file",
+      isTTY: () => true,
+      prompt: async () => "n",
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toBeUndefined();
+  });
+
+  it("prints suggestion but does NOT auto-set in non-TTY mode", async () => {
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    try {
+      await knowledgeAdd({
+        bundleDir,
+        type: "url",
+        pathOrUrl: "https://github.com/acme/repo/blob/main/README.md",
+        delivery: "file",
+        isTTY: () => false,
+        installAfter: false,
+      });
+    } finally {
+      console.log = orig;
+    }
+    expect(logs.join("\n")).toMatch(/URL matches/);
+    expect(logs.join("\n")).toMatch(/non-interactive/);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toBeUndefined();
+  });
+
+  it("does not consult registry for non-url sources", async () => {
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "file",
+      pathOrUrl: "./README.md",
+      delivery: "file",
+      isTTY: () => true,
+      prompt: async () => {
+        throw new Error("prompt should not be called");
+      },
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+  });
+});
