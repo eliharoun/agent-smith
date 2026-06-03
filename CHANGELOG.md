@@ -4,6 +4,66 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-06-03
+
+Wiki content from MCP-routed knowledge sources now materializes as
+clean markdown with tables, code blocks, and headings preserved.
+Previously, JSON-wrapped HTML from MCP tool results was written
+verbatim as `.txt`, leaving the agent to mentally parse 30KB+ of
+envelope-wrapped HTML on every read. The fix is content-type aware
+and consistent: the same input shape always produces the same output.
+
+### Changed
+
+- HTML materializer now loads `turndown-plugin-gfm`. Tables in
+  wiki, news, and blog content are preserved as GFM pipe tables
+  instead of silently flattened to whitespace-separated text.
+- Wiki-shaped HTML (XWiki, Confluence, MediaWiki, SharePoint —
+  detected by HTML signature) is converted directly with turndown,
+  skipping Mozilla Readability. The wiki backend already strips
+  chrome server-side; running an extractor on it would only drop
+  content (the previous behavior silently dropped tables and code
+  blocks Readability scored as boilerplate).
+- Non-wiki HTML still uses Readability + turndown for chrome
+  stripping, with GFM added so news-article tables survive too.
+- Materialized HTML files now begin with a YAML frontmatter block
+  (title, source_url, fetched_at) so the agent has provenance and
+  a skim-friendly title without paying tokens to re-derive them.
+- HTML materializer now resolves relative links against the real
+  source URL instead of `http://localhost/` (a longstanding latent
+  bug that produced bogus `http://localhost/...` links in markdown).
+
+### Added
+
+- New `sniffArtifact(bytes, hints)` helper: unwraps known JSON
+  envelope shapes (`{content: {content}}`, `{content}`, `{html}`,
+  `{body}`, `{text}`, `{markdown}`, `{result}`, `{data}`) returned
+  by MCP tools, then content-type-sniffs the inner bytes and
+  picks an honest filename extension.
+- New `detectWikiPlatform(html)` helper: substring-based detection
+  for the four supported wiki platforms; cheap (~8KB scan) so it
+  runs on every HTML artifact without measurable overhead.
+
+### Fixed
+
+- via-routed knowledge sources no longer write JSON envelopes
+  verbatim to disk. The user-visible result: refreshing a routed
+  wiki source produces ~70% fewer tokens in the materialized file
+  (measured: 10,533 → 2,885 tokens on a representative 33KB page).
+- Files materialized from `text/html` content now have `.html` /
+  `.md` extensions instead of `.txt`. The BM25 indexer in
+  `smith knowledge serve` continues to index them (`.md` was
+  already in the allowlist).
+
+### Migration
+
+Existing materialized corpora persist on disk until the next
+`smith knowledge fetch <agent>` (or `--source <id>`), which
+re-acquires through the new pipeline. No schema changes; no CLI
+surface changes; no GUI changes. The existing per-source
+`materialize` override field continues to work as a manual escape
+hatch for advanced cases.
+
 ## [1.6.0] — 2026-06-03
 
 Per-agent knowledge MCP keys: each bundle's knowledge MCP server now
