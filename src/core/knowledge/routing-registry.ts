@@ -32,6 +32,12 @@ export interface RouteEntry {
   readonly argMapper: (url: string) => Record<string, unknown>;
   /** Hints surfaced in `knowledge add` output: real upstream tool name varies. */
   readonly note?: string;
+  /**
+   * Human-readable URL pattern this curated entry matches, suitable for
+   * surfacing in doctor output. Not consumed by the matcher — the
+   * `match()` predicate is canonical.
+   */
+  readonly displayPattern?: string;
 }
 
 interface Pattern extends RouteEntry {
@@ -43,6 +49,7 @@ const PATTERNS: readonly Pattern[] = [
     server: "atlassian-mcp",
     tool: "confluence_get_page",
     note: "Tool name varies by Atlassian MCP distribution; verify against your server's tools/list.",
+    displayPattern: "https://*.atlassian.net/wiki/**",
     match: (u) => u.hostname.endsWith(".atlassian.net") && u.pathname.startsWith("/wiki/"),
     argMapper: urlToConfluenceArgs,
   },
@@ -50,6 +57,7 @@ const PATTERNS: readonly Pattern[] = [
     server: "sharepoint-mcp",
     tool: "sharepoint_resolve_url",
     note: "URL-resolver tool — name varies by SharePoint MCP distribution.",
+    displayPattern: "https://*.sharepoint.com/**",
     match: (u) => u.hostname.endsWith(".sharepoint.com"),
     argMapper: urlToSharepointArgs,
   },
@@ -57,6 +65,7 @@ const PATTERNS: readonly Pattern[] = [
     server: "notion-mcp",
     tool: "retrieve_a_page",
     note: "Notion's official MCP uses tool names mirroring the HTTP API.",
+    displayPattern: "https://www.notion.so/**",
     match: (u) => u.hostname === "www.notion.so" || u.hostname === "notion.so",
     argMapper: urlToNotionArgs,
   },
@@ -64,6 +73,7 @@ const PATTERNS: readonly Pattern[] = [
     server: "github-mcp",
     tool: "get_file_contents",
     note: "Real tool name on github/github-mcp-server; argMapper maps to {owner, repo, ref, path}.",
+    displayPattern: "https://github.com/*/*/blob/**",
     match: (u) => u.hostname === "github.com" && /\/[^/]+\/[^/]+\/blob\//.test(u.pathname),
     argMapper: urlToGithubBlobArgs,
   },

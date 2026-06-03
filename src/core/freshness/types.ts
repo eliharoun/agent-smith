@@ -281,6 +281,18 @@ export interface DoctorReport {
    */
   mcpDeps?: { findings: import("./check-mcp-deps").McpDepFinding[] };
   /**
+   * Optional URL-routing summary. Enumerates every pattern smith would
+   * auto-route, broken out by source layer (curated registry, server-
+   * advertised `_meta`, user cache) and flags patterns claimed by more
+   * than one `(server, tool)` pair. Read-only — `smith doctor` does not
+   * mutate any routing state.
+   * Informational only — never affects {@link DoctorReport.exitCode}.
+   */
+  urlRouting?: {
+    entries: import("./check-url-routing").ResolvedRouteEntry[];
+    ambiguities: import("./check-url-routing").AmbiguityFinding[];
+  };
+  /**
    * Optional duplicate-catalogs check (v1-task RC2-10). Walks both
    * registries and groups entries by normalized git URL; reports
    * clusters of size >= 2 so the user can clean up accidental

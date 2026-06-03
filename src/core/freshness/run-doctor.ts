@@ -69,6 +69,11 @@ import {
   type CheckMcpDepsOpts,
   type McpDepFinding,
 } from "./check-mcp-deps";
+import {
+  checkUrlRouting,
+  type CheckUrlRoutingOpts,
+  type CheckUrlRoutingResult,
+} from "./check-url-routing";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { InstalledModelsPaths } from "./installed-models";
@@ -119,6 +124,7 @@ export type DoctorSectionId =
   | "knowledge-compile"
   | "mcp-spawn-commands"
   | "mcp-deps"
+  | "url-routing"
   | "knowledge-prompt-disk-consistency";
 
 export interface DoctorSectionStartEvent {
@@ -364,6 +370,16 @@ export interface RunDoctorInput {
    */
   mcpDeps?: CheckMcpDepsOpts;
   /**
+   * Optional url-routing summary. When provided, walks the three routing
+   * layers (curated registry, advertised `_meta` claims, user cache) and
+   * emits the merged routing table plus any ambiguity findings. Read-only;
+   * informational only — never affects {@link DoctorReport.exitCode}. The
+   * CLI provides default loaders that read the user cache and discover
+   * `_meta` claims by spawning each available MCP server; tests inject
+   * in-memory stubs so the section never touches real state.
+   */
+  urlRouting?: CheckUrlRoutingOpts;
+  /**
    * Optional knowledge-prompt-disk-consistency check. When provided, verifies
    * that Knowledge Index bullets in rendered prompts resolve to existing files,
    * repos/ symlinks are valid, and manifest entries match disk.
@@ -599,6 +615,13 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     emitDone(input, "mcp-deps", mcpDepsEventStatus(mcpDeps), mcpDepsSummary(mcpDeps));
   }
 
+  let urlRouting: CheckUrlRoutingResult | undefined;
+  if (input.urlRouting) {
+    emitStart(input, "url-routing", "URL routing");
+    urlRouting = await checkUrlRouting(input.urlRouting);
+    emitDone(input, "url-routing", urlRoutingEventStatus(urlRouting), urlRoutingSummary(urlRouting));
+  }
+
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
   if (input.knowledgeConsistency) {
     emitStart(input, "knowledge-prompt-disk-consistency", "Knowledge prompt-disk consistency");
@@ -645,6 +668,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
     ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
     ...(mcpDeps ? { mcpDeps } : {}),
+    ...(urlRouting ? { urlRouting } : {}),
     ...(knowledgeConsistency ? { knowledgeConsistency } : {}),
   };
 }
@@ -1505,6 +1529,24 @@ function mcpDepsSummary(r: { findings: McpDepFinding[] }): string {
   if (errors > 0) parts.push(`${errors} required missing`);
   if (warnings > 0) parts.push(`${warnings} peer missing`);
   return `MCP dependencies: ${parts.join(", ")}`;
+}
+
+function urlRoutingEventStatus(r: CheckUrlRoutingResult): DoctorSectionDoneEvent["status"] {
+  // Ambiguities are informational warnings — multiple sources claiming the
+  // same pattern is unusual but not a hard failure (the resolver picks
+  // the most-authoritative layer at fetch time). The detector never
+  // returns "error" today.
+  if (r.ambiguities.length > 0) return "warn";
+  return "ok";
+}
+
+function urlRoutingSummary(r: CheckUrlRoutingResult): string {
+  if (r.entries.length === 0) return "URL routing: no routes registered";
+  const total = r.entries.length;
+  const routesWord = `${total} route${total === 1 ? "" : "s"}`;
+  if (r.ambiguities.length === 0) return `URL routing: ${routesWord}`;
+  const n = r.ambiguities.length;
+  return `URL routing: ${routesWord}, ${n} ambiguous pattern${n === 1 ? "" : "s"}`;
 }
 
 function knowledgeConsistencyEventStatus(

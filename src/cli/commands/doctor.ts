@@ -29,7 +29,11 @@ import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
 import { compileManifestPath } from "../../core/knowledge/compile-manifest";
 import { getOpenCodeModels } from "../../io/opencode-models";
 import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
+import { McpClient } from "../../io/mcp-client";
 import { readAvailableMcpServers } from "../../io/mcp-config-readers";
+import { loadRouteCache } from "../../core/knowledge/route-cache";
+import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
+import { stateHome } from "../../io/state-home";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { canonicalSkillRegistryPath } from "../../io/skill-registry";
 import { isDebug } from "../debug-flag";
@@ -275,6 +279,19 @@ export interface DoctorCliOptions {
       Array<{ name: string; mcp?: { required?: string[]; peer?: string[] } }>
     >;
   };
+  /**
+   * v1.3: explicit DI seam for the `url-routing` doctor section. When
+   * omitted, production wiring loads the user route cache from
+   * `<stateHome>/url-routing.json` and discovers `_meta` claims by
+   * spawning each available MCP server (best-effort, per-server errors
+   * swallowed). Tests inject in-memory stubs so the section never
+   * touches the real cache file or spawns child processes — load-bearing
+   * for hermetic isolation.
+   */
+  urlRouting?: {
+    loadCache: () => Promise<import("../../core/knowledge/route-cache").RouteCache>;
+    listMetaClaims: () => Promise<import("../../core/knowledge/route-meta").MetaClaim[]>;
+  };
 }
 
 /**
@@ -474,6 +491,58 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       })),
   };
 
+  // Default DI for the url-routing section. Layer 1 (curated) and Layer 3
+  // (user cache, read from `<stateHome>/url-routing.json`) are always
+  // populated. Layer 2 (`_meta` self-claims) requires spawning each
+  // available MCP server and calling `tools/list`, which is too expensive
+  // and side-effecting to run on every `smith doctor` — many servers
+  // require auth tokens, take seconds to start, or shouldn't be probed
+  // without explicit user intent. We therefore gate the spawn loop
+  // behind `SMITH_DOCTOR_PROBE_META=1`. Tests inject `opts.urlRouting`
+  // explicitly so the section never touches the real cache file or
+  // spawns children.
+  const urlRoutingDi = opts.urlRouting ?? {
+    loadCache: () => loadRouteCache({ stateHome: stateHome() }),
+    listMetaClaims: async () => {
+      const claims: MetaClaim[] = [];
+      if (process.env.SMITH_DOCTOR_PROBE_META !== "1") return claims;
+      let available: import("../../io/mcp-config-readers").AvailableMap;
+      try {
+        available = await readAvailableMcpServers({ homeDir: homedir() });
+      } catch {
+        return claims;
+      }
+      for (const [name, entry] of Object.entries(available)) {
+        const client = new McpClient({
+          command: entry.command,
+          ...(entry.args ? { args: entry.args } : {}),
+          ...(entry.env ? { env: entry.env } : {}),
+          // Short timeouts so a slow/broken server can't stall doctor.
+          initializeTimeoutMs: 3_000,
+          callTimeoutMs: 3_000,
+        });
+        try {
+          await client.connect();
+          const tools = await client.listTools();
+          for (const c of extractMetaClaims(name, tools)) {
+            claims.push(c);
+          }
+        } catch (err) {
+          if (isDebug()) {
+            console.error(`[doctor] url-routing: skipped ${name}: ${toMessage(err)}`);
+          }
+        } finally {
+          try {
+            await client.close();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      return claims;
+    },
+  };
+
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,
     schemaMeta,
@@ -558,6 +627,10 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     mcpDeps: {
       installedAgents: await mcpDepsDi.loadInstalledAgents(),
       readAvailable: mcpDepsDi.readAvailable,
+    },
+    urlRouting: {
+      loadCache: urlRoutingDi.loadCache,
+      listMetaClaims: urlRoutingDi.listMetaClaims,
     },
     mcpSpawnCommands: {
       paths: opts.mcpSpawn?.paths ?? defaultMcpSpawnPaths(),

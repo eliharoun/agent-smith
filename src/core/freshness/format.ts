@@ -172,6 +172,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatMcpDepsSection(report.mcpDeps));
     blocks.push("");
   }
+  if (report.urlRouting) {
+    blocks.push(formatUrlRoutingSection(report.urlRouting));
+    blocks.push("");
+  }
   if (report.knowledgeConsistency) {
     blocks.push(formatKnowledgeConsistencySection(report.knowledgeConsistency));
     blocks.push("");
@@ -320,6 +324,8 @@ function renderSectionDetail(
       return report.mcpSpawnCommands ? formatMcpSpawnSection(report.mcpSpawnCommands) : null;
     case "mcp-deps":
       return report.mcpDeps ? formatMcpDepsSection(report.mcpDeps) : null;
+    case "url-routing":
+      return report.urlRouting ? formatUrlRoutingSection(report.urlRouting) : null;
     case "knowledge-prompt-disk-consistency":
       return report.knowledgeConsistency
         ? formatKnowledgeConsistencySection(report.knowledgeConsistency)
@@ -875,6 +881,52 @@ export function formatMcpDepsSection(
         ? `requires '${f.server}' — install the MCP server to satisfy the dependency`
         : `expects '${f.server}' (peer) — install for full functionality`;
     lines.push(`  ${icon} ${f.agent} ${note}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Render the url-routing section. Read-only: enumerates every pattern
+ * smith would auto-route, grouped by source layer (curated, advertised,
+ * learned), and lists any pattern claimed by more than one server/tool
+ * pair as an ambiguity. There is no auto-fix — ambiguities are
+ * informational; the resolver picks the most-authoritative layer at
+ * fetch time.
+ */
+export function formatUrlRoutingSection(
+  r: NonNullable<DoctorReport["urlRouting"]>,
+): string {
+  const lines: string[] = ["URL routing:"];
+  if (r.entries.length === 0) {
+    lines.push("  Status: no routes registered");
+    return lines.join("\n");
+  }
+  const ambiguousPatterns = new Set(r.ambiguities.map((a) => a.urlPattern));
+  const layerLabel: Record<"curated" | "_meta" | "cache", string> = {
+    curated: "curated",
+    _meta: "advertised",
+    cache: "learned",
+  };
+  for (const layer of ["curated", "_meta", "cache"] as const) {
+    const layerEntries = r.entries.filter((e) => e.source === layer);
+    if (layerEntries.length === 0) continue;
+    lines.push(`  ${layerLabel[layer]}:`);
+    for (const e of layerEntries) {
+      const flag = ambiguousPatterns.has(e.urlPattern) ? " [ambiguous]" : "";
+      lines.push(`    ${e.urlPattern}  →  ${e.server}.${e.tool}${flag}`);
+    }
+  }
+  if (r.ambiguities.length > 0) {
+    lines.push("");
+    lines.push(
+      `  Ambiguities: ${r.ambiguities.length} pattern${r.ambiguities.length === 1 ? "" : "s"} claimed by more than one server/tool`,
+    );
+    for (const a of r.ambiguities) {
+      lines.push(`    ${a.urlPattern}`);
+      for (const c of a.claimants) {
+        lines.push(`      - ${c.server}.${c.tool} (${c.source})`);
+      }
+    }
   }
   return lines.join("\n");
 }
