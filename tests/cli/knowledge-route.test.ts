@@ -295,6 +295,177 @@ describe("knowledgeRoute", () => {
     expect(acquireCalled).toBe(false);
   });
 
+  it("clears via from a single routed source", async () => {
+    await writeConfig([
+      {
+        id: "alpha",
+        type: "url",
+        delivery: "file",
+        url: "https://example.test/a",
+        via: { server: "preset", tool: "preset_tool" },
+      },
+      {
+        id: "beta",
+        type: "url",
+        delivery: "file",
+        url: "https://example.test/b",
+        via: { server: "preset", tool: "preset_tool" },
+      },
+    ]);
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
+    const exit = await knowledgeRoute({
+      bundleDir,
+      agentName: "x",
+      sourceId: "alpha",
+      clearVia: true,
+      isTTY: () => true,
+      prompt: async () => "1",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const alpha = cfg.knowledge.sources.find((s: { id: string }) => s.id === "alpha");
+    const beta = cfg.knowledge.sources.find((s: { id: string }) => s.id === "beta");
+    // alpha lost its via; beta retained its preset.
+    expect(alpha.via).toBeUndefined();
+    expect(beta.via).toEqual({ server: "preset", tool: "preset_tool" });
+  });
+
+  it("no-op message when source has no via", async () => {
+    await writeConfig([
+      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
+    ]);
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((a) => String(a)).join(" "));
+    };
+    let exit: number;
+    try {
+      exit = await knowledgeRoute({
+        bundleDir,
+        agentName: "x",
+        sourceId: "alpha",
+        clearVia: true,
+        isTTY: () => true,
+        prompt: async () => "1",
+        readAvailableMcpServers: async () => ({}),
+        spawnOptsFor: () => ({ command: "ignored" }),
+        pool,
+      });
+    } finally {
+      console.log = origLog;
+    }
+    expect(exit).toBe(0);
+    expect(logs.some((l) => /already direct-HTTP; nothing to clear/.test(l))).toBe(true);
+    // Config left unchanged on disk.
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const alpha = cfg.knowledge.sources.find((s: { id: string }) => s.id === "alpha");
+    expect(alpha.via).toBeUndefined();
+  });
+
+  it("errors with exit 2 when --clear-via is passed without --source", async () => {
+    await writeConfig([
+      {
+        id: "alpha",
+        type: "url",
+        delivery: "file",
+        url: "https://example.test/a",
+        via: { server: "preset", tool: "preset_tool" },
+      },
+    ]);
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
+    const err = await knowledgeRoute({
+      bundleDir,
+      agentName: "x",
+      clearVia: true,
+      isTTY: () => true,
+      prompt: async () => "1",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(SmithError);
+    expect(err.payload.code).toBe("usage-error");
+    expect(err.payload.message).toMatch(/--clear-via requires --source/);
+  });
+
+  it("errors with exit 1 when source not found under --clear-via", async () => {
+    await writeConfig([
+      {
+        id: "alpha",
+        type: "url",
+        delivery: "file",
+        url: "https://example.test/a",
+        via: { server: "preset", tool: "preset_tool" },
+      },
+    ]);
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
+    const err = await knowledgeRoute({
+      bundleDir,
+      agentName: "x",
+      sourceId: "ghost",
+      clearVia: true,
+      isTTY: () => true,
+      prompt: async () => "1",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(SmithError);
+    expect(err.payload.code).toBe("not-found");
+    expect(err.payload.identifier).toBe("ghost");
+  });
+
+  it("does NOT remove server from mcpServers[] or mcp.required[] when clearing", async () => {
+    await writeConfig(
+      [
+        {
+          id: "alpha",
+          type: "url",
+          delivery: "file",
+          url: "https://example.test/a",
+          via: { server: "shared-fetcher", tool: "fetch_page" },
+        },
+        {
+          id: "beta",
+          type: "url",
+          delivery: "file",
+          url: "https://example.test/b",
+          via: { server: "shared-fetcher", tool: "fetch_page" },
+        },
+      ],
+      {
+        mcpServers: ["bundle-fetcher", "shared-fetcher"],
+        mcp: { required: ["shared-fetcher"] },
+      },
+    );
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
+    const exit = await knowledgeRoute({
+      bundleDir,
+      agentName: "x",
+      sourceId: "alpha",
+      clearVia: true,
+      isTTY: () => true,
+      prompt: async () => "1",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    // Server lists must be untouched: beta still depends on shared-fetcher.
+    expect(cfg.mcpServers).toEqual(["bundle-fetcher", "shared-fetcher"]);
+    expect(cfg.mcp?.required).toEqual(["shared-fetcher"]);
+    const alpha = cfg.knowledge.sources.find((s: { id: string }) => s.id === "alpha");
+    const beta = cfg.knowledge.sources.find((s: { id: string }) => s.id === "beta");
+    expect(alpha.via).toBeUndefined();
+    expect(beta.via).toEqual({ server: "shared-fetcher", tool: "fetch_page" });
+  });
+
   it("rejects non-TTY runs with a clear SmithError", async () => {
     await writeConfig([
       { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },

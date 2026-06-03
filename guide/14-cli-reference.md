@@ -2078,7 +2078,7 @@ $ smith knowledge remove my-agent api-docs
 
 ### `smith knowledge route <agent>`
 
-**Synopsis:** `smith knowledge route <agent> [--source <id>]`
+**Synopsis:** `smith knowledge route <agent> [--source <id>] [--clear-via]`
 
 **Description:** Run the interactive MCP server/tool picker against
 existing URL knowledge sources to set `via:` in bulk. Without
@@ -2087,8 +2087,10 @@ already have `via:` set; with `--source <id>`, runs the picker against
 that single source whether or not it already has a route. The picker
 is the same one wired into `smith knowledge add`, including the
 auto-extension of `mcpServers[]` and `mcp.required[]` when you pick a
-server that wasn't already declared in the bundle. Source:
-`src/cli/commands/knowledge/route.ts`.
+server that wasn't already declared in the bundle. Pass `--clear-via`
+together with `--source <id>` to remove `via:` from a routed source
+(switching it back to direct HTTP) without invoking the picker.
+Source: `src/cli/commands/knowledge/route.ts`.
 
 **Arguments:**
 
@@ -2098,14 +2100,23 @@ server that wasn't already declared in the bundle. Source:
 
 - `--source <id>` — route only the source with this id (default: all
   unrouted URL sources).
+- `--clear-via` — remove the `via:` declaration from the source
+  identified by `--source <id>`, switching it back to direct HTTP
+  fetching. Requires `--source <id>`. Non-interactive — no picker is
+  shown. `mcpServers[]` and `mcp.required[]` are left intact since
+  other sources may still depend on the same server; prune those by
+  hand if needed. Idempotent: targeting an already-direct source
+  prints "nothing to clear" and exits 0.
 
 **Exit codes:**
 
 - `0` — success (any number of sources routed, including 0 when the
-  user skips every prompt).
+  user skips every prompt; or `--clear-via` no-op against an
+  already-direct source).
 - `1` — `--source <id>` did not match an existing URL source; bundle
   has no URL sources at all (`not-found`).
 - `2` — non-TTY environment (the picker is interactive-only);
+  `--clear-via` passed without `--source <id>` (`usage-error`);
   `config-missing` (agent has no `agent.config.json`); the rewritten
   config failed schema validation (`validation-failed`).
 
@@ -2114,6 +2125,7 @@ server that wasn't already declared in the bundle. Source:
 ```bash
 $ smith knowledge route my-agent
 $ smith knowledge route my-agent --source api-docs
+$ smith knowledge route my-agent --source api-docs --clear-via
 ```
 
 **See also:** [Knowledge](./04-knowledge.md).

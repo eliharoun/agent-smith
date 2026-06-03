@@ -21,6 +21,12 @@ export interface KnowledgeRouteOptions {
   agentName: string;
   /** When set, restrict routing to a single source id. */
   sourceId?: string;
+  /**
+   * When true, remove `via:` from the source identified by `sourceId`,
+   * switching it back to direct-HTTP fetching. Requires `sourceId`.
+   * Mutually exclusive with the interactive picker — no prompt is shown.
+   */
+  clearVia?: boolean;
   /** DI: prompt user for input. Defaults to readToken. */
   prompt?: (msg: string) => Promise<string>;
   /** DI: TTY detection for the picker. Defaults to process.stdin.isTTY. */
@@ -51,9 +57,15 @@ function truncateUrl(s: string, max = 80): string {
  * prompting. With `--source <id>`, runs the picker against that single
  * source whether or not it already has `via:`.
  *
+ * With `clearVia: true`, removes `via:` from the source identified by
+ * `sourceId` (required) — no picker is invoked. mcpServers[] and
+ * mcp.required[] are left intact since other sources may still depend
+ * on them.
+ *
  * Returns:
  *   - 0 on success (any number of sources routed, including 0).
- *   - throws SmithError on bundle-load failure or unmatched `--source`.
+ *   - throws SmithError on bundle-load failure, missing --source under
+ *     --clear-via, or unmatched `--source`.
  */
 export async function knowledgeRoute(opts: KnowledgeRouteOptions): Promise<number> {
   const cfgPath = join(opts.bundleDir, "agent.config.json");
@@ -98,6 +110,62 @@ export async function knowledgeRoute(opts: KnowledgeRouteOptions): Promise<numbe
       identifier: `${opts.agentName} (no URL sources declared)`,
       suggestedCommand: `smith knowledge add ${opts.agentName} <url>`,
     });
+  }
+
+  // Explicit clear path: remove via: from a single source, no picker.
+  // mcpServers[] and mcp.required[] are intentionally left intact —
+  // other sources may still depend on the same server, and removing
+  // mcp.required is a separate user action.
+  if (opts.clearVia) {
+    if (!opts.sourceId) {
+      throw new SmithError({
+        code: "usage-error",
+        message: "--clear-via requires --source <id>",
+        suggestedCommand: `smith knowledge route ${opts.agentName} --source <id> --clear-via`,
+      });
+    }
+    const match = urlSources.find((s) => s.id === opts.sourceId);
+    if (!match) {
+      const knownIds = urlSources.map((s) => s.id);
+      throw new SmithError({
+        code: "not-found",
+        what: "URL knowledge source",
+        identifier: opts.sourceId,
+        suggestedCommand:
+          knownIds.length > 0
+            ? `smith knowledge route ${opts.agentName} --source <one of: ${knownIds.join(", ")}> --clear-via`
+            : `smith knowledge add ${opts.agentName} <url>`,
+      });
+    }
+    if (match.via === undefined) {
+      console.log(
+        pc.dim("•"),
+        `source ${match.id} is already direct-HTTP; nothing to clear`,
+      );
+      return 0;
+    }
+    delete (match as unknown as Record<string, unknown>).via;
+    cfg.knowledge = { ...block, sources };
+    const parsed = parseConfig(cfg);
+    if (!parsed.success) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "agent config (after knowledge route --clear-via)",
+        reasons: parsed.errors,
+      });
+    }
+    const k = validateKnowledge(cfg.knowledge as KnowledgeBlock | undefined);
+    if (k.errors.length > 0) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "knowledge block (after route --clear-via)",
+        reasons: k.errors,
+      });
+    }
+    for (const w of k.warnings) console.log(pc.yellow("warn"), w);
+    await writeFile(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
+    console.log(pc.green("→"), `cleared via: from source ${match.id}`);
+    return 0;
   }
 
   // Pick the candidates to prompt about.

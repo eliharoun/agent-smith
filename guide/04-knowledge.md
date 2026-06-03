@@ -561,6 +561,24 @@ already have `via:`, when you want to re-route). Sources with an
 existing `via:` are skipped automatically when no `--source` is given,
 so the command is safe to re-run after adding new URL sources.
 
+To switch a routed source **back to direct HTTP**, pass `--clear-via`
+together with `--source <id>`:
+
+```text
+$ smith knowledge route my-agent --source api-docs --clear-via
+→ cleared via: from source api-docs
+```
+
+`--clear-via` is non-interactive — no picker is invoked, since your
+intent is explicit. It requires `--source <id>` (rejected with exit 2
+otherwise), and is idempotent: targeting a source that's already
+direct-HTTP prints a brief "nothing to clear" message and exits 0. The
+bundle's `mcpServers[]` and `mcp.required[]` are intentionally left
+untouched, since other sources may still depend on the same server;
+prune those by hand if needed. Switching to a **different** server is
+just `smith knowledge route <agent> --source <id>` — the picker re-runs
+against the existing route and you choose the new target.
+
 ### Authoring shortcut on `smith knowledge add`
 
 For a handful of well-known URL patterns, smith ships a curated routing

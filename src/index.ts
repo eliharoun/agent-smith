@@ -597,20 +597,25 @@ knowledgeCmd
     "Run the MCP server/tool picker against existing URL knowledge sources to set via: in bulk",
   )
   .option("--source <id>", "Route only the source with this id (default: all unrouted URL sources)")
+  .option("--clear-via", "Remove via from the targeted source (requires --source)")
   .action(
-    wrap("knowledge route", async (agent: string, opts: { source?: string }) => {
-      const { knowledgeRoute } = await import("./cli/commands/knowledge/route");
-      const { canonicalRegistryPath, loadRegistry } = await import("./io/registry");
-      const { findBundleOrFail, loadAllBundles } = await import("./cli/load-all");
-      const reg = await loadRegistry(canonicalRegistryPath());
-      const all = await loadAllBundles(reg);
-      const bundleDir = findBundleOrFail(all, agent).bundlePath;
-      return knowledgeRoute({
-        bundleDir,
-        agentName: agent,
-        ...(opts.source ? { sourceId: opts.source } : {}),
-      });
-    }),
+    wrap(
+      "knowledge route",
+      async (agent: string, opts: { source?: string; clearVia?: boolean }) => {
+        const { knowledgeRoute } = await import("./cli/commands/knowledge/route");
+        const { canonicalRegistryPath, loadRegistry } = await import("./io/registry");
+        const { findBundleOrFail, loadAllBundles } = await import("./cli/load-all");
+        const reg = await loadRegistry(canonicalRegistryPath());
+        const all = await loadAllBundles(reg);
+        const bundleDir = findBundleOrFail(all, agent).bundlePath;
+        return knowledgeRoute({
+          bundleDir,
+          agentName: agent,
+          ...(opts.source ? { sourceId: opts.source } : {}),
+          ...(opts.clearVia ? { clearVia: true } : {}),
+        });
+      },
+    ),
   );
 
 program
