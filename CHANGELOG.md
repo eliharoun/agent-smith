@@ -4,6 +4,37 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] — 2026-06-03
+
+Polish release on top of v1.4.1's routing picker — retrofitting existing sources, lock recovery, and clearer errors.
+
+### Added
+
+- `smith knowledge route <agent> [--source <id>]` — invoke the routing
+  picker against URL sources already in a bundle, without removing and
+  re-adding. Sources that already have `via:` set are skipped unless
+  you target them with `--source`.
+- `--force-unlock` flag on `smith agent install` and `smith knowledge
+  fetch` — removes a held `.install.lock` (typically left by a killed
+  prior run) and proceeds. Logs the lock's mtime so you see when it
+  was acquired.
+
+### Changed
+
+- When a routed `via.tool` doesn't exist on the server, smith now
+  lists the URL-shaped tools the server DOES expose so you can pick a
+  real name without consulting the server's docs separately.
+- The lock-contention error message now surfaces the lock path along
+  with the `--force-unlock` hint.
+
+### Internal
+
+- `saveRouteCache` is now injectable for tests, replacing the prior
+  `XDG_CONFIG_HOME` env-mutation pattern.
+- gui-server `tsconfig.json` no longer enforces a per-workspace
+  `rootDir`, so cross-rootDir static imports compile cleanly without
+  the previous string-variable indirection workaround.
+
 ## [1.4.1] — 2026-06-03
 
 ### Fixed
