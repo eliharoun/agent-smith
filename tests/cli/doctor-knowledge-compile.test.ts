@@ -20,7 +20,7 @@
  * for every missing-manifest / drift finding to repair the manifest.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctorCli } from "../../src/cli/commands/doctor";
