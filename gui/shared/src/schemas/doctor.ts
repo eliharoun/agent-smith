@@ -117,6 +117,7 @@ export const DoctorReport = z.object({
   duplicateCatalogs: z.unknown().optional(),
   knowledgeRefresh: z.unknown().optional(),
   mcpSpawnCommands: z.unknown().optional(),
+  mcpDeps: z.unknown().optional(),
   knowledgeConsistency: z.unknown().optional(),
   exitCode: z.union([z.literal(0), z.literal(1), z.literal(2)]),
 });

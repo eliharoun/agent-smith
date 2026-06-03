@@ -50,6 +50,19 @@ const RetrievalSpec = z
   })
   .strict();
 
+// v1.2 routed-fetch declaration. Mirror src/core/knowledge/schema.ts `ViaSpec`.
+// Permissive parity (no credential-key denylist superRefine here) — the CLI's
+// strict validator is the source of truth. `.strict()` IS applied so unknown
+// keys in `via` surface as drift.
+const Via = z
+  .object({
+    server: z.string().min(1),
+    tool: z.string().min(1),
+    args: z.record(z.string(), z.unknown()).optional(),
+    allowWriteTool: z.boolean().optional(),
+  })
+  .strict();
+
 const SourceBase = z.object({
   id: z.string().min(1),
   delivery: z.enum(["inline", "file", "auto"]).optional(),
@@ -63,6 +76,11 @@ const SourceBase = z.object({
   summary: z.string().min(1).max(280).optional(),
   toc: z.boolean().optional(),
   retrieval: RetrievalSpec.optional(),
+  // v1.2 routing
+  via: Via.optional(),
+  // v1.2 forward-compat: Phase 2 will activate this. Phase 1 accepts and
+  // no-ops to keep bundles authored against the design doc parseable.
+  lazy: z.union([z.boolean(), z.literal("auto")]).optional(),
 });
 
 const FileSrc = SourceBase.extend({

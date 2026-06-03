@@ -16,3 +16,46 @@ describe("knowledge schema parity with CLI", () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe("via routing parity", () => {
+  it("accepts via on a url source", () => {
+    const result = KnowledgeSource.safeParse({
+      id: "routed-confluence-page",
+      type: "url",
+      url: "https://example.atlassian.net/wiki/spaces/X/pages/123",
+      via: {
+        server: "atlassian-mcp",
+        tool: "getConfluencePage",
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts via with optional args", () => {
+    const result = KnowledgeSource.safeParse({
+      id: "routed-with-args",
+      type: "url",
+      url: "https://example.atlassian.net/wiki/spaces/X/pages/123",
+      via: {
+        server: "atlassian-mcp",
+        tool: "getConfluencePage",
+        args: { space: "X", pageId: "123" },
+        allowWriteTool: false,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects via with empty server", () => {
+    const result = KnowledgeSource.safeParse({
+      id: "bad-routing",
+      type: "url",
+      url: "https://example.atlassian.net/wiki/spaces/X/pages/123",
+      via: {
+        server: "",
+        tool: "getConfluencePage",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+});
