@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="generator" content="XWiki 14.10">
+  <title>Revision History — Service X</title>
+  <style>.hidden { display: none; }</style>
+</head>
+<body>
+  <div class="row document-header">
+    <div class="document-info col-xs-12 ">
+      <div id="document-title"><h1>Revision History</h1></div>
+    </div>
+  </div>
+  <div class="xwikicontent">
+    <h2>Overview</h2>
+    <p>This page tracks revisions to the Service X public API. Each row corresponds to a versioned release.</p>
+    <h2>Revisions</h2>
+    <table>
+      <thead>
+        <tr><th>Version</th><th>Date</th><th>Changes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1.0</td><td>2026-01-15</td><td>Initial release</td></tr>
+        <tr><td>1.1</td><td>2026-03-22</td><td>Added <code>POST /events</code> endpoint</td></tr>
+        <tr><td>2.0</td><td>2026-05-10</td><td>Breaking: renamed <code>id</code> to <code>resource_id</code></td></tr>
+      </tbody>
+    </table>
+    <h2>Migration example</h2>
+    <pre><code class="language-bash">curl -X POST https://api.example.com/v2/events \
+  -H "Content-Type: application/json" \
+  -d '{"resource_id": "abc"}'
+</code></pre>
+    <ul>
+      <li>Backward-compatible aliases retained until v3.0</li>
+      <li>Old endpoint returns HTTP 410 after 2026-12-31</li>
+    </ul>
+  </div>
+  <div class="panel xwikiintro">This intro panel should be stripped.</div>
+</body>
+</html>
