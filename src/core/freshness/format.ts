@@ -168,6 +168,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatMcpSpawnSection(report.mcpSpawnCommands));
     blocks.push("");
   }
+  if (report.mcpDeps) {
+    blocks.push(formatMcpDepsSection(report.mcpDeps));
+    blocks.push("");
+  }
   if (report.knowledgeConsistency) {
     blocks.push(formatKnowledgeConsistencySection(report.knowledgeConsistency));
     blocks.push("");
@@ -314,6 +318,8 @@ function renderSectionDetail(
         : null;
     case "mcp-spawn-commands":
       return report.mcpSpawnCommands ? formatMcpSpawnSection(report.mcpSpawnCommands) : null;
+    case "mcp-deps":
+      return report.mcpDeps ? formatMcpDepsSection(report.mcpDeps) : null;
     case "knowledge-prompt-disk-consistency":
       return report.knowledgeConsistency
         ? formatKnowledgeConsistencySection(report.knowledgeConsistency)
@@ -839,6 +845,38 @@ export function formatMcpSpawnSection(r: McpSpawnSection): string {
 function formatMcpSpawnFinding(f: McpSpawnFinding): string {
   const fix = f.resolvedAbsolute ?? "(unresolvable)";
   return `[fragile-spawn] ${f.platform} / ${f.serverName} — command="${f.command}" → ${fix}`;
+}
+
+/**
+ * Render the mcp-deps audit section. Read-only: lists each missing
+ * dependency with its severity (error for required, warning for peer)
+ * and the agent that declared it. There is no auto-fix — `smith` does
+ * not install MCP servers; the user installs them via their platform's
+ * own configuration UI.
+ */
+export function formatMcpDepsSection(
+  r: NonNullable<DoctorReport["mcpDeps"]>,
+): string {
+  const lines: string[] = ["MCP dependencies:"];
+  if (r.findings.length === 0) {
+    lines.push("  Status: ok");
+    return lines.join("\n");
+  }
+  const errors = r.findings.filter((f) => f.severity === "error").length;
+  const warnings = r.findings.length - errors;
+  const parts: string[] = [];
+  if (errors > 0) parts.push(`${errors} required missing`);
+  if (warnings > 0) parts.push(`${warnings} peer missing`);
+  lines.push(`  Status: ${parts.join(", ")}`);
+  for (const f of r.findings) {
+    const icon = f.severity === "error" ? "✗" : "⚠";
+    const note =
+      f.kind === "required"
+        ? `requires '${f.server}' — install the MCP server to satisfy the dependency`
+        : `expects '${f.server}' (peer) — install for full functionality`;
+    lines.push(`  ${icon} ${f.agent} ${note}`);
+  }
+  return lines.join("\n");
 }
 
 /**

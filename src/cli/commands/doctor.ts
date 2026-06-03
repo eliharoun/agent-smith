@@ -29,6 +29,7 @@ import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
 import { compileManifestPath } from "../../core/knowledge/compile-manifest";
 import { getOpenCodeModels } from "../../io/opencode-models";
 import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
+import { readAvailableMcpServers } from "../../io/mcp-config-readers";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { canonicalSkillRegistryPath } from "../../io/skill-registry";
 import { isDebug } from "../debug-flag";
@@ -260,6 +261,20 @@ export interface DoctorCliOptions {
     which?: (command: string) => string | null;
     resolveSmithPath?: () => string | null;
   };
+  /**
+   * v1.2: explicit DI seam for the `mcp-deps` doctor section. When omitted,
+   * production wiring reads platform MCP configs from the user's homedir
+   * (claude-code, codex, opencode, kiro) and derives installed agents from
+   * the same `loadAllBundles()` result the rest of the doctor uses. Tests
+   * inject in-memory stubs so the section never touches `~/.claude.json`
+   * or any other real config file — load-bearing for hermetic isolation.
+   */
+  mcpDeps?: {
+    readAvailable: () => Promise<import("../../io/mcp-config-readers").AvailableMap>;
+    loadInstalledAgents: () => Promise<
+      Array<{ name: string; mcp?: { required?: string[]; peer?: string[] } }>
+    >;
+  };
 }
 
 /**
@@ -446,6 +461,19 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     )
   ).filter((c): c is NonNullable<typeof c> => c !== null);
 
+  // Default DI for the mcp-deps section: read the union of platform MCP
+  // configs from the user's homedir, and build the installed-agents list
+  // from the bundles already loaded above. Tests inject `opts.mcpDeps`
+  // explicitly so the section never touches a real `~/.claude.json`.
+  const mcpDepsDi = opts.mcpDeps ?? {
+    readAvailable: () => readAvailableMcpServers({ homeDir: homedir() }),
+    loadInstalledAgents: async () =>
+      bundleResult.bundles.map((b) => ({
+        name: b.config.name,
+        ...(b.config.mcp ? { mcp: b.config.mcp } : {}),
+      })),
+  };
+
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,
     schemaMeta,
@@ -527,6 +555,10 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
     },
     knowledgeCompile: { candidates: knowledgeCompileCandidates },
+    mcpDeps: {
+      installedAgents: await mcpDepsDi.loadInstalledAgents(),
+      readAvailable: mcpDepsDi.readAvailable,
+    },
     mcpSpawnCommands: {
       paths: opts.mcpSpawn?.paths ?? defaultMcpSpawnPaths(),
       ...(opts.mcpSpawn?.which ? { which: opts.mcpSpawn.which } : {}),

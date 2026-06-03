@@ -64,6 +64,11 @@ import {
   type CheckMcpSpawnInput,
   type McpSpawnSection,
 } from "./check-mcp-spawn";
+import {
+  checkMcpDeps,
+  type CheckMcpDepsOpts,
+  type McpDepFinding,
+} from "./check-mcp-deps";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
 import type { InstalledModelsPaths } from "./installed-models";
@@ -113,6 +118,7 @@ export type DoctorSectionId =
   | "knowledge-refresh"
   | "knowledge-compile"
   | "mcp-spawn-commands"
+  | "mcp-deps"
   | "knowledge-prompt-disk-consistency";
 
 export interface DoctorSectionStartEvent {
@@ -349,6 +355,15 @@ export interface RunDoctorInput {
    */
   mcpSpawnCommands?: CheckMcpSpawnInput;
   /**
+   * Optional mcp-deps audit. When provided, walks each installed agent's
+   * `mcp.required[]` / `mcp.peer[]` declarations and reports server names
+   * absent from the union of platform MCP configs. Read-only; no repair.
+   * The CLI builds {@link CheckMcpDepsOpts} from `loadAllBundles` and the
+   * platform MCP-config readers; tests inject in-memory stubs so the
+   * section never touches `~/.claude.json` or any real config file.
+   */
+  mcpDeps?: CheckMcpDepsOpts;
+  /**
    * Optional knowledge-prompt-disk-consistency check. When provided, verifies
    * that Knowledge Index bullets in rendered prompts resolve to existing files,
    * repos/ symlinks are valid, and manifest entries match disk.
@@ -576,6 +591,14 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let mcpDeps: { findings: McpDepFinding[] } | undefined;
+  if (input.mcpDeps) {
+    emitStart(input, "mcp-deps", "MCP dependencies");
+    const findings = await checkMcpDeps(input.mcpDeps);
+    mcpDeps = { findings };
+    emitDone(input, "mcp-deps", mcpDepsEventStatus(mcpDeps), mcpDepsSummary(mcpDeps));
+  }
+
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
   if (input.knowledgeConsistency) {
     emitStart(input, "knowledge-prompt-disk-consistency", "Knowledge prompt-disk consistency");
@@ -621,6 +644,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(knowledgeRefresh ? { knowledgeRefresh } : {}),
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
     ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
+    ...(mcpDeps ? { mcpDeps } : {}),
     ...(knowledgeConsistency ? { knowledgeConsistency } : {}),
   };
 }
@@ -1466,6 +1490,21 @@ function mcpSpawnSummary(r: McpSpawnSection): string {
   if (r.findings.length === 0) return "MCP spawn commands: ok";
   const n = r.findings.length;
   return `MCP spawn commands: ${n} fragile entr${n === 1 ? "y" : "ies"}`;
+}
+
+function mcpDepsEventStatus(r: { findings: McpDepFinding[] }): DoctorSectionDoneEvent["status"] {
+  if (r.findings.length === 0) return "ok";
+  return r.findings.some((f) => f.severity === "error") ? "error" : "warn";
+}
+
+function mcpDepsSummary(r: { findings: McpDepFinding[] }): string {
+  if (r.findings.length === 0) return "MCP dependencies: ok";
+  const errors = r.findings.filter((f) => f.severity === "error").length;
+  const warnings = r.findings.length - errors;
+  const parts: string[] = [];
+  if (errors > 0) parts.push(`${errors} required missing`);
+  if (warnings > 0) parts.push(`${warnings} peer missing`);
+  return `MCP dependencies: ${parts.join(", ")}`;
 }
 
 function knowledgeConsistencyEventStatus(

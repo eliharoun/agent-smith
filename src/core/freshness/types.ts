@@ -272,6 +272,15 @@ export interface DoctorReport {
    */
   mcpSpawnCommands?: import("./check-mcp-spawn").McpSpawnSection;
   /**
+   * Optional mcp-deps audit. Walks each installed agent's
+   * `mcp.required[]` / `mcp.peer[]` declarations and reports any server
+   * names not present in the union of platform MCP configs. Required-
+   * missing surfaces as an error finding; peer-missing as a warning.
+   * Read-only — `smith doctor` does not install MCP servers.
+   * Informational only — never affects {@link DoctorReport.exitCode}.
+   */
+  mcpDeps?: { findings: import("./check-mcp-deps").McpDepFinding[] };
+  /**
    * Optional duplicate-catalogs check (v1-task RC2-10). Walks both
    * registries and groups entries by normalized git URL; reports
    * clusters of size >= 2 so the user can clean up accidental
