@@ -5,6 +5,7 @@ import { Button } from "@/ui/Button";
 import { ConfirmModal } from "@/ui/ConfirmModal";
 import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
+import { RoutingPicker, type ViaPick } from "./sourceForms/RoutingPicker";
 
 /**
  * Per-source editor for ALL v1+v2 knowledge source fields. The Add flow
@@ -53,6 +54,14 @@ interface Props {
   existingSource: KnowledgeSource;
   /** The full knowledge block from agent.config.knowledge — used to round-trip every other field. */
   knowledgeBlock: KnowledgeBlock;
+  /**
+   * The agent's currently-declared `mcpServers[]`. Surfaced to the routing
+   * picker so it can flag pre-selected `via.server` values that aren't
+   * actually wired into the bundle. Defaults to [] when unknown — that case
+   * still works (the picker just shows the ghost server with `[not in
+   * available servers]` instead of `[not configured]`).
+   */
+  mcpServers?: ReadonlyArray<string>;
   onClose: () => void;
 }
 
@@ -89,6 +98,14 @@ interface DraftState {
   toc: "default" | "yes" | "no";
   retrievalMode: RetrievalMode;
   retrievalMcpUrl: string;
+  /**
+   * Routing pick (URL sources only). null means "direct HTTP — no via:".
+   * Initialized from `existingSource.via` so the picker shows the current
+   * route pre-selected; updated by the picker's onChange. On save, when set,
+   * `via:` is written; when null, the field is omitted entirely (the schema
+   * rejects `via: null`).
+   */
+  via: ViaPick | null;
 }
 
 interface InitialDraft {
@@ -163,6 +180,24 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
           : "yes",
     retrievalMode: retrieval?.mode ?? "off",
     retrievalMcpUrl: retrieval?.mcpUrl ?? "",
+    via: (() => {
+      // Only URL sources route via MCP. Defensively narrow other types to
+      // null even if the loaded JSON happens to carry a `via` key (it
+      // wouldn't pass the canonical schema, but the editor never crashes).
+      if (s.type !== "url") return null;
+      const v = anySrc.via;
+      if (
+        v &&
+        typeof v === "object" &&
+        typeof (v as { server?: unknown }).server === "string" &&
+        typeof (v as { tool?: unknown }).tool === "string"
+      ) {
+        const server = (v as { server: string }).server;
+        const tool = (v as { tool: string }).tool;
+        return { server, tool } as ViaPick;
+      }
+      return null;
+    })(),
   };
   return invalidRefreshMode ? { draft, invalidRefreshMode } : { draft };
 }
@@ -316,12 +351,16 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
     }
   }
 
-  // Round-trip routing/forward-compat fields that aren't surfaced as form
-  // inputs but must survive a GUI edit. Without this, a source authored
-  // elsewhere (e.g., `smith knowledge add --via …`) would silently lose its
-  // routing declaration after any edit through this modal.
+  // Routing (URL sources only). Edit-flow rule: write `via` when the picker
+  // landed on a server+tool, omit entirely when null. Never write
+  // `"via": null` — the canonical schema rejects unknown shapes there.
+  if (original.type === "url" && draft.via) {
+    base.via = { server: draft.via.server, tool: draft.via.tool };
+  }
+
+  // Round-trip forward-compat fields that aren't surfaced as form inputs
+  // but must survive a GUI edit (e.g., `lazy`).
   const originalAny = original as unknown as Record<string, unknown>;
-  if (originalAny.via !== undefined) base.via = originalAny.via;
   if (originalAny.lazy !== undefined) base.lazy = originalAny.lazy;
 
   return base as unknown as KnowledgeSource;
@@ -331,6 +370,7 @@ export function EditKnowledgeSourceModal({
   agent,
   existingSource,
   knowledgeBlock,
+  mcpServers,
   onClose,
 }: Props) {
   const initial = useMemo(() => initialDraft(existingSource), [existingSource]);
@@ -378,10 +418,23 @@ export function EditKnowledgeSourceModal({
       s.id === existingSource.id ? built : s,
     );
     const nextBlock: KnowledgeBlock = { ...knowledgeBlock, sources };
-    save.mutate(
-      { knowledge: nextBlock as unknown as Record<string, unknown> },
-      { onSuccess: () => onClose() },
-    );
+    const patch: Record<string, unknown> = {
+      knowledge: nextBlock as unknown as Record<string, unknown>,
+    };
+    // mcpServers extension: when the user picked a server that the bundle
+    // hasn't declared yet (e.g., one that surfaces from AI client config
+    // only), append it so the install pipeline wires it up. Don't touch
+    // mcp.required[] — that's the Add flow's concern; Edit only patches the
+    // routing declaration the user just chose.
+    if (
+      existingSource.type === "url" &&
+      draft.via?.server &&
+      mcpServers !== undefined &&
+      !mcpServers.includes(draft.via.server)
+    ) {
+      patch.mcpServers = [...mcpServers, draft.via.server];
+    }
+    save.mutate(patch as Parameters<typeof save.mutate>[0], { onSuccess: () => onClose() });
   }
 
   function requestClose() {
@@ -452,6 +505,14 @@ export function EditKnowledgeSourceModal({
                 value={draft.url}
                 onChange={(e) => update("url", e.target.value)}
                 error={errors.url}
+              />
+            )}
+            {t === "url" && (
+              <RoutingPicker
+                agent={agent}
+                value={draft.via}
+                onChange={(v) => update("via", v)}
+                currentMcpServers={mcpServers ?? []}
               />
             )}
             {t === "url" && (

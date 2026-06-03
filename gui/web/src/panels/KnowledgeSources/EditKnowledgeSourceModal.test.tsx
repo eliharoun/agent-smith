@@ -1,15 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { KnowledgeSource } from "gui-shared";
+import type { KnowledgeSource, McpServerAndToolsView } from "gui-shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EditKnowledgeSourceModal } from "./EditKnowledgeSourceModal";
 
 type Call = { url: string; init?: RequestInit | undefined };
 
-function mockFetch(calls: Call[], opts: { putStatus?: number } = {}) {
+function mockFetch(
+  calls: Call[],
+  opts: { putStatus?: number; picker?: McpServerAndToolsView } = {},
+) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
+    if (url.endsWith("/mcp-servers-and-tools")) {
+      const empty: McpServerAndToolsView = { servers: [], toolsByServer: {} };
+      return new Response(JSON.stringify(opts.picker ?? empty), { status: 200 });
+    }
     if (url.includes("/api/agents/") && init?.method === "PUT") {
       return new Response(JSON.stringify({ ok: true }), { status: opts.putStatus ?? 200 });
     }
@@ -185,6 +192,207 @@ describe("EditKnowledgeSourceModal", () => {
     expect(written.description).toBe("team docs");
     expect(written.via).toEqual({ server: "x-mcp", tool: "fetch_thing" });
     expect(written.lazy).toBe(true);
+  });
+
+  it("displays current via when opening a routed source", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [{ name: "x-mcp", source: "bundle" }],
+        toolsByServer: {
+          "x-mcp": [{ name: "fetch_thing", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "x-mcp", tool: "fetch_thing" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        mcpServers={["x-mcp"]}
+        onClose={() => {}}
+      />,
+    );
+    // Server dropdown shows the current pick selected.
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("x-mcp"));
+    // Single-tool server: route hint shown inline (no sub-picker).
+    expect(await screen.findByText(/routing through x-mcp\.fetch_thing/)).toBeInTheDocument();
+  });
+
+  it("switching to '(none)' clears via on save", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [{ name: "x-mcp", source: "bundle" }],
+        toolsByServer: {
+          "x-mcp": [{ name: "fetch_thing", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "x-mcp", tool: "fetch_thing" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        mcpServers={["x-mcp"]}
+        onClose={() => {}}
+      />,
+    );
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("x-mcp"));
+    fireEvent.change(select, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    // `via` field omitted entirely (not `null`).
+    expect("via" in written).toBe(false);
+  });
+
+  it("switching to a different server updates via on save", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [
+          { name: "alpha-mcp", source: "bundle" },
+          { name: "beta-mcp", source: "bundle" },
+        ],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+          "beta-mcp": [{ name: "scrape", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "alpha-mcp", tool: "fetch" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        mcpServers={["alpha-mcp", "beta-mcp"]}
+        onClose={() => {}}
+      />,
+    );
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("alpha-mcp"));
+    fireEvent.change(select, { target: { value: "beta-mcp" } });
+    // Single-tool auto-resolves; route hint flips.
+    await screen.findByText(/routing through beta-mcp\.scrape/);
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    expect(written.via).toEqual({ server: "beta-mcp", tool: "scrape" });
+    // beta-mcp already declared in mcpServers — no patch needed.
+    expect(body.mcpServers).toBeUndefined();
+  });
+
+  it("shows [not configured] badge when via.server not in user's MCP config", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      // The fetched picker does NOT contain ghost-mcp.
+      picker: {
+        servers: [{ name: "alpha-mcp", source: "bundle" }],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "ghost-mcp", tool: "fetch_thing" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        mcpServers={[]} // not declared anywhere
+        onClose={() => {}}
+      />,
+    );
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("ghost-mcp"));
+    // The ghost option is rendered with the "[not configured]" badge.
+    const ghostOption = Array.from(select.querySelectorAll("option")).find((o) =>
+      (o.textContent ?? "").includes("ghost-mcp"),
+    );
+    expect(ghostOption?.textContent).toMatch(/not configured/);
+  });
+
+  it("extends mcpServers[] when picking a server not yet declared", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [
+          { name: "alpha-mcp", source: "bundle" },
+          { name: "ai-only-mcp", source: "available" },
+        ],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+          "ai-only-mcp": [{ name: "lookup", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "alpha-mcp", tool: "fetch" },
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        mcpServers={["alpha-mcp"]} // ai-only-mcp NOT declared yet
+        onClose={() => {}}
+      />,
+    );
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("alpha-mcp"));
+    fireEvent.change(select, { target: { value: "ai-only-mcp" } });
+    await screen.findByText(/routing through ai-only-mcp\.lookup/);
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    expect(body.mcpServers).toEqual(["alpha-mcp", "ai-only-mcp"]);
+    expect(body.knowledge.sources[0].via).toEqual({ server: "ai-only-mcp", tool: "lookup" });
   });
 
   it("requires retrieval.mcpUrl when retrieval mode is external-mcp", () => {

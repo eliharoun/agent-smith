@@ -377,6 +377,13 @@ export function KnowledgeSources({ agent }: Props) {
               | { sources?: KnowledgeSource[] }
               | undefined) ?? { sources: sources.map((s) => s.source) }
           }
+          mcpServers={(() => {
+            const cfg = detail.data?.config as Record<string, unknown> | undefined;
+            const raw = cfg?.mcpServers;
+            return Array.isArray(raw)
+              ? (raw.filter((v): v is string => typeof v === "string") as string[])
+              : [];
+          })()}
           onClose={() => setEditing(null)}
         />
       )}
