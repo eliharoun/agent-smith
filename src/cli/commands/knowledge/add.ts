@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import pc from "picocolors";
 import { parseConfig } from "../../../core/config-schema";
@@ -15,6 +16,11 @@ import type {
 import { validateKnowledge } from "../../../core/knowledge/validator";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
+import type { McpClientOpts } from "../../../io/mcp-client";
+import { McpClientPool } from "../../../io/mcp-client-pool";
+import { type AvailableMap, readAvailableMcpServers } from "../../../io/mcp-config-readers";
+import { createSpawnOptsResolver } from "../../../io/mcp-spawn-resolver";
+import { pickViaInteractively } from "./pick-via";
 
 /**
  * Parse a comma-separated Confluence page list into refs.
@@ -55,7 +61,12 @@ export function parseFieldsList(input: string): string[] {
 }
 
 function slugify(s: string, fallback = ""): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || fallback
+  );
 }
 
 function truncateSlug(s: string, max = 60): string {
@@ -156,6 +167,19 @@ export interface KnowledgeAddOptions {
   prompt?: (msg: string) => Promise<string>;
   /** v1.2 DI: whether stdin is a TTY (drives auto-confirm vs print-only). */
   isTTY?: () => boolean;
+  /** v1.4 DI: read user's AI client MCP configs. Tests inject a stub map
+   *  to avoid touching the real ~/.claude.json, ~/.codex/config.toml, etc.
+   *  When unset, smith reads the real configs at $HOME. */
+  readAvailableMcpServers?: () => Promise<AvailableMap>;
+  /** v1.4 DI: build a spawn-opts resolver from the available map. Tests
+   *  inject a stub that returns canned opts; the production path uses
+   *  createSpawnOptsResolver against the same homeDir. */
+  spawnOptsFor?: (server: string) => McpClientOpts;
+  /** v1.4 DI: MCP client pool for the interactive picker. The picker uses
+   *  it to call tools/list on the chosen server. When unset, smith
+   *  constructs and shuts down its own pool around the picker call so
+   *  spawned processes don't leak past the add command. */
+  pool?: McpClientPool;
 }
 
 function deriveId(opts: KnowledgeAddOptions): string {
@@ -291,22 +315,79 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
     id = deriveId(opts);
   }
 
+  // v1.4: interactive MCP server/tool picker. Before falling back to the
+  // curated-registry suggestion path, ask the user "which of your declared
+  // MCP servers should fetch this URL?". Servers come from BOTH the
+  // bundle's mcpServers[] and the user's local AI client configs. When the
+  // chosen server isn't already declared in the bundle, smith appends it
+  // and the install pipeline will pick it up on the next materialize. The
+  // picker is skipped entirely in non-TTY runs (cron, CI, daemon) so
+  // unattended workloads never block on stdin.
+  let chosenVia: { server: string; tool: string } | undefined;
+  let chosenServerToAdd: string | undefined;
+  const isTty = opts.isTTY ? opts.isTTY() : Boolean(process.stdin.isTTY);
+  const isHttpUrl = (s: string): boolean => {
+    try {
+      const u = new URL(s);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+  if (opts.type === "url" && isHttpUrl(opts.pathOrUrl) && isTty && opts.prompt) {
+    // Build the union of bundle-declared and locally-available MCP
+    // servers. When both are empty there is nothing to pick from — fall
+    // through to the curated-registry suggestion without printing the
+    // picker UI.
+    const declared = ((cfg.mcpServers as string[] | undefined) ?? []).slice();
+    const readAvail =
+      opts.readAvailableMcpServers ?? (() => readAvailableMcpServers({ homeDir: homedir() }));
+    const available = await readAvail();
+    if (declared.length > 0 || Object.keys(available).length > 0) {
+      // Pool lifetime: when the caller injects a pool, the caller owns
+      // shutdown (production wires the install pool through). When the
+      // picker runs standalone (the common case for `knowledge add`), it
+      // creates and shuts down its own pool inside this block so a
+      // partway failure of the larger add does not leak server processes.
+      const ownsPool = !opts.pool;
+      const pool = opts.pool ?? new McpClientPool();
+      const spawnOptsFor =
+        opts.spawnOptsFor ?? (await createSpawnOptsResolver({ homeDir: homedir() }));
+      try {
+        const picked = await pickViaInteractively({
+          url: opts.pathOrUrl,
+          currentMcpServers: declared,
+          availableMcpServers: available,
+          pool,
+          spawnOptsFor,
+          prompt: opts.prompt,
+        });
+        if (picked) {
+          chosenVia = { server: picked.server, tool: picked.tool };
+          if (picked.serverWasAdded) {
+            chosenServerToAdd = picked.server;
+          }
+        }
+      } finally {
+        if (ownsPool) await pool.shutdown();
+      }
+    }
+  }
+
   // v1.2: routing-registry suggestion for type=url sources. The registry
   // is suggestion-only: smith never auto-sets via without explicit user
   // confirmation. Reasoning: real upstream MCP tool names vary by server
   // distribution; auto-setting would silently produce -32601 method-not-
   // found errors against real servers. Author confirmation forces the
   // human to verify against their actual server's tools/list.
+  // The curated registry now runs ONLY when the picker didn't land a
+  // route (skipped in non-TTY mode, or user chose 0).
   let suggestedVia: { server: string; tool: string } | undefined;
-  if (opts.type === "url") {
+  if (!chosenVia && opts.type === "url") {
     const route = findRoute(opts.pathOrUrl);
     if (route) {
-      const isTty = opts.isTTY ? opts.isTTY() : Boolean(process.stdin.isTTY);
       const note = (route as { note?: string }).note;
-      console.log(
-        pc.dim("•"),
-        `URL matches a known pattern. Smith can route fetches through:`,
-      );
+      console.log(pc.dim("•"), `URL matches a known pattern. Smith can route fetches through:`);
       console.log(`    ${pc.cyan(`${route.server}.${route.tool}`)}`);
       if (note) console.log(pc.dim(`    note: ${note}`));
       console.log(pc.dim(`    (verify the tool name against your server's tools/list)`));
@@ -328,9 +409,23 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
 
   const newSource = constructSource(opts, id);
 
-  // Apply confirmed routing decision.
-  if (suggestedVia) {
+  // Apply routing decision (picker wins over curated-registry suggestion).
+  if (chosenVia) {
+    (newSource as unknown as Record<string, unknown>).via = chosenVia;
+  } else if (suggestedVia) {
     (newSource as unknown as Record<string, unknown>).via = suggestedVia;
+  }
+
+  // Auto-extend mcpServers[] when the picker chose a server the bundle
+  // hadn't declared yet. The install pipeline reads this list on the next
+  // materialize so the picked server's tool is callable.
+  if (chosenServerToAdd) {
+    const existing = ((cfg.mcpServers as string[] | undefined) ?? []).slice();
+    if (!existing.includes(chosenServerToAdd)) {
+      existing.push(chosenServerToAdd);
+      cfg.mcpServers = existing;
+      console.log(pc.green("→"), `added ${chosenServerToAdd} to mcpServers[]`);
+    }
   }
 
   // Atlassian-auth presence check for confluence/jira sources.

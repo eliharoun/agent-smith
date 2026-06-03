@@ -4,6 +4,26 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-06-03
+
+v1.4 makes routed knowledge sources easy to author: at add time you
+pick the MCP server you want for this URL, and smith records the
+via: for you. Auto-detection still applies if you skip the picker.
+
+### Added
+
+- Interactive MCP server/tool picker in `smith knowledge add` for
+  URL sources. Lists servers from the bundle and from your AI client
+  config; smith auto-extends mcpServers[] when you pick a new one.
+- Smart-default tool selection: when the chosen server has exactly
+  one URL-shaped tool smith uses it silently; multiple tools prompt
+  once; zero raises a clear error with no abort-without-explanation.
+
+### Changed
+
+- The curated routing-suggestion registry now runs only when the
+  picker is skipped (non-interactive run, or user chose "skip").
+
 ## [1.3.3] — 2026-06-03
 
 ### Fixed

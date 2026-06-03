@@ -331,9 +331,7 @@ describe("knowledgeAdd config-file error classification (CLI-21)", () => {
     expect(err).toBeInstanceOf(SmithError);
     expect(err.payload.code).toBe("config-missing");
     expect(err.payload.path).toContain("agent.config.json");
-    expect(err.payload.suggestedCommand).toBe(
-      `smith agent init ${basename(dir)}`,
-    );
+    expect(err.payload.suggestedCommand).toBe(`smith agent init ${basename(dir)}`);
   });
 
   it("throws SmithError(validation-failed) when agent.config.json has invalid JSON", async () => {
@@ -541,6 +539,11 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
       delivery: "file",
       isTTY: () => true,
       prompt: async () => "y",
+      // Test isolation: stub the MCP picker's available-server reader so
+      // the test never touches the developer's real ~/.claude.json. With
+      // no declared and no available servers, the v1.4 picker is a no-op
+      // and execution falls through to the curated-registry suggestion.
+      readAvailableMcpServers: async () => ({}),
       installAfter: false,
     });
     expect(exit).toBe(0);
@@ -558,6 +561,7 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
       delivery: "file",
       isTTY: () => true,
       prompt: async () => "n",
+      readAvailableMcpServers: async () => ({}),
       installAfter: false,
     });
     expect(exit).toBe(0);
@@ -604,5 +608,148 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
       installAfter: false,
     });
     expect(exit).toBe(0);
+  });
+});
+
+describe("knowledgeAdd: interactive MCP picker (v1.4)", () => {
+  let bundleDir: string;
+  beforeEach(async () => {
+    bundleDir = await mkdtemp(join(tmpdir(), "smith-ka-pick-"));
+    await writeFile(
+      join(bundleDir, "agent.config.json"),
+      JSON.stringify({
+        name: "x",
+        description: "Use to test the picker.",
+        targets: ["opencode"],
+        modelTier: "balanced",
+        mcpServers: ["bundle-fetcher"],
+      }),
+    );
+  });
+  afterEach(async () => {
+    await rm(bundleDir, { recursive: true, force: true });
+  });
+
+  /** Build a fake pool with canned tool lists per server, no spawn. */
+  function fakePool(toolsByServer: Record<string, unknown>): unknown {
+    return {
+      acquire: async (name: string) => {
+        if (!(name in toolsByServer)) throw new Error(`unknown server: ${name}`);
+        return { listTools: async () => toolsByServer[name] };
+      },
+      shutdown: async () => {},
+      size: () => 0,
+    };
+  }
+
+  const URL_TOOL = {
+    name: "fetch_page",
+    inputSchema: { type: "object", properties: { url: { type: "string" } } },
+  };
+
+  it("picker fires before the curated registry and records the chosen via:", async () => {
+    const { McpClientPool } = await import("../../src/io/mcp-client-pool");
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] }) as InstanceType<typeof McpClientPool>;
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      // Atlassian URL — would normally fire the curated registry. The
+      // picker must short-circuit it.
+      pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
+      delivery: "file",
+      isTTY: () => true,
+      prompt: async () => "1",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toEqual({ server: "bundle-fetcher", tool: "fetch_page" });
+  });
+
+  it("non-TTY skips the picker entirely (falls through to curated path)", async () => {
+    let acquireCalled = false;
+    const pool = {
+      acquire: async () => {
+        acquireCalled = true;
+        return { listTools: async () => [] };
+      },
+      shutdown: async () => {},
+      size: () => 0,
+    } as unknown as InstanceType<typeof import("../../src/io/mcp-client-pool").McpClientPool>;
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
+      delivery: "file",
+      isTTY: () => false,
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    expect(acquireCalled).toBe(false);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toBeUndefined();
+  });
+
+  it("appends an available-only server to mcpServers[] when picked", async () => {
+    const { McpClientPool } = await import("../../src/io/mcp-client-pool");
+    const pool = fakePool({ "ai-client-fetcher": [URL_TOOL] }) as InstanceType<
+      typeof McpClientPool
+    >;
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      pathOrUrl: "https://example.test/docs",
+      delivery: "file",
+      isTTY: () => true,
+      // Bundle has "bundle-fetcher" (1), available adds "ai-client-fetcher" (2).
+      prompt: async () => "2",
+      readAvailableMcpServers: async () => ({
+        "ai-client-fetcher": { command: "ai-fetcher" },
+      }),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    expect(cfg.mcpServers).toEqual(["bundle-fetcher", "ai-client-fetcher"]);
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toEqual({
+      server: "ai-client-fetcher",
+      tool: "fetch_page",
+    });
+  });
+
+  it("user picks 0 → no via, falls through to curated suggestion (still skip)", async () => {
+    const { McpClientPool } = await import("../../src/io/mcp-client-pool");
+    const pool = fakePool({ "bundle-fetcher": [URL_TOOL] }) as InstanceType<typeof McpClientPool>;
+    // Two prompts: the picker (returns "0") then the curated-registry
+    // confirmation (returns "n"). The atlassian URL DOES match the
+    // curated registry, but the user declines.
+    const responses = ["0", "n"];
+    const exit = await knowledgeAdd({
+      bundleDir,
+      type: "url",
+      pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
+      delivery: "file",
+      isTTY: () => true,
+      prompt: async () => responses.shift() ?? "n",
+      readAvailableMcpServers: async () => ({}),
+      spawnOptsFor: () => ({ command: "ignored" }),
+      pool,
+      installAfter: false,
+    });
+    expect(exit).toBe(0);
+    const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
+    const source = cfg.knowledge.sources.at(-1);
+    expect(source.via).toBeUndefined();
   });
 });
