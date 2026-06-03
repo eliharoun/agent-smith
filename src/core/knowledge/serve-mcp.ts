@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
+import { keyForAgent } from "../../io/mcp-wiring";
 import { Bm25Index } from "./bm25";
 
 /**
@@ -47,11 +48,22 @@ export interface JsonRpcResponse {
 export interface ServeContext {
   index: Bm25Index;
   rootDir: string;
+  /**
+   * The agent this server is serving. Used to compose `serverInfo.name` in
+   * the initialize response so each agent advertises its OWN per-agent key
+   * (`<agent>-knowledge`) — the same key the user's AI client uses to
+   * spawn this process. Mismatched names confuse client-side handlers
+   * that key by serverInfo.name.
+   */
+  agent: string;
 }
 
-export async function buildServeContext(knowledgeDir: string): Promise<ServeContext> {
+export async function buildServeContext(
+  knowledgeDir: string,
+  agent: string,
+): Promise<ServeContext> {
   const index = await buildIndex(knowledgeDir);
-  return { index, rootDir: knowledgeDir };
+  return { index, rootDir: knowledgeDir, agent };
 }
 
 /**
@@ -90,7 +102,7 @@ export async function handleRpc(
         // tools/list entirely; explicit `listChanged: false` makes the
         // capability assertion unambiguous. Claude Code accepts either.
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "agent-smith-knowledge", version: "1.0.0" },
+        serverInfo: { name: keyForAgent(ctx.agent), version: "1.0.0" },
       },
     };
   }
@@ -296,8 +308,8 @@ async function walk(
  * exits the process cleanly (MCP host closing the pipe is the normal
  * shutdown signal).
  */
-export async function serveStdio(knowledgeDir: string): Promise<void> {
-  const ctx = await buildServeContext(knowledgeDir);
+export async function serveStdio(knowledgeDir: string, agent: string): Promise<void> {
+  const ctx = await buildServeContext(knowledgeDir, agent);
 
   process.stdin.setEncoding("utf8");
   let buf = "";

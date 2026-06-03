@@ -57,7 +57,7 @@ export async function runKnowledgeServe(opts: KnowledgeServeOptions): Promise<vo
     });
   }
 
-  await serveStdio(knowledgeDirFor(opts.name, paths));
+  await serveStdio(knowledgeDirFor(opts.name, paths), opts.name);
 }
 
 async function defaultLoadBundle(name: string): Promise<AgentBundle | null> {

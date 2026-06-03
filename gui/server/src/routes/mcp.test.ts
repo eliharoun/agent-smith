@@ -102,7 +102,7 @@ describe("GET /api/agents/:name/mcp-wiring-plan", () => {
       paths["claude-code"],
       JSON.stringify({
         mcpServers: {
-          "agent-smith-knowledge": {
+          "foo-knowledge": {
             command: "smith",
             args: ["knowledge", "serve", "foo", "--stdio"],
           },
@@ -182,11 +182,11 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
     // Verify on disk too. The command is the resolver's absolute path —
     // see the SMITH_BIN stub at the top of the file.
     const ccData = JSON.parse(await readFile(configPaths()["claude-code"], "utf8"));
-    expect(ccData.mcpServers["agent-smith-knowledge"]).toEqual({
+    expect(ccData.mcpServers["foo-knowledge"]).toEqual({
       command: STUBBED_SMITH_PATH,
       args: ["knowledge", "serve", "foo", "--stdio"],
     });
-    expect(ccData.mcpServers["agent-smith-knowledge"].command.startsWith("/")).toBe(true);
+    expect(ccData.mcpServers["foo-knowledge"].command.startsWith("/")).toBe(true);
   });
 
   it("disables: removes only the canonical entry, preserves siblings", async () => {
@@ -197,7 +197,7 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
       JSON.stringify({
         mcpServers: {
           "github-mcp": { command: "gh-mcp", args: [] },
-          "agent-smith-knowledge": {
+          "foo-knowledge": {
             command: "smith",
             args: ["knowledge", "serve", "foo", "--stdio"],
           },
@@ -216,7 +216,7 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
     });
     expect(res.status).toBe(200);
     const data = JSON.parse(await readFile(paths["claude-code"], "utf8"));
-    expect(data.mcpServers["agent-smith-knowledge"]).toBeUndefined();
+    expect(data.mcpServers["foo-knowledge"]).toBeUndefined();
     expect(data.mcpServers["github-mcp"]).toEqual({ command: "gh-mcp", args: [] });
   });
 

@@ -21,7 +21,7 @@ import { runDaemon } from "./daemon";
 import { stateHome } from "./io/state-home";
 
 const program = new Command();
-program.name("smith").description("Lifecycle manager for AI coding agents").version("1.5.0");
+program.name("smith").description("Lifecycle manager for AI coding agents").version("1.6.0");
 // Funnel commander's own usage errors (unknown command, missing required option,
 // --help, --version) through the catch at the bottom so formatCommanderError()
 // renders them with the same prefix as wrap()'s SmithError path.
@@ -191,7 +191,7 @@ const knowledgeCmd = program
     wrap("knowledge", async () => {
       throw new SmithError({
         code: "usage-error",
-        message: "requires a subcommand: list, fetch, add, or validate",
+        message: "requires a subcommand: list, fetch, add, validate, wire, or unwire",
         suggestedCommand: "smith knowledge list <agent>",
       });
     }),
@@ -588,6 +588,48 @@ knowledgeCmd
       const all = await loadAllBundles(reg);
       const bundleDir = findBundleOrFail(all, agent).bundlePath;
       return knowledgeRemove({ bundleDir, sourceId });
+    }),
+  );
+
+knowledgeCmd
+  .command("wire <agent>")
+  .description(
+    "Wire <agent>'s knowledge MCP server (`<agent>-knowledge`) into every detected AI client's global MCP config",
+  )
+  .option(
+    "--platforms <list>",
+    "Comma-separated subset of opencode,claude-code,codex,kiro (default: all detected)",
+  )
+  .action(
+    wrap("knowledge wire", async (agent: string, opts: { platforms?: string }) => {
+      const { runKnowledgeWire } = await import("./cli/commands/knowledge/wire");
+      const result = await runKnowledgeWire({
+        agent,
+        mode: "wire",
+        ...(opts.platforms ? { platforms: opts.platforms } : {}),
+      });
+      return result.exitCode;
+    }),
+  );
+
+knowledgeCmd
+  .command("unwire <agent>")
+  .description(
+    "Remove <agent>'s knowledge MCP server entry from every detected AI client's global MCP config",
+  )
+  .option(
+    "--platforms <list>",
+    "Comma-separated subset of opencode,claude-code,codex,kiro (default: all detected)",
+  )
+  .action(
+    wrap("knowledge unwire", async (agent: string, opts: { platforms?: string }) => {
+      const { runKnowledgeWire } = await import("./cli/commands/knowledge/wire");
+      const result = await runKnowledgeWire({
+        agent,
+        mode: "unwire",
+        ...(opts.platforms ? { platforms: opts.platforms } : {}),
+      });
+      return result.exitCode;
     }),
   );
 

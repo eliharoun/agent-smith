@@ -34,7 +34,7 @@ describe("knowledge serve MCP handlers", () => {
 
   beforeEach(async () => {
     root = await setupKnowledgeDir();
-    ctx = await buildServeContext(root);
+    ctx = await buildServeContext(root, "agent-smith");
   });
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });

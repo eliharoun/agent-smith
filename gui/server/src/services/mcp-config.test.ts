@@ -53,7 +53,10 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const SERVER_NAME = "agent-smith-knowledge";
+// With per-agent keys, every test write uses agent="foo" so the entry name
+// is "foo-knowledge". The agent-smith bundle would write "agent-smith-knowledge"
+// — same shape, just keyed by agent name.
+const SERVER_NAME = "foo-knowledge";
 
 function pathsUnder(r: string) {
   return {
