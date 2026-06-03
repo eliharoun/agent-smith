@@ -6,6 +6,7 @@ import type { AcquiredArtifact } from "./acquire";
 import { detectUrlParam } from "./probe-route";
 import { findRoute } from "./routing-registry";
 import { assertViaToolAllowed } from "./via-tool-guard";
+import { sniffArtifact } from "./sniff-content";
 
 export interface AcquireViaOpts {
   pool: McpClientPool;
@@ -72,13 +73,29 @@ export async function acquireViaMcp(
       cause: "tool returned no text content",
     });
   }
-  const filename = filenameFromUrl(url);
+  const declaredCt = readDeclaredContentType(result);
+  const sniffHints: { url: string; declaredCt?: string } = { url };
+  if (declaredCt) sniffHints.declaredCt = declaredCt;
+  const sniff = sniffArtifact(Buffer.from(text, "utf8"), sniffHints);
   return [{
-    filename,
-    relPath: filename,
-    bytes: Buffer.from(text, "utf8"),
-    contentType: "text/plain",
+    filename: sniff.filename,
+    relPath: sniff.filename,
+    bytes: sniff.bytes,
+    contentType: sniff.contentType,
   }];
+}
+
+/**
+ * Read a content-type hint from an MCP tool result. The MCP spec allows
+ * embedded resource blocks to declare `mimeType`; we honor that when
+ * present. Otherwise, return undefined and let `sniffArtifact` infer
+ * from the bytes themselves.
+ */
+function readDeclaredContentType(result: { content: ReadonlyArray<{ type: string; mimeType?: string }> }): string | undefined {
+  for (const block of result.content) {
+    if (block.type === "resource" && typeof block.mimeType === "string") return block.mimeType;
+  }
+  return undefined;
 }
 
 async function resolveArgs(
@@ -154,15 +171,3 @@ async function methodNotFoundSmithError(client: McpClient, via: Via): Promise<Sm
   });
 }
 
-function filenameFromUrl(url: string): string {
-  let last: string;
-  try {
-    const u = new URL(url);
-    last = u.pathname.split("/").filter(Boolean).pop() ?? "page";
-  } catch {
-    last = "page";
-  }
-  // Sanitize to safe filename chars and length-cap (path-traversal hygiene).
-  const safe = last.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 128) || "page";
-  return `${safe}.txt`;
-}

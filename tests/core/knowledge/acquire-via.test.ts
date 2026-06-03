@@ -30,10 +30,12 @@ describe("acquireViaMcp", () => {
       { pool, spawnOptsFor: () => ({ command: "bun", args: [FIXTURE] }) },
     );
     expect(arts).toHaveLength(1);
-    expect(arts[0]?.filename).toMatch(/x\.txt$/);
+    // Echo Fetch returns JSON-stringified args. The sniffer parses it as
+    // JSON (no envelope key matches), so filenameFromUrl derives `.json`.
+    expect(arts[0]?.filename).toMatch(/x\.json$/);
     expect(arts[0]?.relPath).toBe(arts[0]?.filename);
     expect(arts[0]?.bytes.toString("utf8")).toContain("https://example.com/x");
-    expect(arts[0]?.contentType).toBe("text/plain");
+    expect(arts[0]?.contentType).toBe("application/json");
   }, HEAVY_TIMEOUT);
 
   it("uses explicit via.args when provided", async () => {
@@ -181,5 +183,82 @@ describe("acquireViaMcp", () => {
     expect(reasons).toContain("listing available tools also failed");
     expect(reasons).toContain("ghost");
     expect(reasons).not.toContain("URL-shaped tools");
+  });
+
+  it("unwraps a JSON envelope returned by the MCP tool and writes .html with text/html", async () => {
+    const envelope = JSON.stringify({
+      content: { status: "success", content: "<html><body><h1>Hi</h1></body></html>" },
+    });
+    const fakeClient = {
+      callTool: () => Promise.resolve({
+        isError: false,
+        content: [{ type: "text", text: envelope }],
+      }),
+      listTools: () => Promise.resolve([]),
+    } as unknown as McpClient;
+    const fakePool = {
+      acquire: () => Promise.resolve(fakeClient),
+      shutdown: () => Promise.resolve(),
+    };
+    const arts = await acquireViaMcp(
+      { server: "ghost", tool: "fetch_x", args: { url: "https://example.com/page" } },
+      "https://example.com/page",
+      {
+        pool: fakePool as unknown as McpClientPool,
+        spawnOptsFor: () => ({ command: "bun", args: [] }),
+      },
+    );
+    expect(arts).toHaveLength(1);
+    expect(arts[0]?.filename).toMatch(/page\.html$/);
+    expect(arts[0]?.contentType).toBe("text/html");
+    expect(arts[0]?.bytes.toString("utf8")).toBe("<html><body><h1>Hi</h1></body></html>");
+  });
+
+  it("detects raw HTML returned without an envelope", async () => {
+    const fakeClient = {
+      callTool: () => Promise.resolve({
+        isError: false,
+        content: [{ type: "text", text: "<html><body>x</body></html>" }],
+      }),
+      listTools: () => Promise.resolve([]),
+    } as unknown as McpClient;
+    const fakePool = {
+      acquire: () => Promise.resolve(fakeClient),
+      shutdown: () => Promise.resolve(),
+    };
+    const arts = await acquireViaMcp(
+      { server: "ghost", tool: "fetch_x", args: { url: "https://example.com/page" } },
+      "https://example.com/page",
+      {
+        pool: fakePool as unknown as McpClientPool,
+        spawnOptsFor: () => ({ command: "bun", args: [] }),
+      },
+    );
+    expect(arts[0]?.filename).toMatch(/page\.html$/);
+    expect(arts[0]?.contentType).toBe("text/html");
+  });
+
+  it("detects markdown returned without an envelope", async () => {
+    const fakeClient = {
+      callTool: () => Promise.resolve({
+        isError: false,
+        content: [{ type: "text", text: "# Title\n\nbody" }],
+      }),
+      listTools: () => Promise.resolve([]),
+    } as unknown as McpClient;
+    const fakePool = {
+      acquire: () => Promise.resolve(fakeClient),
+      shutdown: () => Promise.resolve(),
+    };
+    const arts = await acquireViaMcp(
+      { server: "ghost", tool: "fetch_x", args: { url: "https://example.com/doc" } },
+      "https://example.com/doc",
+      {
+        pool: fakePool as unknown as McpClientPool,
+        spawnOptsFor: () => ({ command: "bun", args: [] }),
+      },
+    );
+    expect(arts[0]?.filename).toMatch(/doc\.md$/);
+    expect(arts[0]?.contentType).toBe("text/markdown");
   });
 });
