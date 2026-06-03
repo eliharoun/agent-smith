@@ -1587,7 +1587,18 @@ config and the new knowledge block before writing; both checks raise
 materialization fails after the config is saved, `add` still returns
 exit `0` with a warning telling you to retry `smith agent install <agent>` —
 your declaration is never lost. Pass `--no-install` to skip
-materialization. Source: `src/cli/commands/knowledge/add.ts`.
+materialization.
+
+For http(s) URL sources, `add` first runs an interactive picker that
+lists the bundle's MCP servers and any servers smith finds in your AI
+client configs. Pick one and smith records `via: { server, tool }` on
+the source, appends the chosen server to `mcpServers[]` and
+`mcp.required[]`, then continues with materialize. Skip the picker
+(press 0 or hit enter) and smith falls back to the curated routing
+registry confirmation prompt for well-known URL patterns. The picker
+is a no-op in non-TTY runs (CI, daemon, piped stdin). See
+[guide/04-knowledge.md § Picking the MCP server when you add a URL](./04-knowledge.md#picking-the-mcp-server-when-you-add-a-url).
+Source: `src/cli/commands/knowledge/add.ts`.
 
 **Arguments:**
 

@@ -68,6 +68,18 @@ export const CanonicalConfigSchema = z.object({
   color: z.string().optional(),
   permission: z.record(z.string(), PermissionGroupValue).optional(),
   mcpServers: z.array(z.string().min(1)).optional(),
+  // Bundle-level MCP dependency declarations (v1.2). `required[]` are hard
+  // dependencies — install refuses if any are missing in the user's MCP
+  // config; `peer[]` are advisory — install warns but proceeds. Distinct
+  // from per-agent `mcpServers` (the scope hint passed to translators).
+  // See `CanonicalConfig.mcp` in src/core/types.ts for the full contract.
+  mcp: z
+    .object({
+      required: z.array(z.string().min(1)).optional(),
+      peer: z.array(z.string().min(1)).optional(),
+    })
+    .strict()
+    .optional(),
   skills: z.array(z.string().min(1)).optional(),
   knowledge: KnowledgeBlockSchema.optional(),
   requires: RequiresSchema.optional(),

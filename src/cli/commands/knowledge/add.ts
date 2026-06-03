@@ -20,6 +20,7 @@ import type { McpClientOpts } from "../../../io/mcp-client";
 import { McpClientPool } from "../../../io/mcp-client-pool";
 import { type AvailableMap, readAvailableMcpServers } from "../../../io/mcp-config-readers";
 import { createSpawnOptsResolver } from "../../../io/mcp-spawn-resolver";
+import { readToken } from "../../prompt";
 import { pickViaInteractively } from "./pick-via";
 
 /**
@@ -323,9 +324,18 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   // and the install pipeline will pick it up on the next materialize. The
   // picker is skipped entirely in non-TTY runs (cron, CI, daemon) so
   // unattended workloads never block on stdin.
+  //
+  // Defaults wired here (not at every CLI callsite) so any new caller of
+  // knowledgeAdd in the future inherits the picker for free. Tests inject
+  // their own prompt/isTTY pair and bypass these defaults entirely. In
+  // non-TTY runs (CI, daemon, piped input), the default `isTTY()` returns
+  // false and both the picker AND the curated-registry suggestion skip,
+  // preserving the unattended-workload contract.
+  const prompt = opts.prompt ?? readToken;
+  const isTTY = opts.isTTY ?? (() => Boolean(process.stdin.isTTY));
   let chosenVia: { server: string; tool: string } | undefined;
   let chosenServerToAdd: string | undefined;
-  const isTty = opts.isTTY ? opts.isTTY() : Boolean(process.stdin.isTTY);
+  const isTty = isTTY();
   const isHttpUrl = (s: string): boolean => {
     try {
       const u = new URL(s);
@@ -334,7 +344,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
       return false;
     }
   };
-  if (opts.type === "url" && isHttpUrl(opts.pathOrUrl) && isTty && opts.prompt) {
+  if (opts.type === "url" && isHttpUrl(opts.pathOrUrl) && isTty) {
     // Build the union of bundle-declared and locally-available MCP
     // servers. When both are empty there is nothing to pick from — fall
     // through to the curated-registry suggestion without printing the
@@ -360,7 +370,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
           availableMcpServers: available,
           pool,
           spawnOptsFor,
-          prompt: opts.prompt,
+          prompt,
         });
         if (picked) {
           chosenVia = { server: picked.server, tool: picked.tool };
@@ -392,8 +402,8 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
       if (note) console.log(pc.dim(`    note: ${note}`));
       console.log(pc.dim(`    (verify the tool name against your server's tools/list)`));
 
-      if (isTty && opts.prompt) {
-        const answer = (await opts.prompt(`  use this routing? [y/N] `)).trim().toLowerCase();
+      if (isTty) {
+        const answer = (await prompt(`  use this routing? [y/N] `)).trim().toLowerCase();
         if (answer === "y" || answer === "yes") {
           suggestedVia = { server: route.server, tool: route.tool };
           console.log(pc.green("→"), `routing through ${route.server}.${route.tool}`);
@@ -418,13 +428,34 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
 
   // Auto-extend mcpServers[] when the picker chose a server the bundle
   // hadn't declared yet. The install pipeline reads this list on the next
-  // materialize so the picked server's tool is callable.
+  // materialize so the picked server's tool is callable. The same name
+  // also lands in cfg.mcp.required[] — recipients of the bundle should
+  // refuse to install when a server they explicitly picked isn't present
+  // in the recipient's MCP config (mirrors package.json:dependencies).
   if (chosenServerToAdd) {
     const existing = ((cfg.mcpServers as string[] | undefined) ?? []).slice();
+    let addedToServers = false;
     if (!existing.includes(chosenServerToAdd)) {
       existing.push(chosenServerToAdd);
       cfg.mcpServers = existing;
-      console.log(pc.green("→"), `added ${chosenServerToAdd} to mcpServers[]`);
+      addedToServers = true;
+    }
+    const mcpBlock =
+      cfg.mcp && typeof cfg.mcp === "object" && !Array.isArray(cfg.mcp)
+        ? (cfg.mcp as { required?: string[]; peer?: string[] })
+        : {};
+    const required = (mcpBlock.required ?? []).slice();
+    let addedToRequired = false;
+    if (!required.includes(chosenServerToAdd)) {
+      required.push(chosenServerToAdd);
+      addedToRequired = true;
+    }
+    cfg.mcp = { ...mcpBlock, required };
+    if (addedToServers || addedToRequired) {
+      console.log(
+        pc.green("→"),
+        `added ${chosenServerToAdd} to mcpServers[] and marked as required`,
+      );
     }
   }
 

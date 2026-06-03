@@ -52,24 +52,21 @@ interface CoreModule {
 }
 
 async function loadCore(): Promise<CoreModule> {
-  // Three independent dynamic imports — gui/server can't statically reach
-  // ../../../../src/* (rootDir boundary). Bun resolves these at request time.
-  const readers = (await import("../../../../src/io/mcp-config-readers")) as Pick<
-    CoreModule,
-    "readAvailableMcpServers"
-  >;
-  const resolver = (await import("../../../../src/io/mcp-spawn-resolver")) as Pick<
-    CoreModule,
-    "createSpawnOptsResolver"
-  >;
-  const pool = (await import("../../../../src/io/mcp-client-pool")) as Pick<
-    CoreModule,
-    "McpClientPool"
-  >;
-  const probe = (await import("../../../../src/core/knowledge/probe-route")) as Pick<
-    CoreModule,
-    "detectUrlParam"
-  >;
+  // Cross-rootDir loader: gui/server's tsconfig has rootDir: "src", so a
+  // statically-typed import from "../../../../src/..." breaks the workspace
+  // typecheck (TS analyzes the literal path target). Mirrors the indirection
+  // pattern already used by `services/mcp-config.ts` (see `detectInstalledDefault`)
+  // — assigning the path to a const variable keeps Bun's runtime resolution
+  // intact while sidestepping the compile-time rootDir analysis. Tests
+  // never reach this default; they inject a stub via `loadCoreModule`.
+  const readersPath = "../../../../src/io/mcp-config-readers";
+  const resolverPath = "../../../../src/io/mcp-spawn-resolver";
+  const poolPath = "../../../../src/io/mcp-client-pool";
+  const probePath = "../../../../src/core/knowledge/probe-route";
+  const readers = (await import(readersPath)) as Pick<CoreModule, "readAvailableMcpServers">;
+  const resolver = (await import(resolverPath)) as Pick<CoreModule, "createSpawnOptsResolver">;
+  const pool = (await import(poolPath)) as Pick<CoreModule, "McpClientPool">;
+  const probe = (await import(probePath)) as Pick<CoreModule, "detectUrlParam">;
   return {
     readAvailableMcpServers: readers.readAvailableMcpServers,
     createSpawnOptsResolver: resolver.createSpawnOptsResolver,

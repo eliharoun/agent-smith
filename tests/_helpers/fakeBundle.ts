@@ -8,6 +8,19 @@ import type { AgentBundle, SourceKind, Target } from "../../src/core/types";
  *
  * Used across IO/CLI tests. Add fields here rather than reaching for `as any`
  * in individual test files.
+ *
+ * GOTCHA: this helper builds the `AgentBundle` directly without routing
+ * through `parseConfig`. That is intentional — most tests want a typed
+ * fixture, not to exercise the schema. But it also means real round-trip
+ * behavior (schema preservation, normalization, default-application,
+ * unknown-key stripping) is NOT exercised by tests using this helper.
+ *
+ * If you are adding a NEW field to CanonicalConfig (e.g. `mcp.required[]`),
+ * verify it survives a parseConfig round-trip in tests/core/config-schema.test.ts
+ * BEFORE relying on it here. A schema that silently drops the field will
+ * compile cleanly through this helper while every production consumer
+ * sees `undefined` at runtime — the v1.4.0 mcp.required/peer drift was
+ * invisible for exactly that reason.
  */
 export interface FakeBundleOpts {
   kind?: SourceKind;

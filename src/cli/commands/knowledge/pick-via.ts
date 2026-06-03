@@ -122,10 +122,15 @@ export async function pickViaInteractively(opts: PickViaOpts): Promise<PickViaRe
 
   // Tool picker. Spawn the chosen server through the pool and filter its
   // tool list with detectUrlParam — same shape detector probe-on-failure
-  // already trusts.
+  // already trusts. The status line announces the upcoming spawn and
+  // listTools() so authentication-coupled servers (those that prompt the
+  // user via a browser flow on first use) don't look hung while the call
+  // blocks. notify falls back to stdout for callers that don't supply one.
   let tools: McpToolDescriptor[];
   try {
     const spawnOpts = opts.spawnOptsFor(chosen.name);
+    const announce = opts.notify ?? ((msg: string) => process.stdout.write(`${msg}\n`));
+    announce(`  loading tools from ${chosen.name}…`);
     const client = await opts.pool.acquire(chosen.name, spawnOpts);
     tools = await client.listTools();
   } catch (err) {

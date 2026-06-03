@@ -485,14 +485,61 @@ itself:
 }
 ```
 
+### Picking the MCP server when you add a URL
+
+When you run `smith knowledge add <agent> <url>` against an http(s)
+URL, smith first asks you to point at the MCP server that should fetch
+it. The picker unions two sources: the bundle's existing `mcpServers[]`
+and every server smith finds in your AI client configs (`~/.claude.json`,
+`~/.codex/config.toml`, `~/.config/opencode/opencode.json`,
+`~/.kiro/settings/mcp.json`). Each row is labelled by origin, so you
+can tell at a glance which servers the bundle author already wired and
+which ones come from your local environment:
+
+```text
+$ smith knowledge add my-agent https://wiki.internal.example.com/space/page
+
+  Which MCP server fetches this URL? (or skip for direct HTTP)
+    1. internal-mcp                 [from bundle]
+    2. confluence-mcp               [from your AI client config]
+    0. skip — save as direct-HTTP source
+  Choice [0]: 2
+  loading tools from confluence-mcp…
+  → routing through confluence-mcp.fetch_page
+→ added confluence-mcp to mcpServers[] and marked as required
+→ added knowledge source wiki-internal-example-com-space-page (url)
+```
+
+After you pick a server smith calls its `tools/list` and filters for
+URL-shaped tools (parameters smith recognises as `url`/`uri`/`urls`/
+`inputs`/`targets`/etc.). Servers with exactly one URL-shaped tool
+pre-select silently; multiple options trigger a second prompt; zero
+URL-shaped tools fail loudly so you can pick a different server
+instead of saving a `via` smith knows won't resolve.
+
+When the server you pick wasn't already declared in the bundle, smith
+appends it in two places: `mcpServers[]` (so the install pipeline
+spawns the server on the next materialize) and `mcp.required[]` (so
+recipients of the bundle refuse to install when the server is missing
+from their MCP config — see [Bundle MCP dependencies](#bundle-mcp-dependencies)).
+Pressing **0** or just hitting enter skips the picker entirely; smith
+then falls through to the curated-registry suggestion below.
+
+The picker is interactive-only. In non-TTY runs (CI, daemon, piped
+stdin) it skips silently — unattended workloads never block on stdin —
+and the curated registry runs unchanged. Cross-link:
+[How smith picks a route](#how-smith-picks-a-route) covers the full
+resolution order once the source is on disk.
+
 ### Authoring shortcut on `smith knowledge add`
 
 For a handful of well-known URL patterns, smith ships a curated routing
 registry — Atlassian Confluence (`*.atlassian.net/wiki/`), SharePoint
 (`*.sharepoint.com`), Notion (`*.notion.so`), and GitHub blob URLs
-(`github.com/<owner>/<repo>/blob/...`). When you paste one of those
-URLs into `smith knowledge add`, smith offers the matching server/tool
-pair and waits for confirmation:
+(`github.com/<owner>/<repo>/blob/...`). The registry only fires when
+the picker above is skipped (you chose 0, or you're in a non-TTY run).
+When the URL matches one of the known patterns, smith offers the
+matching server/tool pair and waits for confirmation:
 
 ```text
 $ smith knowledge add my-agent url https://wiki.internal.example.com/space/page

@@ -164,6 +164,51 @@ describe("core/config-schema", () => {
   });
 });
 
+describe("mcp dependency block", () => {
+  // Round-trip: bundles declaring v1.2 mcp.required[]/mcp.peer[] must
+  // survive parseConfig. Before this test the schema silently stripped
+  // the block (zod's default behavior on unknown top-level keys), so
+  // every recipient of a shared bundle saw `config.mcp === undefined`
+  // and the install pipeline never enforced declared dependencies.
+  it("preserves mcp.required and mcp.peer through parseConfig", () => {
+    const result = parseConfig({
+      name: "x",
+      description: "Use to test things.",
+      targets: ["claude-code"],
+      modelTier: "balanced",
+      mode: "all",
+      permission: { read: "allow" },
+      mcp: { required: ["a"], peer: ["b"] },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mcp).toEqual({ required: ["a"], peer: ["b"] });
+    }
+  });
+
+  it("rejects unknown keys inside the mcp block (strict object)", () => {
+    const result = parseConfig({
+      name: "x",
+      description: "Use to test things.",
+      targets: ["opencode"],
+      modelTier: "balanced",
+      mcp: { required: ["a"], unknownKey: "oops" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty server names inside mcp.required", () => {
+    const result = parseConfig({
+      name: "x",
+      description: "Use to test things.",
+      targets: ["opencode"],
+      modelTier: "balanced",
+      mcp: { required: [""] },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("CanonicalConfigSchema with knowledge", () => {
   const base = {
     name: "x",

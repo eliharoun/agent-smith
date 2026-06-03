@@ -74,6 +74,12 @@ describe("v1 surface stability — CanonicalConfigSchema", () => {
         "color",
         "permission",
         "mcpServers",
+        // `mcp` (bundle-level dependency declarations: required[]/peer[])
+        // was first documented in v1.2 but the schema field itself was
+        // added in v1.4.1 — before that, zod silently stripped the block
+        // at parseConfig time. Optional + strict; forwards-compatible per
+        // the policy in this file's header.
+        "mcp",
         "skills",
         "knowledge",
         "requires",

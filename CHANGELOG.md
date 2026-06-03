@@ -4,6 +4,22 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] — 2026-06-03
+
+### Fixed
+
+- The MCP routing picker added in v1.4.0 now actually runs in the
+  production CLI; the prompt and TTY detection were not wired in.
+- Bundle config schema now persists mcp.required and mcp.peer
+  through parsing. v1.3 sharing-time dependency declarations were
+  silently stripped before this fix.
+- gui-server typechecks again after the new MCP picker route.
+- Picker auto-marks the chosen server as required in mcp.required[]
+  so recipients of the bundle refuse install if missing.
+- Picker prints a "loading tools from <server>…" status line during
+  the tools/list call so authentication-coupled servers don't look
+  hung.
+
 ## [1.4.0] — 2026-06-03
 
 v1.4 makes routed knowledge sources easy to author: at add time you
