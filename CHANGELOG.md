@@ -4,6 +4,15 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] — 2026-06-03
+
+### Fixed
+
+- smith knowledge compile now resolves MCP routing for sources that
+  declare `via:`. Previously the compile path failed with an internal
+  error because the MCP client pool and spawn-options resolver were
+  not wired in.
+
 ## [1.4.3] — 2026-06-03
 
 Edit-time control over knowledge-source routing.
