@@ -315,6 +315,15 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
       break;
     }
   }
+
+  // Round-trip routing/forward-compat fields that aren't surfaced as form
+  // inputs but must survive a GUI edit. Without this, a source authored
+  // elsewhere (e.g., `smith knowledge add --via …`) would silently lose its
+  // routing declaration after any edit through this modal.
+  const originalAny = original as unknown as Record<string, unknown>;
+  if (originalAny.via !== undefined) base.via = originalAny.via;
+  if (originalAny.lazy !== undefined) base.lazy = originalAny.lazy;
+
   return base as unknown as KnowledgeSource;
 }
 

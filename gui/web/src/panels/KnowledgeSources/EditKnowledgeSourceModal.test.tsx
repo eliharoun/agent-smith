@@ -149,6 +149,44 @@ describe("EditKnowledgeSourceModal", () => {
     });
   });
 
+  it("round-trips the via field on save (regression: silent strip)", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    // A source authored elsewhere with a routing declaration. The modal
+    // doesn't surface `via` as an input, but it MUST survive an edit.
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+      via: { server: "x-mcp", tool: "fetch_thing" },
+      lazy: true,
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // User edits an unrelated field.
+    fireEvent.change(screen.getByLabelText(/^\/\/ description$/i), {
+      target: { value: "team docs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    expect(written.description).toBe("team docs");
+    expect(written.via).toEqual({ server: "x-mcp", tool: "fetch_thing" });
+    expect(written.lazy).toBe(true);
+  });
+
   it("requires retrieval.mcpUrl when retrieval mode is external-mcp", () => {
     globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
     const src: KnowledgeSource = {
