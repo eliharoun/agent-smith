@@ -444,6 +444,10 @@ For real per-agent MCP allowlisting (a feature agent-smith does not
 currently provide), the translators would need to emit platform-native
 MCP gating into each agent file. That work has not been done.
 
+### Bundle-level MCP dependency declarations
+
+A bundle that depends on MCP servers being available on the recipient's host can declare `mcp.required[]` and `mcp.peer[]` at the bundle root. These are read by `smith agent install` *before* render and produce a hard refusal (or warning, for `peer`) when a named server is absent from every targeted platform's MCP config. Unlike per-agent `mcpServers[]` (advisory-only), `mcp.required[]` gates install. See [02-bundle-anatomy.md § `mcp`](./02-bundle-anatomy.md#mcp) for the schema and [04-knowledge.md](./04-knowledge.md) for use cases involving knowledge source routing.
+
 ### Per-platform MCP install commands
 
 Use the platform-native commands to register the MCP server on each

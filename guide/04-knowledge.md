@@ -4,7 +4,7 @@
 
 Read this when you're declaring a `knowledge` block in `agent.config.json`, debugging why a knowledge source didn't materialize the way you expected, configuring Atlassian credentials, or operating the `smith knowledge` CLI.
 
-> **v1 vs. v2.** Everything in this spoke describes the v1 inline/file pipeline. As of v2.1, smith chooses between v1-inline and the v2 progressive-disclosure compile stage automatically: small corpora (total estimated tokens under `inlineBudget.totalTokens`, default 8000) stay v1-inline; larger corpora auto-compile. Explicit `compile.progressive: true/false` overrides the heuristic; explicit `delivery: "inline"` on any source pins the bundle to v1 mode. v2 also adds an `agents-md` install target and a BM25 retrieval MCP server. See [16 — Knowledge compiler](./16-knowledge-compiler.md) for the smart default, overrides, and the v2 surface.
+> **Inline vs. progressive.** Everything in this spoke describes the inline/file pipeline. Smith chooses between inline rendering and the progressive-disclosure compile stage automatically: small corpora (total estimated tokens under `inlineBudget.totalTokens`, default 8000) stay inline; larger corpora auto-compile. Explicit `compile.progressive: true/false` overrides the heuristic; explicit `delivery: "inline"` on any source pins the bundle to inline mode. The progressive surface also adds an `agents-md` install target and a BM25 retrieval MCP server. See [16 — Knowledge compiler](./16-knowledge-compiler.md) for the smart default, overrides, and the compile-stage surface.
 
 > **Tip — browser GUI.** `/knowledge/:agent` in `smith gui` wraps `smith knowledge {list,add,fetch,validate}` with a per-source view, a one-click refresh button (job streamed live over SSE), and a `/system/atlassian-setup` route for the credential walk-through. `/knowledge/refresh-history` shows the refresh-mode timeline across agents. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
 
@@ -43,7 +43,7 @@ agent.config.json (+ knowledge.json sidecar)
    └─────────────────┘
 ```
 
-The materializer is inferred from filename extension and HTTP `Content-Type` when not specified — so most bundles only set `type` and `delivery` and let the rest fall through.
+The materializer is inferred from filename extension and HTTP `Content-Type` when not specified — so most bundles only set `type` and `delivery` and let the rest fall through. The `html-to-md` materializer is wiki-aware: it dispatches to a wiki-direct path (no Readability) when the HTML matches a known wiki signature (XWiki, Confluence, MediaWiki, SharePoint), and to the Readability path otherwise. Both paths run turndown with GFM tables. Relative links resolve against the source URL.
 
 ---
 
@@ -311,6 +311,8 @@ The per-agent knowledge directory is **always** under agent-smith's own state ho
 ```
 
 See `src/io/knowledge-paths.ts` for path resolution. Earlier versions of smith materialized this directory under `~/.config/opencode/agents/<name>/knowledge/`, but OpenCode's agent picker globs that directory recursively and was treating every knowledge `.md` as a selectable agent — the migration rationale is documented on the `KnowledgePaths` interface (`src/io/knowledge-paths.ts`).
+
+**File extensions and frontmatter.** Materialized HTML lands as `.md` (Readability + turndown + GFM tables) for non-wiki pages. Wiki-shaped HTML (XWiki, Confluence, MediaWiki, SharePoint — detected by HTML signature) skips Readability and converts the wiki body directly via turndown + GFM. Materialized HTML files are prefixed with a YAML frontmatter block (`title`, `source_url`, `fetched_at`) so the agent has provenance metadata without paying tokens to re-derive it. JSON envelopes returned by MCP tools (shapes like `{content: {content}}`, `{html}`, `{body}`, `{markdown}`, etc.) are unwrapped before sniffing — the inner bytes are content-type-detected and written under an honest extension.
 
 `_manifest.json` is a single file enumerating every source's id, scope, type, delivery, files (path/sha256/bytes/summary), `tokensInline`, description, and provenance. `smith knowledge list` reads it; the install pipeline writes it (`src/core/knowledge/pipeline.ts`). The install pipeline also *reads* the prior `_manifest.json` snapshot **before** overwriting it — `summarizeKnowledgeStage` (`src/io/knowledge-summary.ts`) diffs each source's `(relPath, sha256)` set against the prior to produce the per-source `→ knowledge` / `· knowledge (unchanged)` lines surfaced in install output. A missing or corrupt prior manifest is treated as "no prior" (every source reports changed); the read is defensive — install never aborts because of a manifest-read error.
 
@@ -616,6 +618,22 @@ install to see which servers each bundle needs and which the platform
 actually has; the `url-routing` section in the same report shows the
 resolved routing table grouped by layer.
 
+### Per-agent MCP key
+
+Each bundle's knowledge MCP server is keyed `<agent>-knowledge`
+(`keyForAgent(agent)` in `src/io/mcp-wiring.ts`). Two bundles wired
+into the same AI client therefore advertise distinct server names —
+for an `acme-helper` bundle the key is `acme-helper-knowledge`; for
+the bundled `agent-smith` bundle the key is `agent-smith-knowledge`
+(that bundle's per-agent key happens to equal the historical bundled
+name, so old configs continue to work unchanged). Use `smith
+knowledge wire <agent>` to write the spawn entry for `<agent>-knowledge`
+into every detected AI client config, and `smith knowledge unwire
+<agent>` to remove it. The `mcpServers[]` array in `agent.config.json`
+is documentation-only — wiring is what actually puts the server in
+front of the platform. See [14 — CLI reference](./14-cli-reference.md#smith-knowledge-wire-agent)
+for command flags and exit codes.
+
 ---
 
 ## How smith picks a route
@@ -742,7 +760,7 @@ platforms. See the [doctor section list](./10-doctor.md#the-fifteen-sections).
 
 ## The `smith knowledge` subcommands
 
-The dispatcher lives at `src/cli/commands/knowledge.ts`. There are four subcommands. Calling `smith knowledge` without one fails with exit `2` (`usage-error`).
+Subcommand handlers live under `src/cli/commands/knowledge/`. The family includes `add`, `list`, `fetch`, `validate`, `compile`, `serve`, `wire`, `unwire`, `remove`, `route`, `refresh-session`, and `migrate-codex`. Calling `smith knowledge` without a subcommand fails with exit `2` (`usage-error`).
 
 ### `smith knowledge add`
 
@@ -913,14 +931,26 @@ Re-fetches cached content for URL and git sources and re-installs the agent. Use
 
 ```bash
 smith knowledge fetch my-agent                       # refresh every URL/git source
-smith knowledge fetch my-agent --source stripe-api   # refresh (currently the same — see caveat)
+smith knowledge fetch my-agent --source stripe-api   # surgically clear and re-fetch one source
 ```
 
-**Caveat: `--source <id>` currently invalidates the entire cache.** The flag is parsed and accepted, but the implementation clears the whole `<knowledgeDir>/.cache/` directory rather than just one source's entries (`src/cli/commands/knowledge/fetch.ts`). Per-source filtering is a planned refinement — for now the flag exists for forward compatibility and to make the intent clear in command lines.
+**`--source <id>` is surgical.** Smith clears only the named source's acquirer cache before re-fetching:
 
-Without `--source`, the command simply re-runs `install`, which uses the existing HTTP cache (ETag/Last-Modified revalidation) and existing git clones (branch refs hard-reset to `origin/<ref>`, tags/SHAs reused unchanged). To force a full re-fetch of everything, pass `--source <anything>` — that triggers the cache-wipe path.
+- `type: url` — removes `<knowledgeDir>/.cache/<sha256(url)>.bin` and the sibling `.json` headers.
+- `type: git` — removes `<knowledgeDir>/.cache/git/<sha256(url)>/` recursively.
+- `file`, `dir`, `glob`, `confluence`, `jira`, and `npm`-placeholder types: no on-disk acquirer cache to clear (or, for confluence/jira, per-source clearing is not yet wired — use the broad form below).
 
-`smith knowledge fetch` is the official cache-bust mechanism. Deleting `<knowledgeDir>/.cache/` directly works too, but you'll need to follow with `smith agent install <agent>` to re-materialize.
+Other sources' caches are left untouched, so refreshing one URL no longer invalidates ETag/body data for unrelated URLs. After clearing, smith re-acquires the single source through the same three-layer URL resolver as install, materializes it, re-renders the agent's prompts, and prints a one-line summary on success:
+
+```
+refreshed <id>: <N> file(s), <B> byte(s) in <Xms>ms
+```
+
+When the surgical refresh is skipped (another fetch holds the install lock for the agent, the source has `delivery: inline | auto` and nothing to materialize, or the source is filtered out), smith prints a corresponding `refresh ... skipped` line and exits `0`. A failed refresh leaves the prior on-disk state intact (`smith` prints `smith: refresh of <id> for <agent> failed: ...` and exits `1`).
+
+Without `--source`, the command re-runs `install`, which uses the existing HTTP cache (ETag/Last-Modified revalidation) and existing git clones (branch refs hard-reset to `origin/<ref>`, tags/SHAs reused unchanged). To force a full re-fetch of every source, delete `<knowledgeDir>/.cache/` directly and re-run `smith agent install <agent>` (or `smith knowledge fetch <agent>`) to re-materialize.
+
+`smith knowledge fetch` is the official cache-bust mechanism.
 
 **Exit codes:** propagated from `smith agent install` — `0` on success, `1` on install failure, `2` on missing `<agent>`.
 
@@ -956,14 +986,14 @@ The same linter runs as part of `smith agent validate`, so you only need to invo
 - **`refresh` field is enforced for `ttl`/`session`/`always`.** The smithd daemon drives `ttl`-mode refresh on a 5-minute poll (see [guide/09-daemon.md](./09-daemon.md#knowledge-ttl-refresh)); `session`/`always` modes require per-platform hooks installed at agent-install time (see [Refresh modes](#refresh-modes)). `install` mode (the default) materializes only at `smith agent install` time — re-run install or `smith knowledge fetch` to refresh.
 - **`packs` field declared but rejected.** Knowledge packs aren't shipped yet. The validator returns an error referencing the design doc (`validator.ts`).
 - **Knowledge dir is always under `~/.config/agent-smith/knowledge/<agent>/`** regardless of the agent's `targets`. By design — single materialization location, cross-platform read-grants in frontmatter (including for OpenCode). See `src/io/knowledge-paths.ts`.
-- **`knowledge fetch --source <id>` is not yet per-source.** It currently invalidates the whole `.cache/` directory. Documented above and in `src/cli/commands/knowledge/fetch.ts`.
+- **`knowledge fetch --source <id>` clears only that source's acquirer cache (URL or git).** `confluence`/`jira` per-source clearing is not yet wired — use `smith knowledge fetch <agent>` (no `--source`) to broadly refresh those.
 - **Confluence `includeChildren` enforces `maxPages` as a hard cap on the total expanded set.** Smith emits a warning when the cap is hit during BFS recursion. Bump `maxPages` (still ≤100) for more.
 - **Jira default field set is intentionally small.** Three fields (`summary`, `description`, `status`) keep payloads bounded. Pass `fields: ["*all"]` to opt back in to the server-side default — but be ready for ADF blobs, attachments, and full changelogs in the rendered markdown.
 - **Confluence page title lookup is case-sensitive.** The title-to-id map stores titles verbatim from the API. Misspell or mis-case it and you get `page titled "..." not found`.
 - **Git acquirer inherits the user's git environment for SSH and credentials.** No isolation; whatever your shell can clone, smith can clone. If a clone fails with `fatal: Authentication failed`, the fix is in your git/SSH config, not in smith.
 - **Symlinks inside git sources are silently skipped.** Materialize real files, or commit the resolved content.
 - **Inline budget demotion is "oldest first".** When the budget is exceeded, the pipeline keeps already-fitted sources and demotes the next one; the warning identifies which source was demoted.
-- **Cache invalidation is binary.** There's no per-source cache TTL. The only way to force a re-fetch short of `rm -rf .cache/` is `smith knowledge fetch <agent> --source <anything>`, which triggers the whole-cache clear.
+- **Cache invalidation is per-source for URL/git sources.** Pass `--source <id>` to clear and re-fetch one source's URL or git cache; without `--source`, smith re-runs install and reuses the existing cache (ETag revalidation, branch hard-resets). To force a full re-fetch of every source, delete `<knowledgeDir>/.cache/` directly and re-run `smith agent install`.
 - **`url` requires a strict RFC URL; `git` accepts SCP shorthand.** `https://...` works for both, but `git@host:path` only validates as `type=git`. The validator surfaces a clear error either way (`schema.ts`).
 - **`auth`, `subpath`, `space`/`pages`/`includeChildren`/`format`, `maxPages`, `jql`/`fields`, `maxResults` are all type-restricted.** Setting any of them on the wrong source type fails validation with a precise message. Use `smith knowledge validate <agent>` after editing the config by hand.
 - **`smith knowledge add confluence|jira ...` is fully supported as of v0.12.0.** The third positional is the type's required identifier (`<space>` for confluence, `<jql>` for jira); optional per-type flags (`--pages`, `--max-pages`, `--include-children`, `--format`, `--fields`, `--max-results`) map to the schema's per-variant fields. The add command checks Atlassian-auth presence and warns (does not block) if credentials are missing. See [smith knowledge add in cli-reference](./14-cli-reference.md#smith-knowledge-add-agent-type-or-url-path-or-url) for full flag docs.

@@ -56,9 +56,12 @@ The directory `smith init` creates and `smith jack-out` removes wholesale. Every
 | `installed-skills.json` | first `smith skill install` | lazy | JSON `{schemaVersion:2, installed:[]}` | **yes** (temp + rename) |
 | `installed-agents.json` | first `smith agent install` | lazy | JSON `{schemaVersion:1, installed:[{name, target, path, sha256, ...}]}` | **yes** (temp + rename, under `withFileLock`) |
 | `conventions.json` | first GUI `/system/conventions` write or manual edit | lazy | JSON `{schemaVersion:1, platformConventions:{ <target>:{default?, explicit?[]} }}` | **yes** (temp + rename) |
+| `url-routing.json` | first confirmed routing-picker decision | lazy | JSON `{ entries: [...] }` mapping URL prefixes to MCP server/tool tuples | **yes** (temp + rename) |
 | `gui-state.json` | GUI state persistence | lazy | JSON | **yes** (temp + rename) |
 | `.env` | you (manually) | optional | dotenv (`SMITH_*` keys) | n/a |
 | `agents/<name>/refresh-manifest.json` | `smith agent install <name>` (when knowledge sources opt into refresh) | per consenting agent | JSON `RefreshManifest` (`refresh_consent.platforms`, per-source policy) | **yes** (temp + rename) |
+
+`url-routing.json` records routing decisions made when a URL knowledge source has no explicit `via:` field — the picker prompts once, then persists the suggestion here so subsequent fetches resolve without re-prompting. Cleared by `jack-out` along with the rest of the state root; manual delete is safe and triggers re-prompting on the next routed fetch.
 
 Daemon runtime files (`daemon.pid`, `daemon.log`, `daemon.heartbeat.json`) live under `~/.local/state/agent-smith/` since v1.0.0-rc.5 — see [The runtime state root](#-localstateagent-smith--the-runtime-state-root) below. Earlier versions wrote them under this config root; `smith daemon start` performs a one-shot migration that moves any leftover legacy files to the new location.
 
@@ -319,6 +322,8 @@ Source: `src/io/knowledge-paths.ts`.
 | `~/.config/agent-smith/knowledge/<name>/_manifest.json` | Per-source manifest: id, scope, type, delivery, file list, token counts. |
 | `~/.config/agent-smith/knowledge/<name>/sources/<id>/` | Materialized files for one source. |
 | `~/.config/agent-smith/knowledge/<name>/.cache/` | URL/git fetch cache. |
+
+Per-source files under `sources/<id>/` are produced by a per-type materializer that unwraps JSON envelopes returned by MCP tools, rewrites internal-wiki HTML into clean markdown with GFM table support, and writes YAML frontmatter onto each output file. The frontmatter block carries `title`, `source_url`, and `fetched_at` so downstream readers can audit provenance.
 
 **Always under agent-smith's state home.** Even when `<name>` does not target OpenCode (e.g. `targets: ["claude-code"]`), the knowledge dir lives at `~/.config/agent-smith/knowledge/<name>/`. Every target — OpenCode, Claude Code, Codex, Kiro — reaches it via cross-platform read-grants injected into per-target rendered output at install time (`permission.read.<dir>/**: allow` for OpenCode; `additionalDirectories` for Claude; `allowed_external_directories` for Codex; `resources: ["file://<dir>/**"]` for Kiro). Earlier versions materialized under `~/.config/opencode/agents/<name>/knowledge/`, but OpenCode's agent picker globs that directory recursively and treated every knowledge `.md` as a selectable agent — see `src/io/knowledge-paths.ts` for the migration rationale. See [04-knowledge.md](./04-knowledge.md#cross-platform-read-grants).
 
