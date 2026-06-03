@@ -12,6 +12,14 @@ export interface PlatformMcpStatus {
 
 interface WiringPlanResponse {
   platforms: PlatformMcpStatus[];
+  /**
+   * Whether the bundle's `mcpServers` array currently includes this
+   * agent's per-agent server key. Drives the "+ add / - remove
+   * mcpServers entry" line and the no-op detection — both of which
+   * used to be hardcoded against the singleton `agent-smith-knowledge`
+   * key and rendered unconditionally.
+   */
+  bundleHasEntry: boolean;
 }
 
 const PLATFORM_LABELS: Record<PlatformMcpStatus["platform"], string> = {
@@ -67,7 +75,33 @@ export function McpWiringModal({ agent, enable, onCancel, onConfirm }: McpWiring
   const targets = plan
     ? plan.platforms.filter((p) => p.cliInstalled && (enable ? !p.hasEntry : p.hasEntry))
     : [];
-  const skipped = plan ? plan.platforms.filter((p) => !targets.includes(p)) : [];
+
+  // Whether the bundle's `mcpServers` array itself needs to change. When
+  // null, the desired entry is already in the desired state (present for
+  // enable=true, absent for enable=false) and the parent will skip the
+  // PUT /config + agent.install dispatch entirely.
+  const bundleConfigChange: "add" | "remove" | null = plan
+    ? enable && !plan.bundleHasEntry
+      ? "add"
+      : !enable && plan.bundleHasEntry
+        ? "remove"
+        : null
+    : null;
+
+  // True no-op: nothing to write to the bundle, nothing to wire on disk.
+  // Render a Close-only button instead of confirm.
+  const isTrueNoop = plan !== null && bundleConfigChange === null && targets.length === 0;
+
+  // Confirm-button label. Three cases:
+  //   - bundle change + N targets → "Wire/Unwire N platforms"
+  //   - bundle change only → "Save bundle config"
+  //   - targets only (rare; bundle already in desired state) → "Wire/Unwire N platforms"
+  let confirmLabel: string;
+  if (bundleConfigChange !== null && targets.length === 0) {
+    confirmLabel = "Save bundle config";
+  } else {
+    confirmLabel = `${verb} ${targets.length} platform${targets.length === 1 ? "" : "s"}`;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
@@ -81,18 +115,26 @@ export function McpWiringModal({ agent, enable, onCancel, onConfirm }: McpWiring
         {!plan && !error && (
           <div className="font-mono text-xs text-matrix-body mb-3">// loading plan…</div>
         )}
-        {plan && (
+        {plan && isTrueNoop && (
+          <div className="font-mono text-xs text-matrix-body mb-4">
+            // already in the desired state — nothing to do.
+          </div>
+        )}
+        {plan && !isTrueNoop && (
           <div className="space-y-3 text-xs font-mono text-matrix-body mb-4">
-            <div>
-              <div className="text-matrix-green-muted uppercase tracking-widest text-[10px] mb-1">
-                // bundle config
+            {bundleConfigChange !== null && (
+              <div>
+                <div className="text-matrix-green-muted uppercase tracking-widest text-[10px] mb-1">
+                  // bundle config
+                </div>
+                <div className="ml-3">
+                  {bundleConfigChange === "add" ? "+ " : "- "}
+                  <code>mcpServers</code>:{" "}
+                  {bundleConfigChange === "add" ? "add " : "remove "}
+                  <code>"{agent}-knowledge"</code>
+                </div>
               </div>
-              <div className="ml-3">
-                {enable ? "+ " : "- "}
-                <code>mcpServers</code>: {enable ? 'add ' : 'remove '}
-                <code>"agent-smith-knowledge"</code>
-              </div>
-            </div>
+            )}
             <div>
               <div className="text-matrix-green-muted uppercase tracking-widest text-[10px] mb-1">
                 // ai client mcp configs
@@ -125,33 +167,36 @@ export function McpWiringModal({ agent, enable, onCancel, onConfirm }: McpWiring
                   );
                 })}
               </ul>
-              {skipped.length === plan.platforms.length && (
-                <div className="ml-3 mt-2 text-matrix-green-muted">
-                  // nothing to do — every platform is already in the desired state.
+            </div>
+            {bundleConfigChange !== null && (
+              <div>
+                <div className="text-matrix-green-muted uppercase tracking-widest text-[10px] mb-1">
+                  // followup
                 </div>
-              )}
-            </div>
-            <div>
-              <div className="text-matrix-green-muted uppercase tracking-widest text-[10px] mb-1">
-                // followup
+                <div className="ml-3">
+                  bundle reinstalled via <code>smith agent install {agent}</code> so rendered
+                  files reflect the new <code>mcpServers</code> entry.
+                </div>
               </div>
-              <div className="ml-3">
-                bundle reinstalled via <code>smith agent install {agent}</code> so rendered
-                files reflect the new <code>mcpServers</code> entry.
-              </div>
-            </div>
+            )}
           </div>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!plan || error !== null}
-            onClick={() => onConfirm(targets.map((t) => t.platform))}
-          >
-            {verb} {targets.length} platform{targets.length === 1 ? "" : "s"}
-          </Button>
+          {isTrueNoop ? (
+            <Button onClick={onCancel}>Close</Button>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!plan || error !== null}
+                onClick={() => onConfirm(targets.map((t) => t.platform))}
+              >
+                {confirmLabel}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
