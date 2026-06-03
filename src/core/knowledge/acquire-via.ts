@@ -82,6 +82,7 @@ export async function acquireViaMcp(
     relPath: sniff.filename,
     bytes: sniff.bytes,
     contentType: sniff.contentType,
+    sourceUrl: url,
   }];
 }
 

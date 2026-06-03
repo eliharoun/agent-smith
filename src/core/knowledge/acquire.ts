@@ -107,6 +107,10 @@ export interface AcquiredArtifact {
   bytes: Buffer;
   /** Optional content-type (set by URL acquirer; undefined for local). */
   contentType?: string;
+  /** Optional source URL of the artifact. When set, materializers that
+   *  benefit from a base URL (e.g. HTML→markdown via JSDOM) use it to
+   *  resolve relative links correctly. */
+  sourceUrl?: string;
 }
 
 export interface DirOptions {
@@ -280,6 +284,7 @@ export async function acquireUrl(
         relPath: filename,
         bytes: cached,
         ...(meta.contentType ? { contentType: meta.contentType } : {}),
+        sourceUrl: url,
       },
     ];
   }
@@ -310,7 +315,13 @@ export async function acquireUrl(
   await writeFile(metaPath, JSON.stringify(newMeta));
 
   const filename = filenameFromUrl(url, ct);
-  return [{ filename, relPath: filename, bytes: buf, ...(ct ? { contentType: ct } : {}) }];
+  return [{
+    filename,
+    relPath: filename,
+    bytes: buf,
+    ...(ct ? { contentType: ct } : {}),
+    sourceUrl: url,
+  }];
 }
 
 // ---------- acquireGit ----------
