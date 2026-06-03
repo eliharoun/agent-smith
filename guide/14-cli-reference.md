@@ -1329,7 +1329,11 @@ agents opted in; when the last consenting opencode agent is removed,
 **Exit codes:**
 
 - `0` — install succeeded (skill warnings allowed).
-- `1` — agent not found; build error.
+- `1` — agent not found; build error; **a required MCP server declared
+  in the bundle's `mcp.required` list is not configured on any of the
+  bundle's targeted platforms** (preflight refusal — pass
+  `--allow-missing-mcp` to demote to a warning). See
+  [04 — Bundle MCP dependencies](./04-knowledge.md#bundle-mcp-dependencies).
 - `2` — `<name>` omitted (helpful error printed).
 - `3` — agent exists but failed to load (partial failure).
 
@@ -2104,7 +2108,7 @@ correspond to a missing CLI — and `model-resolution`, which depends on
 OpenCode — are omitted from both human and JSON output. Cross-cutting
 sections (`workspace`, `atlassian-auth`, `skill-drift`,
 `agent-required-skills`, `registry-hygiene`,
-`remote-catalogs`, `duplicate-catalogs`) always run when at least one platform is present.
+`remote-catalogs`, `duplicate-catalogs`, `mcp-deps`) always run when at least one platform is present.
 When stdout is a TTY and `--json` is unset, streams per-section
 progress with `ora` spinners. Honors `XDG_CACHE_HOME` for the schema
 cache (24h TTL). Source: `src/cli/commands/doctor.ts`.
@@ -2147,6 +2151,20 @@ closes the forward door (install hard-errors); this check audits the
 existing state. Malformed URLs (e.g. registry hand-edits) are silently
 excluded from clustering rather than aborting the run — they still
 surface in `registry-hygiene`.
+
+**Mcp-deps section:** offline pure check that walks every installed
+agent's `mcp.required[]` and `mcp.peer[]` declarations and reports
+server names absent from the union of platform MCP configs read from
+`~/.config/opencode/opencode.json`, `~/.claude/settings.json`,
+`~/.codex/config.toml`, and `~/.kiro/settings/mcp.json`. Findings are
+informational — the section never affects doctor's exit code; install-
+time preflight is the gate that actually blocks. Each finding lists the
+agent, the missing server, the kind (`required` / `peer`), and which
+of the bundle's targeted platforms lacked the server in their MCP
+config. Read-only; no repair flag — fix by editing the platform MCP
+config and re-running `smith agent install <agent>`. See
+[04 — Bundle MCP dependencies](./04-knowledge.md#bundle-mcp-dependencies).
+Source: `src/core/freshness/check-mcp-deps.ts`.
 
 **No-platform refusal:** if zero platform CLIs are on `PATH`, doctor
 refuses to run, prints three install one-liners (one per platform), and

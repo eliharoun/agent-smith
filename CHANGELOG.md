@@ -4,6 +4,58 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-06-02
+
+MCP-routed knowledge sources. URLs in knowledge sources can now be
+fetched through declared MCP servers' tools, enabling auth-coupled
+internal sources (corporate wikis, ticketing, document stores) without
+embedding auth schemes into smith. Bundles declare MCP dependencies
+explicitly; `smith agent install` checks them at install time.
+
+### Added
+
+- `via: { server, tool, args? }` field on URL knowledge sources.
+  Routes the fetch through `<server>.<tool>` over MCP instead of HTTP;
+  `args` merges into the tool call payload alongside the auto-supplied
+  `{ url }`.
+- Curated routing-suggestion registry: known patterns
+  (`*.atlassian.net/wiki/`, `*.sharepoint.com`, `*.notion.so`,
+  `github.com/<owner>/<repo>/blob/...`) trigger a confirmation prompt
+  during `smith knowledge add`. Suggestion-only — smith never auto-sets
+  `via` without explicit user `y`, because tool names vary by MCP
+  server distribution.
+- `mcp.required[]` / `mcp.peer[]` on the bundle config. Semantics
+  mirror npm: required blocks install when missing; peer warns.
+- `smith agent install` runs an MCP preflight before render. Refuses
+  on a missing required server (exit `1`); warns on a missing peer.
+  `--allow-missing-mcp` demotes the refusal to a warning.
+- `smith doctor` `mcp-deps` section auditing installed agents'
+  declared MCP dependencies against the union of platform MCP configs.
+  Read-only, informational, no auto-repair flag.
+- Internal: `McpClient`, `McpClientPool`, `acquireViaMcp` for stdio
+  MCP RPC at acquire time. The pool is shared across knowledge
+  fetches in a single run so each declared server starts at most once
+  per `smith knowledge fetch` invocation.
+
+### Changed
+
+- `smith agent install` exit code `1` (`EXIT_RUNTIME`) now also
+  covers a missing required MCP server. Previously the install would
+  fail later at acquire time with a less actionable error.
+- `acquireSource` for `type: "url"` now consults `via` (explicit) or
+  the curated registry (via the auto-resolved route, when the user
+  has saved the source with `via`) before falling through to direct
+  HTTP.
+- `smith knowledge fetch` reuses the same MCP client pool as install,
+  so refresh runs no longer re-spawn a server process per source.
+
+### Documentation
+
+- New sections in `guide/04-knowledge.md`: "Routing URL fetches through
+  MCP servers" + "Bundle MCP dependencies".
+- `guide/14-cli-reference.md`: `mcp-deps` doctor section description;
+  `smith agent install` exit-code update for required-MCP refusal.
+
 ## [1.1.1] — 2026-06-02
 
 Patch release fixing GUI regressions in the `agents-md` render target shipped in v1.1.0, plus a knowledge-modal UX fix.
@@ -83,6 +135,7 @@ into OpenCode, Claude Code, Codex, and Kiro.
 - Browser GUI (`smith gui`) wrapping every CLI surface with persistent job history.
 - Four bundled example agents: `incident-debugger`, `security-threat-modeler`, `repo-cartographer`, and `knowledge-demo`.
 
+[1.2.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.2.0
 [1.1.1]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.1
 [1.1.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.1.0
 [1.0.0]: https://github.com/eliharoun/agent-smith/releases/tag/v1.0.0

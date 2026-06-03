@@ -439,6 +439,123 @@ Run `smith doctor` to verify your credentials are detected. The atlassian-auth s
 
 ---
 
+## Routing URL fetches through MCP servers
+
+Some URLs require authentication smith can't provide directly — internal
+wikis behind mTLS, ticketing systems behind scoped OAuth tokens, or any
+source where the credential is held by an MCP server you've already
+configured.
+
+For these, set `via` on the source:
+
+```json
+{
+  "id": "internal-wiki",
+  "type": "url",
+  "url": "https://wiki.internal.example.com/architecture/",
+  "delivery": "file",
+  "via": {
+    "server": "internal-mcp",
+    "tool": "FetchInternalUrl"
+  }
+}
+```
+
+When `via` is set, `smith knowledge fetch` and `smith agent install`
+call `<server>.<tool>` over MCP instead of HTTP. The bundle's
+`mcp.required` (or `mcp.peer`) list — see
+[Bundle MCP dependencies](#bundle-mcp-dependencies) — must include the
+named server, and that server must be configured in the target
+platform's MCP config (e.g. `~/.claude/settings.json`,
+`~/.codex/config.toml`) for the install-time preflight to pass.
+
+`via.args` accepts an object literal merged into the tool call payload.
+The fetcher always sends `{ url }` plus any `via.args` keys you supply,
+which is how you pass per-call hints (a header bundle, a max-bytes cap,
+or a server-specific `format` flag) without baking them into the tool
+itself:
+
+```json
+{
+  "via": {
+    "server": "internal-mcp",
+    "tool": "FetchInternalUrl",
+    "args": { "format": "markdown", "maxBytes": 200000 }
+  }
+}
+```
+
+### Authoring shortcut on `smith knowledge add`
+
+For a handful of well-known URL patterns, smith ships a curated routing
+registry — Atlassian Confluence (`*.atlassian.net/wiki/`), SharePoint
+(`*.sharepoint.com`), Notion (`*.notion.so`), and GitHub blob URLs
+(`github.com/<owner>/<repo>/blob/...`). When you paste one of those
+URLs into `smith knowledge add`, smith offers the matching server/tool
+pair and waits for confirmation:
+
+```text
+$ smith knowledge add my-agent url https://wiki.internal.example.com/space/page
+• URL matches a known pattern. Smith can route fetches through:
+    internal-mcp.FetchInternalUrl
+    (verify the tool name against your server's tools/list)
+  use this routing? [y/N] y
+→ routing through internal-mcp.FetchInternalUrl
+→ added knowledge source wiki-internal-example-com-space-page (url)
+```
+
+Smith **never** auto-sets `via` without an explicit `y` — tool names
+vary by MCP server distribution, so a silent auto-route would produce
+`-32601 method-not-found` errors against the wrong server's
+`tools/list`. In non-interactive contexts (CI, piped stdin), the
+suggestion still prints but the source is saved without `via`; opt in
+by hand-editing `agent.config.json`.
+
+For URLs the registry doesn't recognise, set `via` directly on the
+source — there is no global default. Run `smith doctor` (`mcp-deps`
+section) after install to see which servers each bundle needs and
+which the platform actually has.
+
+---
+
+## Bundle MCP dependencies
+
+Declare the MCP servers your bundle depends on in an `mcp` block on
+`agent.config.json`:
+
+```json
+{
+  "mcp": {
+    "required": ["internal-mcp"],
+    "peer": ["atlassian-mcp"]
+  }
+}
+```
+
+Semantics mirror npm's `dependencies` / `peerDependencies`:
+
+- **`required`** — every server in this list must be present in the
+  target platform's MCP config at install time. `smith agent install`
+  refuses to proceed if any are missing and exits `1` with a list of
+  the missing entries. Use `--allow-missing-mcp` to demote the refusal
+  to a warning (useful when staging a bundle before the server is
+  rolled out, or in offline test runs).
+- **`peer`** — expectations rather than hard dependencies. Missing
+  peers warn during install but do not block.
+
+Smith resolves servers across the platforms the bundle targets:
+OpenCode (`~/.config/opencode/opencode.json`), Claude Code
+(`~/.claude/settings.json`), Codex (`~/.codex/config.toml`), and Kiro
+(`~/.kiro/settings/mcp.json`). A server is "present" if it is declared
+in the config for at least one targeted platform — smith does not
+require uniform availability across every target.
+
+The `mcp-deps` section of `smith doctor` audits installed agents and
+reports per-bundle which required/peer servers are missing on which
+platforms. See the [doctor section list](./10-doctor.md#the-fifteen-sections).
+
+---
+
 ## The `smith knowledge` subcommands
 
 The dispatcher lives at `src/cli/commands/knowledge.ts`. There are four subcommands. Calling `smith knowledge` without one fails with exit `2` (`usage-error`).
