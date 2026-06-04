@@ -87,7 +87,11 @@ export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) 
         id: s.request.id,
         type: "url",
         url: s.request.typeOrUrl,
-        delivery: s.request.delivery ?? "auto",
+        // Lazy URL forbids `delivery` (the schema rejects the pair); eager
+        // URL gets the existing `delivery: "auto"` default.
+        ...(s.request.lazy
+          ? { lazy: true }
+          : { delivery: s.request.delivery ?? "auto" }),
         via: { server: s.via.server, tool: s.via.tool },
       };
       if (s.request.description) newSource.description = s.request.description;

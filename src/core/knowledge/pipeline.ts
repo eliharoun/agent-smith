@@ -11,6 +11,7 @@ import { urlCacheKey } from "./acquire";
 import { acquireSource, chooseMaterializer, runMaterializer } from "./acquire-source";
 import { type CompiledKnowledge, compile } from "./compile";
 import { writeCompileManifest } from "./compile-manifest";
+import { isLazyUrlSource, lazyDescriptionWarnings } from "./lazy-url";
 import {
   ensureRelativeSymlink,
   sweepStaleCacheEntries,
@@ -18,6 +19,8 @@ import {
 } from "./repo-symlinks";
 import { estimateTokens } from "./tokens";
 import type {
+  CompileOptions,
+  EffectiveDelivery,
   KnowledgeBlock,
   KnowledgeManifest,
   KnowledgeManifestSourceEntry,
@@ -110,7 +113,7 @@ function shouldAutoCompile(
 
 interface ProcessedSource {
   declared: KnowledgeSource;
-  effectiveDelivery: "inline" | "file";
+  effectiveDelivery: EffectiveDelivery;
   artifacts: AcquiredArtifact[];
   materializedTexts: { artifact: AcquiredArtifact; content: string }[];
   warnings: string[];
@@ -295,6 +298,21 @@ export async function runKnowledgeStage(
     // Phase 1: acquire + materialize per source into tmpDir.
     const processed: ProcessedSource[] = [];
     for (const src of sources) {
+      // Lazy URL sources skip acquire+materialize entirely. The pipeline
+      // emits a manifest entry with delivery: "lazy" so downstream
+      // consumers (assembler, compile-stanza, doctor) recognize the kind.
+      if (isLazyUrlSource(src)) {
+        const lazyWarnings = lazyDescriptionWarnings(src);
+        for (const w of lazyWarnings) warnings.push(w);
+        processed.push({
+          declared: src,
+          effectiveDelivery: "lazy",
+          artifacts: [],
+          materializedTexts: [],
+          warnings: lazyWarnings,
+        });
+        continue;
+      }
       try {
         const { artifacts, warnings: srcWarnings } = await acquireSource(src, {
           bundleDir: paths.bundleDir,
@@ -341,6 +359,8 @@ export async function runKnowledgeStage(
     let usedTokens = 0;
 
     for (const p of processed) {
+      // Lazy was set in Phase 1; nothing to decide.
+      if (p.effectiveDelivery === "lazy") continue;
       const totalChars = p.materializedTexts.reduce((n, x) => n + x.content.length, 0);
       const cheapTokenLowerBound = Math.ceil(totalChars / 8);
       const remainingBudget = totalBudget - usedTokens;
@@ -384,6 +404,28 @@ export async function runKnowledgeStage(
     let totalBytes = 0;
 
     for (const p of processed) {
+      // Lazy sources have no on-disk artifact and no inline body.
+      if (p.effectiveDelivery === "lazy") {
+        const provenance: { url?: string } = {};
+        if (p.declared.type === "url") provenance.url = p.declared.url;
+        manifestSources.push({
+          id: p.declared.id,
+          scope: "agent",
+          type: p.declared.type,
+          ...(p.declared.type === "url" ? { url: p.declared.url } : {}),
+          ...(Object.keys(provenance).length > 0 ? { source: provenance } : {}),
+          delivery: "lazy",
+          files: [],
+          fetchedAt: new Date().toISOString(),
+          extractor: null,
+          tokensInline: 0,
+          ...(p.declared.description ? { description: p.declared.description } : {}),
+          ...(p.declared.summary !== undefined ? { summary: p.declared.summary } : {}),
+          ...(p.declared.toc !== undefined ? { toc: p.declared.toc } : {}),
+          ...(p.declared.retrieval !== undefined ? { retrieval: p.declared.retrieval } : {}),
+        });
+        continue;
+      }
       const srcDir = join(tmpDir, "sources", p.declared.id);
       await mkdir(srcDir, { recursive: true });
       const files: MaterializedFile[] = [];
@@ -562,10 +604,16 @@ async function compileFromManifest(
   block: KnowledgeBlock | undefined,
   knowledgeDir: string,
 ): Promise<CompiledKnowledge> {
-  const compileOpts = {
+  // Build the sourceDeclarations map from the bundle's original sources so
+  // tocLineFor can read lazy + via from each declaration when rendering.
+  const sourceDeclarations: Record<string, KnowledgeSource> = {};
+  for (const s of block?.sources ?? []) sourceDeclarations[s.id] = s;
+
+  const compileOpts: CompileOptions = {
     progressive: true,
     tocMaxLines: block?.compile?.tocMaxLines ?? 150,
     emitAgentsMd: block?.compile?.emitAgentsMd ?? false,
+    sourceDeclarations,
   };
   const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
     id: s.id,

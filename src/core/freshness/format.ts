@@ -172,6 +172,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatMcpDepsSection(report.mcpDeps));
     blocks.push("");
   }
+  if (report.lazyFetch) {
+    blocks.push(formatLazyFetchSection(report.lazyFetch));
+    blocks.push("");
+  }
   if (report.urlRouting) {
     blocks.push(formatUrlRoutingSection(report.urlRouting));
     blocks.push("");
@@ -324,6 +328,8 @@ function renderSectionDetail(
       return report.mcpSpawnCommands ? formatMcpSpawnSection(report.mcpSpawnCommands) : null;
     case "mcp-deps":
       return report.mcpDeps ? formatMcpDepsSection(report.mcpDeps) : null;
+    case "lazy-fetch":
+      return report.lazyFetch ? formatLazyFetchSection(report.lazyFetch) : null;
     case "url-routing":
       return report.urlRouting ? formatUrlRoutingSection(report.urlRouting) : null;
     case "knowledge-prompt-disk-consistency":
@@ -881,6 +887,34 @@ export function formatMcpDepsSection(
         ? `requires '${f.server}' — install the MCP server to satisfy the dependency`
         : `expects '${f.server}' (peer) — install for full functionality`;
     lines.push(`  ${icon} ${f.agent} ${note}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Render the lazy-fetch audit section. Read-only: lists each lazy URL
+ * source whose runtime fetch path is broken (no via routing AND no target
+ * with a built-in fetch tool, or via routing through an MCP server that
+ * isn't configured). There is no auto-fix — the user either wires `via:`
+ * or installs the missing MCP server.
+ */
+export function formatLazyFetchSection(
+  r: NonNullable<DoctorReport["lazyFetch"]>,
+): string {
+  const lines: string[] = ["Lazy URL fetch:"];
+  if (r.findings.length === 0) {
+    lines.push("  Status: ok");
+    return lines.join("\n");
+  }
+  const errors = r.findings.filter((f) => f.severity === "error").length;
+  const warnings = r.findings.length - errors;
+  const parts: string[] = [];
+  if (errors > 0) parts.push(`${errors} unreachable`);
+  if (warnings > 0) parts.push(`${warnings} via missing`);
+  lines.push(`  Status: ${parts.join(", ")}`);
+  for (const f of r.findings) {
+    const icon = f.severity === "error" ? "✗" : "⚠";
+    lines.push(`  ${icon} ${f.agent}/${f.sourceId}: ${f.message}`);
   }
   return lines.join("\n");
 }

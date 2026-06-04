@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  EffectiveDelivery,
   KnowledgeBlock,
+  KnowledgeDelivery,
   KnowledgeManifest,
+  KnowledgeManifestSourceEntry,
   KnowledgeSection,
   KnowledgeSource,
   MaterializedSource,
@@ -50,5 +53,60 @@ describe("knowledge types", () => {
       content: "hi there",
     };
     expect(m.files[0]?.sha256).toBe("deadbeef");
+  });
+});
+
+describe("KnowledgeDelivery type (input vocabulary)", () => {
+  it("accepts inline, file, auto", () => {
+    const inline: KnowledgeDelivery = "inline";
+    const file: KnowledgeDelivery = "file";
+    const auto: KnowledgeDelivery = "auto";
+    expect([inline, file, auto]).toEqual(["inline", "file", "auto"]);
+  });
+
+  // Type-level assertion: KnowledgeDelivery should NOT include "lazy".
+  // This is enforced via the structural-equality drift detector at
+  // config-schema.ts:170-180 — if "lazy" leaks in, that assertion fails.
+});
+
+describe("EffectiveDelivery type (computed vocabulary)", () => {
+  it("accepts the runtime-computed lazy mode", () => {
+    const lazy: EffectiveDelivery = "lazy";
+    expect(lazy).toBe("lazy");
+  });
+
+  it("is a superset of KnowledgeDelivery", () => {
+    const inline: EffectiveDelivery = "inline";
+    const file: EffectiveDelivery = "file";
+    const auto: EffectiveDelivery = "auto";
+    expect([inline, file, auto]).toEqual(["inline", "file", "auto"]);
+  });
+});
+
+describe("KnowledgeManifestSourceEntry", () => {
+  it("accepts a lazy entry with a top-level url", () => {
+    const entry: KnowledgeManifestSourceEntry = {
+      id: "wiki",
+      scope: "agent",
+      type: "url",
+      delivery: "lazy",
+      url: "https://wiki.internal.example.com/x",
+      files: [],
+      tokensInline: 0,
+    };
+    expect(entry.url).toBe("https://wiki.internal.example.com/x");
+    expect(entry.delivery).toBe("lazy");
+  });
+
+  it("treats url as optional for non-lazy entries", () => {
+    const entry: KnowledgeManifestSourceEntry = {
+      id: "doc",
+      scope: "agent",
+      type: "file",
+      delivery: "inline",
+      files: [{ path: "sources/doc/x.md", sha256: "abc", bytes: 10 }],
+      tokensInline: 5,
+    };
+    expect(entry.url).toBeUndefined();
   });
 });

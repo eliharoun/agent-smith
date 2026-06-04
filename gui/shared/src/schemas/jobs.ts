@@ -281,6 +281,10 @@ const KnowledgeAdd = z.object({
   // Jira-only:
   fields: z.string().optional(),
   maxResults: z.number().int().positive().optional(),
+  // URL-only: when true, smith records the URL + description but does not
+  // fetch at install time. The CLI's own validator rejects --lazy on
+  // non-URL types; the GUI omits this field for non-URL forms.
+  lazy: z.boolean().optional(),
 });
 
 const KnowledgeRemove = z.object({

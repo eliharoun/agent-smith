@@ -59,3 +59,38 @@ describe("via routing parity", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("lazy URL sources", () => {
+  it("accepts a lazy URL with description", () => {
+    const r = KnowledgeSource.safeParse({
+      id: "wiki",
+      type: "url",
+      url: "https://wiki.internal.example.com/x",
+      lazy: true,
+      description: "A wiki.",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects lazy on type=file", () => {
+    const r = KnowledgeSource.safeParse({
+      id: "x",
+      type: "file",
+      path: "./x",
+      delivery: "inline",
+      lazy: true,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects delivery alongside lazy: true", () => {
+    const r = KnowledgeSource.safeParse({
+      id: "x",
+      type: "url",
+      url: "https://x.example.com",
+      lazy: true,
+      delivery: "inline",
+    });
+    expect(r.success).toBe(false);
+  });
+});

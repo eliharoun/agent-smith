@@ -134,6 +134,12 @@ export interface KnowledgeAddOptions {
   agentName?: string;
   /** Default true. Set false for `--no-install`. No-op when agentName/runInstall absent. */
   installAfter?: boolean;
+  /** When true, the URL source is saved with lazy: true (URL only).
+   *  Lazy URL sources are not fetched at install — the agent fetches
+   *  them at runtime via WebFetch or a configured `via` MCP tool. The
+   *  schema forbids delivery/materialize/extractor/inlineBudgetTokens
+   *  on lazy sources; this flag strips them from the constructed source. */
+  lazy?: boolean;
   /** DI seam for the post-add install. CLI wiring injects `install({ name })`. */
   runInstall?: (agentName: string) => Promise<number>;
   // --- Confluence-only ---
@@ -265,6 +271,13 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
 }
 
 export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
+  if (opts.lazy === true && opts.type !== "url") {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "--lazy requires type=url",
+      reasons: [`--lazy is only supported on type=url sources, got type=${opts.type}`],
+    });
+  }
   const cfgPath = join(opts.bundleDir, "agent.config.json");
   let raw: string;
   try {
@@ -419,6 +432,19 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
 
   const newSource = constructSource(opts, id);
 
+  // Lazy URL: strip schema-forbidden fields and stamp lazy: true. Schema
+  // rejects delivery/materialize/extractor/inlineBudgetTokens on lazy
+  // sources; constructSource stamps a default delivery, so we have to
+  // remove it here before the validator runs.
+  if (opts.lazy === true) {
+    const lazyRec = newSource as unknown as Record<string, unknown>;
+    lazyRec.lazy = true;
+    delete lazyRec.delivery;
+    delete lazyRec.materialize;
+    delete lazyRec.extractor;
+    delete lazyRec.inlineBudgetTokens;
+  }
+
   // Apply routing decision (picker wins over curated-registry suggestion).
   if (chosenVia) {
     (newSource as unknown as Record<string, unknown>).via = chosenVia;
@@ -495,6 +521,15 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
     });
   }
   for (const w of k.warnings) console.log(pc.yellow("warn"), w);
+
+  // Lazy URL sources rely on the description as the agent's only signal
+  // until it fetches the URL — surface third-person/length warnings so
+  // authors can tighten the description before downstream installs.
+  if (opts.lazy === true) {
+    const { lazyDescriptionWarnings } = await import("../../../core/knowledge/lazy-url");
+    const warnings = lazyDescriptionWarnings(newSource);
+    for (const w of warnings) console.log(pc.yellow("warn"), w);
+  }
 
   await writeFile(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
   const labelPrefix = opts.urlMode ? `${opts.urlMode.label} ` : "";

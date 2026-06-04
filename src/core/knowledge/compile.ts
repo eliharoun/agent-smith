@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { CompileOptions, MaterializedSource } from "./types";
+import { isLazyUrlSource, lazyTocLine } from "./lazy-url";
+import type { CompileOptions, KnowledgeSource, MaterializedSource } from "./types";
 
 export interface CompiledKnowledge {
   /** The full `## Knowledge` section ready to be appended to the assembled body. */
@@ -54,7 +55,16 @@ function summaryFor(s: MaterializedSource): string {
   return "";
 }
 
-function tocLineFor(s: MaterializedSource, summary: string): string {
+function tocLineFor(
+  s: MaterializedSource,
+  summary: string,
+  declaration?: KnowledgeSource,
+): string {
+  // Lazy URL: render the lazy-specific line shape using the declaration's
+  // url + via, since MaterializedSource has no top-level url.
+  if (declaration && isLazyUrlSource(declaration)) {
+    return lazyTocLine(declaration);
+  }
   const summaryPart = summary ? ` — ${summary}` : "";
   // For multi-file sources (dir/glob/git/confluence/jira), point at the
   // source directory `sources/<id>/` so the agent doesn't anchor on the
@@ -91,7 +101,8 @@ export function compile(
   const all = sources.map((s) => {
     const tocOptIn = s.toc !== false;
     const summary = s.summary ?? summaryFor(s);
-    const line = tocOptIn ? tocLineFor(s, summary) : null;
+    const declaration = options.sourceDeclarations?.[s.id];
+    const line = tocOptIn ? tocLineFor(s, summary, declaration) : null;
     return {
       source: s,
       tocLine: line,

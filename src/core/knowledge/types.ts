@@ -21,8 +21,22 @@ export type Materializer =
 /** PDF extractor. Forward-compat: pdf-extract materializer not yet wired (validator rejects). See docs/superpowers/specs/2026-05-03-agent-knowledge-sources-design.md §10 for design. */
 export type PdfExtractor = "pdf-parse" | "mupdf";
 
-/** Delivery mode. */
+/**
+ * Author-facing delivery mode (input vocabulary). Authors write one of these
+ * three values on a source; smith may compute a different effective value
+ * (see `EffectiveDelivery`) at materialization time.
+ */
 export type KnowledgeDelivery = "inline" | "file" | "auto";
+
+/**
+ * Effective delivery mode at the manifest/runtime layer (computed vocabulary).
+ * Adds `"lazy"` for URL sources opted into runtime fetch via `lazy: true` —
+ * smith never materializes them at install time, the agent fetches at runtime.
+ *
+ * Authors do NOT write `"lazy"` directly; it is computed from the URL source's
+ * `lazy: true` flag (see schema's URL discriminated union).
+ */
+export type EffectiveDelivery = "inline" | "file" | "auto" | "lazy";
 
 /** Refresh mode for a knowledge source.
  *  - `install`: materialized at `smith agent install` only (default; today's behavior)
@@ -114,10 +128,17 @@ export interface GlobSource extends KnowledgeSourceBase {
   type: "glob";
   path: string;
 }
-export interface UrlSource extends KnowledgeSourceBase {
+export interface UrlSource extends Omit<KnowledgeSourceBase, "delivery"> {
   type: "url";
   url: string;
   auth?: KnowledgeAuth;
+  /** When true, the URL body is NOT fetched at install time. Smith records
+   *  the URL and description in the manifest and the agent fetches it at
+   *  runtime via the `KnowledgeFetch` tool. Mutually exclusive with
+   *  delivery/materialize/extractor/inlineBudgetTokens. */
+  lazy?: boolean;
+  /** Required for non-lazy URL sources; forbidden for lazy ones. */
+  delivery?: KnowledgeDelivery;
 }
 export interface GitSource extends KnowledgeSourceBase {
   type: "git";
@@ -165,6 +186,13 @@ export interface CompileOptions {
   progressive: boolean;
   tocMaxLines: number;
   emitAgentsMd: boolean;
+  /**
+   * Optional map of source-id → original `KnowledgeSource` declaration.
+   * The compiler reads `lazy` and `via` from here so the TOC stanza can
+   * render fetch-tool hints for lazy URL sources without those fields
+   * leaking into MaterializedSource.
+   */
+  sourceDeclarations?: Record<string, KnowledgeSource>;
 }
 
 export interface KnowledgeBlock {
@@ -222,7 +250,7 @@ export interface MaterializedSource {
   id: string;
   scope: KnowledgeScope;
   type: KnowledgeSourceType;
-  delivery: KnowledgeDelivery;
+  delivery: EffectiveDelivery;
   description?: string;
   files: MaterializedFile[];
   /** Tokens consumed if delivery=inline; 0 otherwise. */
@@ -246,7 +274,13 @@ export interface KnowledgeManifestSourceEntry {
   scope: KnowledgeScope;
   type: KnowledgeSourceType;
   source?: { url?: string; path?: string; ref?: string; resolvedSha?: string };
-  delivery: KnowledgeDelivery;
+  /**
+   * Lazy URL sources record the URL at the top level for fast access by
+   * the compile stanza renderer and the doctor section. Mirrors `source.url`
+   * for non-lazy URL entries; absent on file/dir/glob/git/npm/confluence/jira.
+   */
+  url?: string;
+  delivery: EffectiveDelivery;
   files: { path: string; sha256: string; bytes: number; summary?: string }[];
   fetchedAt?: string;
   extractor?: PdfExtractor | null;

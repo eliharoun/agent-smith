@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMcpServersAndTools } from "@/hooks/useMcpServersAndTools";
 import { FormField } from "@/ui/FormField";
+import { Toggle } from "@/ui/Toggle";
 import { type CommonFields, commonFields, validateId } from "./common";
 import { RoutingPicker, type ViaPick } from "./RoutingPicker";
 import type { SourceFormProps } from "./types";
@@ -21,6 +22,7 @@ export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProp
   const [c, setC] = useState<CommonFields>({ id: "", description: "" });
   const [url, setUrl] = useState("");
   const [via, setVia] = useState<ViaPick | null>(null);
+  const [lazy, setLazy] = useState(false);
   const idErr = validateId(c.id, existingIds);
 
   // Mirror the picker's gating: only fetch when the user has typed a URL.
@@ -62,6 +64,7 @@ export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProp
             optional: false,
             install: true,
             includeChildren: false,
+            ...(lazy ? { lazy: true } : {}),
           },
         };
         if (via?.server && effectiveTool) {
@@ -89,6 +92,16 @@ export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProp
         placeholder="https://example.com/page"
         hint={httpsWarn}
       />
+      <div className="flex flex-col gap-1">
+        <Toggle aria-label="Lazy fetch" label="lazy fetch" checked={lazy} onChange={setLazy} />
+        {lazy && (
+          <p className="font-mono text-[10px] text-matrix-green-muted">
+            // when lazy is on, the agent reads this description at runtime to
+            decide whether to fetch the URL — write what the source contains
+            and when to use it.
+          </p>
+        )}
+      </div>
       {/* Routing dropdown — only meaningful once a URL is entered AND we
           have agent context. */}
       {agent && url && (

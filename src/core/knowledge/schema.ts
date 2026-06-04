@@ -96,9 +96,6 @@ const BaseFields = {
   retrieval: RetrievalSpec.optional(),
   // v1.2 routing
   via: ViaSpec.optional(),
-  // v1.2 forward-compat: Phase 2 will activate this. Phase 1 accepts and
-  // no-ops to keep bundles authored against the design doc parseable.
-  lazy: z.union([z.boolean(), z.literal("auto")]).optional(),
 } as const;
 
 // Per-variant strict schemas. `.strict()` rejects unknown keys so cross-type
@@ -129,14 +126,61 @@ const GlobVariant = z
     path: z.string({ message: "type=glob requires path" }),
   })
   .strict();
+// URL sources can be either lazy (no install-time fetch; agent fetches
+// at runtime) or eager (existing v1 behavior, fetched at install).
+//
+// When lazy=true, the delivery decision doesn't apply (lazy supersedes
+// delivery), and materialize/extractor/inlineBudgetTokens are nonsensical
+// since no body is fetched at install. Those fields are forbidden via a
+// superRefine below. When lazy is unset or false, delivery is required.
+//
+// We keep a single ZodObject for the URL variant (rather than a nested
+// union) so the outer `discriminatedUnion("type", ...)` still works:
+// zod 4's discriminatedUnion forbids two options sharing the same
+// discriminator value and rejects nested unions wholesale.
 const UrlVariant = z
   .object({
-    ...BaseFields,
+    // `delivery` is optional at the schema level; the refinement below
+    // requires it for non-lazy URL sources and forbids it for lazy ones.
+    id: BaseFields.id,
+    delivery: BaseFields.delivery.optional(),
+    materialize: BaseFields.materialize,
+    extractor: BaseFields.extractor,
+    inlineBudgetTokens: BaseFields.inlineBudgetTokens,
+    refresh: BaseFields.refresh,
+    description: BaseFields.description,
+    optional: BaseFields.optional,
+    summary: BaseFields.summary,
+    toc: BaseFields.toc,
+    retrieval: BaseFields.retrieval,
+    via: BaseFields.via,
     type: z.literal("url"),
     url: z.string({ message: "type=url requires url" }).min(1),
     auth: Auth.optional(),
+    lazy: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((src, ctx) => {
+    if (src.lazy === true) {
+      // Lazy URL forbids install-time fetch knobs.
+      for (const k of ["delivery", "materialize", "extractor", "inlineBudgetTokens"] as const) {
+        if (src[k] !== undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${k} is not allowed when lazy: true (lazy URL sources are fetched at runtime, not install)`,
+            path: [k],
+          });
+        }
+      }
+    } else if (src.delivery === undefined) {
+      // Eager URL still requires delivery (v1 behavior).
+      ctx.addIssue({
+        code: "custom",
+        message: "delivery is required for non-lazy URL sources",
+        path: ["delivery"],
+      });
+    }
+  });
 const GitVariant = z
   .object({
     ...BaseFields,

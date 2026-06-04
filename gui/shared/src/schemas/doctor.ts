@@ -58,6 +58,23 @@ const McpDepsReport = z.object({
 });
 
 /**
+ * lazy-fetch audit findings. One entry per lazy URL source whose runtime
+ * fetch path is broken — either the bundle's targets all lack a built-in
+ * fetch tool AND the source has no `via:` routing (`error`), or the
+ * `via.server` is not installed on any platform (`warning`).
+ */
+const LazyFetchFinding = z.object({
+  agent: z.string(),
+  sourceId: z.string(),
+  severity: z.enum(["error", "warning"]),
+  message: z.string(),
+});
+
+const LazyFetchReport = z.object({
+  findings: z.array(LazyFetchFinding),
+});
+
+/**
  * URL-routing doctor section. Mirrors the CLI's
  * `CheckUrlRoutingResult` shape: a flat list of resolved routing
  * `entries` (curated registry + server `_meta` claims + user cache)
@@ -169,6 +186,7 @@ export const DoctorReport = z.object({
   knowledgeRefresh: z.unknown().optional(),
   mcpSpawnCommands: z.unknown().optional(),
   mcpDeps: McpDepsReport.optional(),
+  lazyFetch: LazyFetchReport.optional(),
   urlRouting: UrlRoutingReport.optional(),
   knowledgeConsistency: z.unknown().optional(),
   exitCode: z.union([z.literal(0), z.literal(1), z.literal(2)]),

@@ -281,6 +281,15 @@ export interface DoctorReport {
    */
   mcpDeps?: { findings: import("./check-mcp-deps").McpDepFinding[] };
   /**
+   * Optional lazy-fetch audit. Walks each bundle's `knowledge.sources[]`
+   * and reports lazy URL sources that have no runtime fetch path — either
+   * the bundle's targets all lack a built-in fetch tool AND the source has
+   * no `via:` routing (error), or the `via.server` is not installed on any
+   * platform (warning, overlaps with `mcp-deps`).
+   * Informational only — never affects {@link DoctorReport.exitCode}.
+   */
+  lazyFetch?: { findings: import("./check-lazy-fetch").LazyFetchFinding[] };
+  /**
    * Optional URL-routing summary. Enumerates every pattern smith would
    * auto-route, broken out by source layer (curated registry, server-
    * advertised `_meta`, user cache) and flags patterns claimed by more

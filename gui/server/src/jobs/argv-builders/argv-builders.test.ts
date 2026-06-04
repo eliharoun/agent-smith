@@ -527,6 +527,24 @@ describe("argv builders", () => {
     expect(r.argv).toContain("--no-install");
   });
 
+  it("builds knowledge.add with --lazy for URL sources", () => {
+    const r = buildArgv({
+      command: "knowledge.add",
+      agent: "wiki-bot",
+      typeOrUrl: "https://wiki.example.test/page",
+      id: "wiki",
+      description: "Architecture wiki. Use when answering deployment questions.",
+      lazy: true,
+      optional: false,
+      install: true,
+      includeChildren: false,
+    });
+    expect(r.argv).toContain("--lazy");
+    // Sanity: --delivery should NOT be in the argv when lazy is set
+    // (the form omits it; the CLI's --lazy short-circuits delivery anyway).
+    expect(r.argv).not.toContain("--delivery");
+  });
+
   it("builds knowledge.remove", () => {
     const r = buildArgv({
       command: "knowledge.remove",

@@ -280,6 +280,25 @@ export interface DoctorCliOptions {
     >;
   };
   /**
+   * Explicit DI seam for the `lazy-fetch` doctor section. When omitted,
+   * production wiring reads platform MCP configs from the user's homedir
+   * and derives bundle metadata from the same `loadAllBundles()` result
+   * the rest of the doctor uses. Tests inject in-memory stubs so the
+   * section never touches `~/.claude.json` or the registry — load-bearing
+   * for hermetic isolation.
+   */
+  lazyFetch?: {
+    readAvailable: () => Promise<import("../../io/mcp-config-readers").AvailableMap>;
+    loadBundles: () => Promise<
+      Array<{
+        name: string;
+        targets: import("../../core/types").Target[];
+        sources: import("../../core/knowledge/types").KnowledgeSource[];
+        mcp?: { required?: string[]; peer?: string[] };
+      }>
+    >;
+  };
+  /**
    * v1.3: explicit DI seam for the `url-routing` doctor section. When
    * omitted, production wiring loads the user route cache from
    * `<stateHome>/url-routing.json` and discovers `_meta` claims by
@@ -491,6 +510,21 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       })),
   };
 
+  // Default DI for the lazy-fetch section: reuse the same `loadAllBundles`
+  // result and the same `readAvailableMcpServers` call shape as mcp-deps.
+  // Tests inject `opts.lazyFetch` explicitly so the section never touches
+  // a real `~/.claude.json` or registry.
+  const lazyFetchDi = opts.lazyFetch ?? {
+    readAvailable: () => readAvailableMcpServers({ homeDir: homedir() }),
+    loadBundles: async () =>
+      bundleResult.bundles.map((b) => ({
+        name: b.config.name,
+        targets: b.config.targets,
+        sources: b.config.knowledge?.sources ?? [],
+        ...(b.config.mcp ? { mcp: b.config.mcp } : {}),
+      })),
+  };
+
   // Default DI for the url-routing section. Layer 1 (curated) and Layer 3
   // (user cache, read from `<stateHome>/url-routing.json`) are always
   // populated. Layer 2 (`_meta` self-claims) requires spawning each
@@ -627,6 +661,10 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     mcpDeps: {
       installedAgents: await mcpDepsDi.loadInstalledAgents(),
       readAvailable: mcpDepsDi.readAvailable,
+    },
+    lazyFetch: {
+      bundles: await lazyFetchDi.loadBundles(),
+      readAvailable: lazyFetchDi.readAvailable,
     },
     urlRouting: {
       loadCache: urlRoutingDi.loadCache,
