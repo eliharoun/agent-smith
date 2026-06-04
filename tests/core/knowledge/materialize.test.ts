@@ -245,3 +245,32 @@ describe("materializeHtml — frontmatter", () => {
     expect(r.content).toMatch(/fetched_at: "20\d\d-\d\d-\d\dT/);
   });
 });
+
+describe("materializeHtml — embedded content unwrap", () => {
+  it("unwraps a textarea-embedded HTML body and produces clean markdown of the inner content", () => {
+    const inner = `<html><body>
+      <h2>Real Heading</h2>
+      <p>${'word '.repeat(120)}</p>
+      <table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>
+    </body></html>`;
+    const outer = `<html><body>
+      <div class="document-header"><h1>Page chrome</h1></div>
+      <textarea class="wiki-code">${inner}</textarea>
+    </body></html>`;
+    const r = materializeHtml(outer, "https://example.com/page");
+    // Inner content's heading appears.
+    expect(r.content).toContain("Real Heading");
+    // Inner content's table preserved as GFM (because GFM plugin is loaded).
+    expect(r.content).toContain("| A | B |");
+    // Outer chrome's "Page chrome" must not appear (we swapped to inner).
+    expect(r.content).not.toContain("Page chrome");
+  });
+
+  it("falls through unchanged when no embedded content is present", () => {
+    const html = `<html><body>
+      <article><h1>Plain Article</h1>${'<p>word word word</p>'.repeat(40)}</article>
+    </body></html>`;
+    const r = materializeHtml(html, "https://example.com/article");
+    expect(r.content).toContain("Plain Article");
+  });
+});

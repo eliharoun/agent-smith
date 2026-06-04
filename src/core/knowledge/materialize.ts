@@ -6,6 +6,7 @@ import { gfm } from "turndown-plugin-gfm";
 import { toMessage } from "../to-message";
 import { prependFrontmatter } from "./frontmatter";
 import type { Materializer } from "./types";
+import { tryUnwrapEmbeddedHtml } from "./unwrap-embedded-html";
 import {
   contentRootSelector,
   detectWikiPlatform,
@@ -63,10 +64,16 @@ function makeTurndown(): TurndownService {
  * source URL.
  */
 export function materializeHtml(html: string, url: string): MaterializeResult {
-  const platform = detectWikiPlatform(html);
+  // If the page wraps its real content inside a transport element
+  // (e.g. a textarea holding source HTML, common in static-HTML
+  // export tools and source-view modes), unwrap to the inner document
+  // first. Wiki-platform detection then runs on the correct bytes.
+  const unwrapped = tryUnwrapEmbeddedHtml(html);
+  const effectiveHtml = unwrapped ?? html;
+  const platform = detectWikiPlatform(effectiveHtml);
   return platform != null
-    ? materializeWikiHtml(html, url, platform)
-    : materializeArticleHtml(html, url);
+    ? materializeWikiHtml(effectiveHtml, url, platform)
+    : materializeArticleHtml(effectiveHtml, url);
 }
 
 /**

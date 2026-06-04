@@ -139,16 +139,24 @@ describe("refreshSource", () => {
     expect(result.sourceId).toBe("inline-src");
   });
 
-  test("inline-only for delivery=auto", async () => {
+  test("auto-delivery file source falls through to acquire+materialize (not skipped)", async () => {
+    // Auto delivery resolves to inline-vs-file AFTER acquire based on content
+    // size. The file branch of auto needs the full acquire+materialize chain to
+    // land bytes on disk. The early-return for inline-only must NOT include auto.
     const home = await makeHome();
     const bundleDir = await makeBundle();
     const cacheRoot = await makeCache();
-    await writeFile(join(bundleDir, "y.md"), "auto content", "utf8");
+
+    // Write a file large enough that auto will choose file delivery (not inline).
+    // Materialize's inline budget is typically ~50KB; exceed that.
+    const largeContent = "# Title\n\n" + "x".repeat(60_000);
+    await writeFile(join(bundleDir, "large.md"), largeContent, "utf8");
+
     const source: KnowledgeSource = {
-      id: "auto-src",
+      id: "auto-src-file",
       type: "file",
       delivery: "auto",
-      path: "y.md",
+      path: "large.md",
     };
 
     const result = await refreshSource({
@@ -159,10 +167,17 @@ describe("refreshSource", () => {
       cacheRoot,
     });
 
-    expect(result.kind).toBe("inline-only");
-    if (result.kind !== "inline-only") return;
-    expect(result.delivery).toBe("auto");
-    expect(result.sourceId).toBe("auto-src");
+    // Before fix: kind === "inline-only" — file never materialized to disk.
+    // After fix: kind === "refreshed" — file lands under sources/<id>/.
+    expect(result.kind).toBe("refreshed");
+    if (result.kind !== "refreshed") return;
+    expect(result.sourceId).toBe("auto-src-file");
+    expect(result.bytes).toBeGreaterThan(0);
+
+    // Sanity: file exists at sources/<id>/ (proof the fix worked).
+    const sourcesDir = join(home, "knowledge", "agent-a", "sources");
+    const entries = await readdir(sourcesDir);
+    expect(entries).toContain("auto-src-file");
   });
 
   test("lock-held when manifest lock is already taken", async () => {

@@ -4,6 +4,37 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] — 2026-06-03
+
+Two fixes for knowledge-source refresh, both of which prevented the
+materializer from ever seeing the real content:
+
+### Fixed
+
+- `smith knowledge fetch <agent> --source <id>` is no longer a silent
+  no-op for sources whose `delivery` is `"auto"`. The surgical refresh
+  path was returning early as if `auto` had no on-disk artifact, so
+  the file would stay frozen at whatever it was when last installed.
+  Now `auto` falls through to the full acquire+materialize chain and
+  the post-acquire size check decides inline-vs-file as intended.
+- HTML pages that embed their real content inside a content-bearing
+  element (e.g. a `<textarea>` carrying the source HTML, common in
+  static-HTML wrappers and source-view modes) now have that inner
+  document extracted before materialization. Previously the outer
+  page's chrome would land on disk and the embedded content was
+  invisible to turndown (which skips form-field elements entirely).
+
+### Added
+
+- New `tryUnwrapEmbeddedHtml(html)` helper that detects this pattern
+  via a two-tier algorithm: a class-signal tier for elements
+  explicitly marked with idioms like `wiki-code` / `source-code` /
+  `raw-content`, and a shape-fallback tier that compares the embedded
+  element's content size against the rest of the body (swap when the
+  embedded content is at least 2× larger). Wiki-platform detection
+  re-runs on the unwrapped HTML, so the dispatcher routes the inner
+  document to wiki-mode or article-mode based on its own shape.
+
 ## [1.7.0] — 2026-06-03
 
 Wiki content from MCP-routed knowledge sources now materializes as
