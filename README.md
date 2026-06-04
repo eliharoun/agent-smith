@@ -138,6 +138,8 @@ smith agent init <name> --from <example>   # scaffold from a bundled example
 smith agent validate                       # check every bundle against the schema
 smith agent install <name>                 # render + install to its targets
 smith agent install --from <git-url>       # install from a git repo
+smith agent install --from <archive.tgz>   # install from an exported bundle archive
+smith agent export <name>                  # package a bundle as a .smith-bundle.tgz
 smith agent list                           # all known agents and their targets
 
 smith skill list                           # installed skills + drift status
@@ -183,7 +185,7 @@ Start with the [in-depth guide](./GUIDE.md) — a hub that links into focused to
 - [`08-registries-and-catalogs.md`](./guide/08-registries-and-catalogs.md) — registries, catalog kinds, precedence
 - [`04-knowledge.md`](./guide/04-knowledge.md) — per-agent knowledge sources (files, dirs, URLs, git, Confluence, Jira), routing URL fetches through MCP servers, declaring `mcp.required` / `mcp.peer` bundle dependencies
 - [`16-knowledge-compiler.md`](./guide/16-knowledge-compiler.md) — v2 progressive disclosure: `compile` block, `agents-md` target, BM25 retrieval server, APM import
-- [`15-sharing-and-distribution.md`](./guide/15-sharing-and-distribution.md) — end-to-end publisher + consumer flow
+- [`15-sharing-and-distribution.md`](./guide/15-sharing-and-distribution.md) — end-to-end publisher + consumer flow, including `smith agent export` to package a bundle as a `.smith-bundle.tgz` archive
 
 **Operating and troubleshooting**
 - [`09-daemon.md`](./guide/09-daemon.md) — what the daemon watches, lifecycle commands, debugging

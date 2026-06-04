@@ -1,11 +1,11 @@
 import { stat } from "node:fs/promises";
 import pc from "picocolors";
 import type { AgentBundle, InstallPaths, Target } from "../../core/types";
-import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import type { Registry } from "../../io/registry";
+import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { computeUninstallPath } from "../../io/uninstaller";
 import { defaultInstallPaths } from "../install-paths";
-import { loadAllBundles, type LoadAllBundlesResult, warnAllLoadFailures } from "../load-all";
+import { type LoadAllBundlesResult, loadAllBundles, warnAllLoadFailures } from "../load-all";
 
 export interface ListCliOptions {
   paths?: InstallPaths;
@@ -56,7 +56,7 @@ export async function runListCli(opts: ListCliOptions = {}): Promise<number> {
     print(
       [
         pc.bold(b.config.name),
-        pc.dim(`(${b.source.label}, ${b.source.kind})`),
+        pc.dim(`(${b.source.label}, ${b.source.importedArchive ? "imported-archive" : b.source.kind})`),
         pc.dim("→"),
         targetMarkers.join(", "),
       ].join(" "),

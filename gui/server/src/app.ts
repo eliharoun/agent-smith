@@ -27,6 +27,8 @@ import { registerOnboardingRoute } from "./routes/onboarding";
 import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
 import { registerRegistryRoute } from "./routes/registry";
 import { registerSettingsRoute } from "./routes/settings";
+import { registerExportsRoute } from "./routes/exports";
+import { registerImportStageRoute } from "./routes/import-stage";
 import { registerSkillsRoute } from "./routes/skills";
 import { registerStatusRoute } from "./routes/status";
 import { registerUpdateRoute } from "./routes/update";
@@ -179,6 +181,8 @@ export function createApp(deps: AppDeps) {
   });
   registerRegistryRoute(app, { registryPath });
   registerRefreshManifestRoute(app, { agentSmithHome });
+  registerExportsRoute(app, {});
+  registerImportStageRoute(app);
   registerSkillsRoute(app, { skillRegistryPath, installedSkillsPath });
   registerCatalogsRoute(app, { registryPath, skillRegistryPath });
   registerKnowledgeRoute(app, { registryPath, agentSmithHome });

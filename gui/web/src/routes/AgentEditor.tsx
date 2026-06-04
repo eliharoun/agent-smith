@@ -4,6 +4,7 @@ import { useAgent, useInstalledStatus } from "@/hooks/useAgents";
 import { deriveRemotePathWeb } from "@/lib/remote-path";
 import { REMOTE_ROOT_DISPLAY } from "@/lib/remote-root-display";
 import { AgentDestroyButton } from "@/panels/AgentDestroyButton";
+import { AgentExportModal } from "@/panels/AgentExportModal";
 import { AgentEditorTabs } from "@/panels/AgentEditorTabs";
 import { AgentPermissionsView } from "@/panels/AgentPermissionsView";
 import { AgentPersonaEditor } from "@/panels/AgentPersonaEditor";
@@ -51,6 +52,7 @@ export function AgentEditor() {
   const { name = "" } = useParams();
   const q = useAgent(name);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   if (q.isLoading)
     return (
       <ScreenShell>
@@ -95,6 +97,9 @@ export function AgentEditor() {
                   {behind ? "Sync now" : "Up to date"}
                 </Button>
               )}
+              <Button variant="ghost" onClick={() => setExportOpen(true)}>
+                Export
+              </Button>
               <AgentDestroyButton name={a.name} />
             </>
           }
@@ -170,6 +175,7 @@ export function AgentEditor() {
           { id: "skills", label: "Skills", element: <AgentSkillsView agentName={a.name} /> },
         ]}
       />
+      <AgentExportModal name={a.name} open={exportOpen} onClose={() => setExportOpen(false)} />
       {remote && (
         <RemoteSyncConfirm
           kind="agent"

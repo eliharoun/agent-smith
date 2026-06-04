@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "bun:test";
+import { buildAgentExport } from "./agent-export";
 import { buildAgentInstall } from "./agent-install";
 import { buildAgentInstallAll } from "./agent-install-all";
 import { buildArgv } from "./index";
@@ -891,4 +892,59 @@ test("knowledge.serve builds correct argv with --stdio", () => {
   // compile/serve don't race on the BM25 index file.
   expect(r.lockKeys).toEqual(["knowledge:demo"]);
   expect(r.preview).toBe("smith knowledge serve demo --stdio");
+});
+
+describe("buildAgentExport", () => {
+  test("builds the basic export argv", () => {
+    const r = buildAgentExport({
+      name: "code-reviewer",
+      to: "/tmp/out",
+      includeSkills: true,
+      userMd: "stub",
+      compression: "gzip",
+      json: false,
+      dryRun: false,
+      stdout: false,
+    });
+    expect(r.argv).toEqual([
+      "agent",
+      "export",
+      "code-reviewer",
+      "--to",
+      "/tmp/out",
+      "--user-md",
+      "stub",
+    ]);
+    expect(r.lockKeys).toEqual(["agent:code-reviewer"]);
+  });
+
+  test("flags --no-include-skills when includeSkills=false", () => {
+    const r = buildAgentExport({
+      name: "x",
+      to: ".",
+      includeSkills: false,
+      userMd: "stub",
+      compression: "gzip",
+      json: true,
+      dryRun: false,
+      stdout: false,
+    });
+    expect(r.argv).toContain("--no-include-skills");
+    expect(r.argv).toContain("--json");
+  });
+
+  test("--stdout and --to are mutually exclusive at the builder layer", () => {
+    expect(() =>
+      buildAgentExport({
+        name: "x",
+        to: "/tmp",
+        includeSkills: true,
+        userMd: "stub",
+        compression: "gzip",
+        json: false,
+        dryRun: false,
+        stdout: true,
+      }),
+    ).toThrow();
+  });
 });

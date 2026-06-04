@@ -14,13 +14,9 @@
 // tests) and wired into Commander via register-commands.ts.
 
 import { resolve } from "node:path";
-import { cloneOrFetch, lsRemoteHead } from "../../../io/git-clone";
-import {
-  canonicalRegistryPath,
-  loadRegistry,
-  saveRegistry,
-} from "../../../io/registry";
 import type { Source } from "../../../core/types";
+import { cloneOrFetch, lsRemoteHead } from "../../../io/git-clone";
+import { canonicalRegistryPath, loadRegistry, saveRegistry } from "../../../io/registry";
 import { EXIT_OK, EXIT_PARTIAL, EXIT_RUNTIME, EXIT_USAGE } from "../../exit-codes";
 
 export interface SyncOptions {
@@ -56,17 +52,29 @@ export async function runAgentSync(opts: SyncOptions): Promise<number> {
 
   const targets = opts.all
     ? reg.sources.filter((s) => s.remote !== undefined)
-    : reg.sources.filter(
-        (s) => s.remote !== undefined && matchesNameOrPath(s, opts.name!),
+    : reg.sources.filter((s) => s.remote !== undefined && matchesNameOrPath(s, opts.name!));
+
+  // If `name` resolves to an imported-archive catalog, emit a friendly
+  // advisory instead of the generic "no remote-backed catalog matches"
+  // usage error. Imported archives have no upstream to pull from; the
+  // recipient updates them by re-importing a fresh artifact.
+  if (opts.name && targets.length === 0) {
+    const importedHit = reg.sources.find(
+      (s) => s.importedArchive !== undefined && matchesNameOrPath(s, opts.name!),
+    );
+    if (importedHit) {
+      print(
+        `${importedHit.label}: imported from archive — re-run \`smith agent install --from <new-artifact>\` to update.`,
       );
+      return EXIT_OK;
+    }
+  }
 
   if (targets.length === 0) {
     if (opts.all) {
       printErr("smith: no remote-backed catalogs registered (nothing to sync)");
     } else {
-      const remoteLabels = reg.sources
-        .filter((s) => s.remote !== undefined)
-        .map((s) => s.label);
+      const remoteLabels = reg.sources.filter((s) => s.remote !== undefined).map((s) => s.label);
       const hint =
         remoteLabels.length === 0
           ? "  no remote-backed catalogs are registered yet"
@@ -116,9 +124,7 @@ export async function runAgentSync(opts: SyncOptions): Promise<number> {
       }
       successes++;
     } catch (err) {
-      printErr(
-        `smith: sync ${source.label} failed: ${(err as Error).message}`,
-      );
+      printErr(`smith: sync ${source.label} failed: ${(err as Error).message}`);
       failures++;
     }
   }

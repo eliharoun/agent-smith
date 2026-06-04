@@ -583,6 +583,32 @@ This is useful when:
 
 The Microsoft APM ecosystem (`smith agent init --from-apm`) treats AGENTS.md the same way — APM bundles targeting `copilot` / `cursor` / `gemini` / `windsurf` are folded into the single `agents-md` target on import. See [16 — Knowledge compiler](./16-knowledge-compiler.md#the-agents-md-target) for placement rules, the CLAUDE.md pointer interaction, and the runtime list.
 
+### 9.8 Sharing via exported archive
+
+For one-off sharing — handing a single bundle to a colleague, an external collaborator, or staging a bundle for an offline / air-gapped environment — `smith agent export` packages the bundle into a single `.smith-bundle.tgz` file the recipient consumes with `smith agent install --from <archive>`.
+
+```bash
+# Producer
+$ smith agent export code-reviewer --to ~/Downloads/
+
+# Recipient
+$ smith agent install --from ~/Downloads/code-reviewer-abc1234.smith-bundle.tgz
+```
+
+The archive contains the bundle files, all local knowledge (`type: file` / `dir` / `glob`), and (by default) the source of every skill in `requires.skills[]`. It does NOT contain MCP servers, credentials, or remote knowledge — those are declared in the manifest and the recipient brings or fetches them at install time.
+
+To share without embedding skills (e.g. when the recipient already has your team-skills catalog registered):
+
+```bash
+$ smith agent export code-reviewer --no-include-skills --to ~/Downloads/
+```
+
+The recipient sees a one-line summary of what the artifact will need from their machine before install proceeds. Imported-archive catalogs appear in `smith agent list` and `smith agent catalogs` with the `imported-archive` annotation; running `smith agent sync <imported-label>` prints an advisory instead of attempting a git pull (imported archives have no upstream).
+
+**Portability checks:** `smith agent export` refuses to package bundles whose knowledge sources use absolute paths or paths that escape the bundle directory — the producer fixes the source declarations and re-exports.
+
+**See also:** [`smith agent export`](./14-cli-reference.md#smith-agent-export-name) and [`smith agent install --from`](./14-cli-reference.md#smith-agent-install-name) in the CLI reference.
+
 ---
 
 ## 10. Gotchas and common mistakes

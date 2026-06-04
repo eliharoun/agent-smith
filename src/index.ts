@@ -21,7 +21,7 @@ import { runDaemon } from "./daemon";
 import { stateHome } from "./io/state-home";
 
 const program = new Command();
-program.name("smith").description("Lifecycle manager for AI coding agents").version("1.7.3");
+program.name("smith").description("Lifecycle manager for AI coding agents").version("1.8.0");
 // Funnel commander's own usage errors (unknown command, missing required option,
 // --help, --version) through the catch at the bottom so formatCommanderError()
 // renders them with the same prefix as wrap()'s SmithError path.
@@ -547,16 +547,13 @@ knowledgeCmd
   )
   .option("--all", "Compile every registered bundle that has compile.progressive=true")
   .action(
-    wrap(
-      "knowledge compile",
-      async (name: string | undefined, opts: { all?: boolean }) => {
-        const { runKnowledgeCompile } = await import("./cli/commands/knowledge/compile");
-        return runKnowledgeCompile({
-          ...(name ? { name } : {}),
-          ...(opts.all ? { all: true } : {}),
-        });
-      },
-    ),
+    wrap("knowledge compile", async (name: string | undefined, opts: { all?: boolean }) => {
+      const { runKnowledgeCompile } = await import("./cli/commands/knowledge/compile");
+      return runKnowledgeCompile({
+        ...(name ? { name } : {}),
+        ...(opts.all ? { all: true } : {}),
+      });
+    }),
   );
 
 knowledgeCmd
@@ -566,14 +563,11 @@ knowledgeCmd
   )
   .option("--stdio", "Serve over stdio (MCP); default and only transport in v1", true)
   .action(
-    wrap(
-      "knowledge serve",
-      async (name: string, opts: { stdio?: boolean }) => {
-        const { runKnowledgeServe } = await import("./cli/commands/knowledge/serve");
-        await runKnowledgeServe({ name, stdio: opts.stdio !== false });
-        return 0;
-      },
-    ),
+    wrap("knowledge serve", async (name: string, opts: { stdio?: boolean }) => {
+      const { runKnowledgeServe } = await import("./cli/commands/knowledge/serve");
+      await runKnowledgeServe({ name, stdio: opts.stdio !== false });
+      return 0;
+    }),
   );
 
 knowledgeCmd
@@ -715,7 +709,7 @@ program
   )
   .option(
     "--fix-mcp-commands",
-    "Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. \"smith\") to absolute paths so GUI launches from Spotlight/dock spawn correctly",
+    'Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. "smith") to absolute paths so GUI launches from Spotlight/dock spawn correctly',
   )
   .action(
     wrap(

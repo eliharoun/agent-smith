@@ -2,6 +2,7 @@ import type { JobRequest } from "gui-shared";
 import { buildAgentCatalogRename } from "./agent-catalog-rename";
 import { buildAgentCatalogs } from "./agent-catalogs";
 import { buildAgentDestroy } from "./agent-destroy";
+import { buildAgentExport } from "./agent-export";
 import { buildAgentInit } from "./agent-init";
 import { buildAgentInstall } from "./agent-install";
 import { buildAgentInstallAll } from "./agent-install-all";
@@ -70,6 +71,8 @@ export function buildArgv(req: JobRequest): BuiltArgv {
       return buildAgentReconfigure(req);
     case "agent.destroy":
       return buildAgentDestroy(req);
+    case "agent.export":
+      return buildAgentExport(req);
     case "skill.register":
       return buildSkillRegister(req);
     case "skill.unregister":

@@ -35,6 +35,7 @@ describe("v1 JobRequest command union snapshot (B9 + C4.2.7)", () => {
   "agent.catalog-rename",
   "agent.catalogs",
   "agent.destroy",
+  "agent.export",
   "agent.init",
   "agent.install",
   "agent.install-all",

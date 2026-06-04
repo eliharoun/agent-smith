@@ -52,6 +52,7 @@ describe("cli/agent wiring — structure", () => {
     expect(names).toEqual([
       "catalogs",
       "destroy",
+      "export",
       "init",
       "install",
       "install-all",

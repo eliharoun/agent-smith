@@ -617,6 +617,7 @@ Three modes:
 - `2` (`usage-error`) — neither `<name>` nor `--all` was given; or both
   were; or no remote-backed catalog matched `<name>`; or `--all`
   matched zero remote-backed catalogs.
+- `0` (with advisory) — `<name>` matched an **imported-archive** catalog (no upstream to pull from). Re-import a fresh artifact via `smith agent install --from <new-artifact>` to update.
 - `1` (`EXIT_RUNTIME`) — every attempted pull failed (no successes).
 - `3` (`EXIT_PARTIAL`) — at least one pull succeeded and at least one
   failed; per-catalog error lines go to stderr.
@@ -1356,6 +1357,57 @@ $ smith agent install code-reviewer \
 [Installing and rendering](./03-installing-and-rendering.md),
 [Skills](./05-skills.md#required-skills-requiresskills),
 [Sharing & distribution § 9](./15-sharing-and-distribution.md#9-sharing-via-direct-url).
+
+---
+
+### `smith agent export <name>`
+
+**Synopsis:** `smith agent export <name> [--to <path>] [--stdout] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--json] [--dry-run]`
+
+**Description:** Package an agent bundle into a single `.smith-bundle.tgz` archive that the recipient can install via `smith agent install --from <archive>`. The archive contains the bundle's persona files (IDENTITY/EXPERTISE/SOUL/USER stub), all local-knowledge files (`type: file` / `dir` / `glob`), and (by default) every skill the bundle requires. It does NOT contain MCP servers, credentials, or remote knowledge content — those are declared in the manifest and the recipient brings or fetches them at install time. Source: `src/cli/commands/export.ts` and `src/core/export-bundle.ts`.
+
+**Arguments:**
+
+- `<name>` — bundle name. Resolved through registered agent catalogs the same way `smith agent install <name>` resolves.
+
+**Flags:**
+
+- `--to <path>` — output directory or file path. Default `.`. If a directory, the archive is named `<name>-<sha>.smith-bundle.tgz`.
+- `--stdout` — stream the archive bytes to stdout (logs to stderr). Mutually exclusive with `--to`.
+- `--include-skills` (default) — embed the source of every skill in `requires.skills[]` under `skills/<name>/` in the archive.
+- `--no-include-skills` — declare-only mode. Recipient resolves each skill from their own registered catalogs.
+- `--user-md <policy>` — `stub` (default), `keep`, or `reject`. `stub` always emits the canonical placeholder `USER.md`; `keep` ships whatever's on disk; `reject` refuses if the source isn't already the canonical stub.
+- `--compression <gzip|none>` — default `gzip`. Use `none` when streaming through your own compression layer.
+- `--json` — emit machine-readable progress on stderr; the artifact path on stdout when not streaming.
+- `--dry-run` — plan and validate; print the manifest; write nothing.
+
+**Exit codes:**
+
+- `0` — archive written successfully.
+- `1` — resolution / validation error (bundle missing, malformed config, knowledge paths absolute or escaping the bundle dir, missing required skill on the producer's machine).
+- `2` — I/O error writing the archive.
+
+**Examples:**
+
+```bash
+# Quick share — local content + embedded skills
+$ smith agent export code-reviewer --to ~/Downloads/
+✓ exported code-reviewer
+  /Users/me/Downloads/code-reviewer-abc1234.smith-bundle.tgz
+  18.4 KB  sha256:abc12345abcd…
+
+To install on a recipient machine:
+  smith agent install --from /Users/me/Downloads/code-reviewer-abc1234.smith-bundle.tgz
+
+# Declare-only mode — recipient resolves skills from their team catalog
+$ smith agent export code-reviewer --no-include-skills --to ~/Downloads/
+
+# Pipe to a remote uploader
+$ smith agent export code-reviewer --stdout | gh release upload v1.0 - --name code-reviewer.smith-bundle.tgz
+```
+
+**See also:** [`smith agent install --from`](#smith-agent-install-name) accepts both git URLs and `.smith-bundle.tgz` paths/URLs.
+[Sharing & distribution § archive-based sharing](./15-sharing-and-distribution.md#sharing-via-exported-archive).
 
 ---
 

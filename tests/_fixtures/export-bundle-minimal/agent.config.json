@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "name": "minimal-bundle",
+  "description": "Use proactively as a minimal export-test fixture.",
+  "targets": ["claude-code"],
+  "modelTier": "balanced",
+  "mode": "subagent"
+}

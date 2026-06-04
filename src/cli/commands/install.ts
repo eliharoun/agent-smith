@@ -1,5 +1,7 @@
-import { rm, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import { readSmithVersion } from "../../io/smith-version";
 import pc from "picocolors";
 import { probeRoute } from "../../core/knowledge/probe-route";
 import { installLockPath } from "../../core/knowledge/refresh-lock";
@@ -7,9 +9,9 @@ import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refr
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
 import {
   loadRouteCache as defaultLoadRouteCache,
-  recordRoute as recordCacheRoute,
-  type RouteCache,
   saveRouteCache as defaultSaveRouteCache,
+  type RouteCache,
+  recordRoute as recordCacheRoute,
 } from "../../core/knowledge/route-cache";
 import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
 import { SmithError } from "../../core/smith-error";
@@ -20,11 +22,11 @@ import {
   installRequiredSkills,
 } from "../../io/install-required-skills";
 import { loadInstalledSkills } from "../../io/installed-skills";
+import { McpClientPool } from "../../io/mcp-client-pool";
 import {
   type AvailableMap,
   readAvailableMcpServers as defaultReadAvailable,
 } from "../../io/mcp-config-readers";
-import { McpClientPool } from "../../io/mcp-client-pool";
 import { createSpawnOptsResolver } from "../../io/mcp-spawn-resolver";
 import { registerAgentInOpencodePlugin } from "../../io/opencode-plugin";
 import {
@@ -36,8 +38,8 @@ import type { Registry } from "../../io/registry";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { installSkill } from "../../io/skill-installer";
 import { stateHome } from "../../io/state-home";
-import { formatInstallSummary } from "../format-install";
 import { formatKnowledgeLines } from "../format";
+import { formatInstallSummary } from "../format-install";
 import {
   defaultAgentSmithHome,
   defaultCodexHome,
@@ -50,8 +52,8 @@ import {
   loadAllBundles,
   warnUnrelatedLoadFailures,
 } from "../load-all";
-import { readConsentChoice, readToken } from "../prompt";
 import type { RefreshConsentParsed } from "../parse-refresh-consent";
+import { readConsentChoice, readToken } from "../prompt";
 import { preflightMcp } from "./agent/preflight-mcp";
 
 /**
@@ -264,9 +266,7 @@ export async function installBareHelpfulError(
   // "install-all" hint is louder than helpful in single-agent setups
   // (most fresh installs land here with just `agent-smith` registered).
   const suggestedCommand =
-    names.length === 1
-      ? `smith agent install ${names[0]}`
-      : "smith agent install-all";
+    names.length === 1 ? `smith agent install ${names[0]}` : "smith agent install-all";
   throw new SmithError({
     code: "usage-error",
     message:
@@ -294,6 +294,35 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // contains exactly one bundle, infer it; otherwise emit a disambiguation
   // hint and exit non-zero.
   if (o.from) {
+    const { isArchiveTarget } = await import("../../io/archive-detect");
+    if (isArchiveTarget(o.from)) {
+      // Archive path (.smith-bundle.tgz or .tgz) — stage and register via
+      // installFromArchive, then fall through into the normal local-bundle
+      // install path by clearing `from` and setting `name`.
+      const localPath = o.from.startsWith("https://")
+        ? await downloadArchive(o.from)
+        : o.from;
+      const smithVersion = await readSmithVersion();
+      const { installFromArchive } = await import("../../core/install-from-archive");
+      try {
+        const result = await installFromArchive({ archivePath: localPath, smithVersion });
+        // Set the bundle name so the normal per-bundle install path below picks
+        // it up. Clear `from` so we skip git-URL handling — the archive is
+        // already staged and registered.
+        o.name = result.bundles[0]!;
+        // Clear `from` so git-URL handling below is skipped — archive is
+        // already staged and registered; fall through to local-bundle path.
+        delete o.from;
+      } catch (err) {
+        // SmithError carries structured payload (reasons[], suggestedCommand,
+        // etc.) that wrap() knows how to render. Re-throw so that context
+        // reaches the user instead of being flattened to a single line.
+        if (err instanceof SmithError) throw err;
+        // Unexpected I/O or runtime error — fall back to the terse one-liner.
+        printErr(`smith: failed to install from ${localPath}: ${(err as Error).message}`);
+        return 2;
+      }
+    } else {
     const { isLikelyGitUrl } = await import("../../io/remote-path");
     if (!isLikelyGitUrl(o.from)) {
       printErr(`smith: --from is not a recognized git url: ${o.from}`);
@@ -308,9 +337,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.ref ? { ref: o.ref } : {}),
       });
     } catch (err) {
-      printErr(
-        `smith: failed to install from ${o.from}: ${(err as Error).message}`,
-      );
+      printErr(`smith: failed to install from ${o.from}: ${(err as Error).message}`);
       return 2;
     }
 
@@ -322,7 +349,9 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
 
     // Resolve which agents to install.
     const isTty = o.isTTY ? o.isTTY() : Boolean(process.stdin.isTTY);
-    const read = o.prompt ? () => o.prompt!("> ") : (): Promise<string> => import("../prompt").then((m) => m.readToken("> "));
+    const read = o.prompt
+      ? () => o.prompt!("> ")
+      : (): Promise<string> => import("../prompt").then((m) => m.readToken("> "));
     const names = await resolveAgentSelection(disco.bundles, {
       ...(o.name ? { name: o.name } : {}),
       ...(o.agents ? { agents: o.agents } : {}),
@@ -345,9 +374,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.ref ? { ref: o.ref } : {}),
       });
     } catch (err) {
-      printErr(
-        `smith: failed to install from ${o.from}: ${(err as Error).message}`,
-      );
+      printErr(`smith: failed to install from ${o.from}: ${(err as Error).message}`);
       return 2;
     }
 
@@ -361,7 +388,9 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ? (declared.filter((t) => chosen.includes(t as PlatformId)) as PlatformId[])
         : (declared as PlatformId[]);
       if (chosen && inter.length === 0) {
-        printErr(`⚠ skipping ${n}: no selected platform matches its declared targets (${declared.join(", ")})`);
+        printErr(
+          `⚠ skipping ${n}: no selected platform matches its declared targets (${declared.join(", ")})`,
+        );
         continue;
       }
       const code = await install({
@@ -391,10 +420,13 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     }
     if (failed > 0) return 1;
     if (names.length > 0 && installed === 0) {
-      printErr("smith: no agents were installed (all skipped — no selected platform matched their declared targets)");
+      printErr(
+        "smith: no agents were installed (all skipped — no selected platform matched their declared targets)",
+      );
       return 1;
     }
     return 0;
+    } // end else (git-URL branch)
   }
 
   if (!o.name) {
@@ -571,240 +603,240 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   };
 
   try {
-  // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
-  // the translator gates emission of the SessionStart hook block on an
-  // explicit opt-in flag threaded through the render context, so we have to
-  // know the per-bundle decision before files are written. Previously this
-  // ran AFTER buildAndInstall, which produced "orphan hooks": files with
-  // SessionStart blocks but no refresh manifest, firing on every Claude
-  // session even when the user passed `--no-refresh-hooks` or declined.
-  //
-  // We re-derive the set of session/always sources from the canonical config
-  // rather than peeking into rendered frontmatter, keeping schema as the
-  // source of truth.
-  const promptFn = o.prompt ?? readToken;
-  const withRefreshHooksFor = new Map<string, boolean>();
-  // Per-bundle map of platforms the user consented to. Populated in the
-  // pre-render pass; consumed in the post-install pass to write the
-  // refresh manifest and (for codex) register the hook entry.
-  const consentedBundles: {
-    bundle: AgentBundle;
-    sources: string[];
-    platforms: PlatformId[];
-  }[] = [];
-  // Platforms eligible for the refresh-hook consent flow.
-  const CONSENT_PLATFORMS: PlatformId[] = ["claude-code", "codex", "opencode"];
-  if (!o.noRefreshHooks) {
-    // Pre-derive the set of session/always sources per bundle (same shape
-    // across platforms, so we compute once).
-    const eligibleBundles = bundles
-      .map((b) => {
-        const sessionSources = (b.config.knowledge?.sources ?? [])
-          .filter((s) => {
-            const n = parseRefresh(s.refresh);
-            return n.mode === "session" || n.mode === "always";
-          })
-          .map((s) => s.id);
-        return { bundle: b, sessionSources };
-      })
-      .filter((x) => x.sessionSources.length > 0);
+    // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
+    // the translator gates emission of the SessionStart hook block on an
+    // explicit opt-in flag threaded through the render context, so we have to
+    // know the per-bundle decision before files are written. Previously this
+    // ran AFTER buildAndInstall, which produced "orphan hooks": files with
+    // SessionStart blocks but no refresh manifest, firing on every Claude
+    // session even when the user passed `--no-refresh-hooks` or declined.
+    //
+    // We re-derive the set of session/always sources from the canonical config
+    // rather than peeking into rendered frontmatter, keeping schema as the
+    // source of truth.
+    const promptFn = o.prompt ?? readToken;
+    const withRefreshHooksFor = new Map<string, boolean>();
+    // Per-bundle map of platforms the user consented to. Populated in the
+    // pre-render pass; consumed in the post-install pass to write the
+    // refresh manifest and (for codex) register the hook entry.
+    const consentedBundles: {
+      bundle: AgentBundle;
+      sources: string[];
+      platforms: PlatformId[];
+    }[] = [];
+    // Platforms eligible for the refresh-hook consent flow.
+    const CONSENT_PLATFORMS: PlatformId[] = ["claude-code", "codex", "opencode"];
+    if (!o.noRefreshHooks) {
+      // Pre-derive the set of session/always sources per bundle (same shape
+      // across platforms, so we compute once).
+      const eligibleBundles = bundles
+        .map((b) => {
+          const sessionSources = (b.config.knowledge?.sources ?? [])
+            .filter((s) => {
+              const n = parseRefresh(s.refresh);
+              return n.mode === "session" || n.mode === "always";
+            })
+            .map((s) => s.id);
+          return { bundle: b, sessionSources };
+        })
+        .filter((x) => x.sessionSources.length > 0);
 
-    for (const { bundle: b, sessionSources } of eligibleBundles) {
-      const targets = b.config.targets.filter((t): t is PlatformId =>
-        CONSENT_PLATFORMS.includes(t as PlatformId),
-      );
-      if (targets.length === 0) continue;
+      for (const { bundle: b, sessionSources } of eligibleBundles) {
+        const targets = b.config.targets.filter((t): t is PlatformId =>
+          CONSENT_PLATFORMS.includes(t as PlatformId),
+        );
+        if (targets.length === 0) continue;
 
-      const isTty = o.isTTY ? o.isTTY() : o.prompt !== undefined || Boolean(process.stdin.isTTY);
+        const isTty = o.isTTY ? o.isTTY() : o.prompt !== undefined || Boolean(process.stdin.isTTY);
 
-      const consentingPlatforms: PlatformId[] = [];
-      const skipMsg = (target: PlatformId) =>
-        `${pc.yellow("warn")} refresh-hook consent skipped for ${b.config.name} on ${target} (non-interactive). Re-run with --refresh-consent yes to enable.`;
-      for (const target of targets) {
-        // Resolve any pre-answered consent (CLI flag) for this specific
-        // target. Scalar applies uniformly; perPlatform may omit a target
-        // (in which case we fall through to the prompt/non-TTY flow).
-        let preAnswered: "yes" | "no" | undefined;
-        if (o.refreshConsent?.kind === "scalar") {
-          preAnswered = o.refreshConsent.value;
-        } else if (o.refreshConsent?.kind === "perPlatform") {
-          preAnswered = o.refreshConsent.value[target];
-        }
-
-        let decision: "yes" | "no";
-        if (preAnswered !== undefined) {
-          decision = preAnswered;
-        } else if (!isTty) {
-          // Non-TTY default: skip hook install (spec §5.4). Tell the user
-          // how to opt in explicitly. Stderr because this is operational
-          // guidance, not part of the install summary.
-          printErr(skipMsg(target));
-          decision = "no";
-        } else {
-          printConsentPrompt(b.config, target, printErr);
-          const first = await readConsentChoice({
-            read: async () => promptFn("> "),
-          });
-          if (first === "details") {
-            printConsentDetails(b.config, target, printErr);
-            // Cap at one expansion: a follow-up "details" is treated as yes
-            // (the default) to avoid an infinite re-print loop.
-            const second = await readConsentChoice({
-              read: async () => promptFn("Allow? [Y/n] "),
-            });
-            decision = second === "no" ? "no" : "yes";
-          } else {
-            decision = first;
+        const consentingPlatforms: PlatformId[] = [];
+        const skipMsg = (target: PlatformId) =>
+          `${pc.yellow("warn")} refresh-hook consent skipped for ${b.config.name} on ${target} (non-interactive). Re-run with --refresh-consent yes to enable.`;
+        for (const target of targets) {
+          // Resolve any pre-answered consent (CLI flag) for this specific
+          // target. Scalar applies uniformly; perPlatform may omit a target
+          // (in which case we fall through to the prompt/non-TTY flow).
+          let preAnswered: "yes" | "no" | undefined;
+          if (o.refreshConsent?.kind === "scalar") {
+            preAnswered = o.refreshConsent.value;
+          } else if (o.refreshConsent?.kind === "perPlatform") {
+            preAnswered = o.refreshConsent.value[target];
           }
-        }
-        if (decision !== "yes") continue;
 
-        // claude-code requires the pre-render gate because its translator
-        // emits the hook frontmatter at render time. codex does not — its
-        // hook lives in ~/.codex/hooks.json which we touch post-install.
-        if (target === "claude-code") {
-          withRefreshHooksFor.set(b.config.name, true);
+          let decision: "yes" | "no";
+          if (preAnswered !== undefined) {
+            decision = preAnswered;
+          } else if (!isTty) {
+            // Non-TTY default: skip hook install (spec §5.4). Tell the user
+            // how to opt in explicitly. Stderr because this is operational
+            // guidance, not part of the install summary.
+            printErr(skipMsg(target));
+            decision = "no";
+          } else {
+            printConsentPrompt(b.config, target, printErr);
+            const first = await readConsentChoice({
+              read: async () => promptFn("> "),
+            });
+            if (first === "details") {
+              printConsentDetails(b.config, target, printErr);
+              // Cap at one expansion: a follow-up "details" is treated as yes
+              // (the default) to avoid an infinite re-print loop.
+              const second = await readConsentChoice({
+                read: async () => promptFn("Allow? [Y/n] "),
+              });
+              decision = second === "no" ? "no" : "yes";
+            } else {
+              decision = first;
+            }
+          }
+          if (decision !== "yes") continue;
+
+          // claude-code requires the pre-render gate because its translator
+          // emits the hook frontmatter at render time. codex does not — its
+          // hook lives in ~/.codex/hooks.json which we touch post-install.
+          if (target === "claude-code") {
+            withRefreshHooksFor.set(b.config.name, true);
+          }
+          consentingPlatforms.push(target);
         }
-        consentingPlatforms.push(target);
+
+        if (consentingPlatforms.length > 0) {
+          consentedBundles.push({
+            bundle: b,
+            sources: sessionSources,
+            platforms: consentingPlatforms,
+          });
+        }
       }
+    }
 
-      if (consentingPlatforms.length > 0) {
-        consentedBundles.push({
-          bundle: b,
-          sources: sessionSources,
-          platforms: consentingPlatforms,
+    // Build agent bundles. If any agent build fails we abort before
+    // touching the user's skill set — installing a required skill for an
+    // agent that didn't ship would leave a confusing partial state.
+    // `mcpPool` + `spawnOptsFor` thread to `acquireSource` for via-routed
+    // knowledge sources. `routeCache` + `metaClaims` + `probeOnFailure` +
+    // `recordRoute` thread the Phase 3 three-layer resolver through the
+    // pipeline so URL sources without explicit `via:` get cached/advertised
+    // routing and can prompt to probe declared servers on direct-fetch
+    // failure.
+    const result = await build(bundles, paths, {
+      withRefreshHooksFor,
+      ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
+      ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
+      ...(o.force === true ? { force: true } : {}),
+      ...(o.platformConventions ? { platformConventions: o.platformConventions } : {}),
+      mcpPool: pool,
+      spawnOptsFor,
+      routeCache: mutableRouteCache,
+      metaClaims: allMetaClaims,
+      ...(probeOnFailure ? { probeOnFailure } : {}),
+      recordRoute,
+    });
+    if (result.errors.length > 0) {
+      for (const e of result.errors) {
+        printErr(pc.red(`FAIL ${e.agent}`));
+        for (const m of e.messages) printErr(pc.red(`  ${m}`));
+      }
+      return 1;
+    }
+
+    // Print build output first so the user sees agent-install results
+    // before the (separate) required-skills section. The formatter groups
+    // by agent + status glyph + per-target detail; see src/cli/format-install.ts.
+    const summaryLines = formatInstallSummary(
+      {
+        installed: result.installed,
+        skipped: result.skipped,
+        warnings: result.warnings,
+      },
+      {
+        verbose: o.verbose === true,
+        style: pc as unknown as import("../format-install").InstallSummaryStyler,
+      },
+    );
+    for (const line of summaryLines) print(line);
+
+    // Knowledge materialization summary. One block per agent that has any
+    // knowledge sources. formatKnowledgeLines returns an empty array for
+    // agents whose sources list is empty, which suppresses display naturally.
+    for (const summary of result.knowledge) {
+      for (const line of formatKnowledgeLines(summary)) {
+        print(line);
+      }
+    }
+
+    // Required-skills resolution (spec §8.3). Runs after a successful build.
+    // Per spec, never aborts on skill failure — surfaces warnings so the user
+    // sees the agent install attempt complete.
+    const skillMode: InstallRequiredSkillsMode = o.skillMode ?? "prompt";
+    const loadInstalled = o.loadInstalledSkillNames ?? defaultLoadInstalledSkillNames;
+    const installSkillRef = o.installSkillByRef ?? defaultInstallSkillByRef;
+    for (const bundle of bundles) {
+      const required = bundle.config.requires?.skills ?? [];
+      if (required.length === 0) continue;
+      const skillResult = await installRequiredSkills({
+        agentName: bundle.config.name,
+        required,
+        mode: skillMode,
+        loadInstalledSkillNames: loadInstalled,
+        installSkillByRef: installSkillRef,
+        prompt: promptFn,
+        ...(o.isTTY ? { isTTY: o.isTTY } : {}),
+      });
+      for (const ref of skillResult.installed) {
+        print(`${pc.green("→")} skill ${ref} installed`);
+      }
+      for (const w of skillResult.warnings) {
+        print(`${pc.yellow("warn")} ${w}`);
+      }
+    }
+
+    // Refresh-hook consent — post-install side effects. Consent prompts ran
+    // BEFORE build (see top of this function) so the render layer received
+    // correct gating. Here we persist the manifest for bundles the user
+    // approved and, for codex-consenting bundles, register the agent in
+    // ~/.codex/hooks.json. Doing this AFTER successful install keeps the
+    // invariant that no manifest / hook entry is written for a bundle whose
+    // render failed.
+    if (consentedBundles.length > 0) {
+      const home = o.agentSmithHome ?? defaultAgentSmithHome();
+      const codexHome = o.codexHome ?? defaultCodexHome();
+      const opencodeHome = o.opencodeConfigHome ?? defaultOpencodeConfigHome();
+      for (const { bundle: b, sources, platforms } of consentedBundles) {
+        if (platforms.includes("codex")) {
+          await registerAgentInCodexHooks(codexHome, b.config.name);
+          // One-time advisory: codex requires the user to run /hooks the
+          // first time the hooks.json sentinel changes, otherwise the
+          // SessionStart entry is silently ignored.
+          printErr(
+            `smith: open codex and type /hooks to trust the smith entry for ${b.config.name}.`,
+          );
+        }
+        if (platforms.includes("opencode")) {
+          // Register the agent in the shared agent-smith-refresh OpenCode
+          // plugin. Plugin dir + opencode.json entry are created on first
+          // call; subsequent agents are appended to the sentinel.
+          await registerAgentInOpencodePlugin(opencodeHome, b.config.name);
+          // Symmetric acknowledgment with the codex /hooks advisory above.
+          // Opencode plugins load automatically on the next session.created
+          // event, so no manual reload step is required — just confirm.
+          printErr(
+            `smith: registered ${b.config.name} in the agent-smith-refresh OpenCode plugin.`,
+          );
+        }
+        await writeRefreshManifest(home, b.config.name, {
+          schemaVersion: 1,
+          agent: b.config.name,
+          refresh_consent: {
+            granted_at: new Date().toISOString(),
+            platforms,
+            sources,
+          },
         });
       }
     }
-  }
 
-  // Build agent bundles. If any agent build fails we abort before
-  // touching the user's skill set — installing a required skill for an
-  // agent that didn't ship would leave a confusing partial state.
-  // `mcpPool` + `spawnOptsFor` thread to `acquireSource` for via-routed
-  // knowledge sources. `routeCache` + `metaClaims` + `probeOnFailure` +
-  // `recordRoute` thread the Phase 3 three-layer resolver through the
-  // pipeline so URL sources without explicit `via:` get cached/advertised
-  // routing and can prompt to probe declared servers on direct-fetch
-  // failure.
-  const result = await build(bundles, paths, {
-    withRefreshHooksFor,
-    ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
-    ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
-    ...(o.force === true ? { force: true } : {}),
-    ...(o.platformConventions
-      ? { platformConventions: o.platformConventions }
-      : {}),
-    mcpPool: pool,
-    spawnOptsFor,
-    routeCache: mutableRouteCache,
-    metaClaims: allMetaClaims,
-    ...(probeOnFailure ? { probeOnFailure } : {}),
-    recordRoute,
-  });
-  if (result.errors.length > 0) {
-    for (const e of result.errors) {
-      printErr(pc.red(`FAIL ${e.agent}`));
-      for (const m of e.messages) printErr(pc.red(`  ${m}`));
-    }
-    return 1;
-  }
-
-  // Print build output first so the user sees agent-install results
-  // before the (separate) required-skills section. The formatter groups
-  // by agent + status glyph + per-target detail; see src/cli/format-install.ts.
-  const summaryLines = formatInstallSummary(
-    {
-      installed: result.installed,
-      skipped: result.skipped,
-      warnings: result.warnings,
-    },
-    {
-      verbose: o.verbose === true,
-      style: pc as unknown as import("../format-install").InstallSummaryStyler,
-    },
-  );
-  for (const line of summaryLines) print(line);
-
-  // Knowledge materialization summary. One block per agent that has any
-  // knowledge sources. formatKnowledgeLines returns an empty array for
-  // agents whose sources list is empty, which suppresses display naturally.
-  for (const summary of result.knowledge) {
-    for (const line of formatKnowledgeLines(summary)) {
-      print(line);
-    }
-  }
-
-  // Required-skills resolution (spec §8.3). Runs after a successful build.
-  // Per spec, never aborts on skill failure — surfaces warnings so the user
-  // sees the agent install attempt complete.
-  const skillMode: InstallRequiredSkillsMode = o.skillMode ?? "prompt";
-  const loadInstalled = o.loadInstalledSkillNames ?? defaultLoadInstalledSkillNames;
-  const installSkillRef = o.installSkillByRef ?? defaultInstallSkillByRef;
-  for (const bundle of bundles) {
-    const required = bundle.config.requires?.skills ?? [];
-    if (required.length === 0) continue;
-    const skillResult = await installRequiredSkills({
-      agentName: bundle.config.name,
-      required,
-      mode: skillMode,
-      loadInstalledSkillNames: loadInstalled,
-      installSkillByRef: installSkillRef,
-      prompt: promptFn,
-      ...(o.isTTY ? { isTTY: o.isTTY } : {}),
-    });
-    for (const ref of skillResult.installed) {
-      print(`${pc.green("→")} skill ${ref} installed`);
-    }
-    for (const w of skillResult.warnings) {
-      print(`${pc.yellow("warn")} ${w}`);
-    }
-  }
-
-  // Refresh-hook consent — post-install side effects. Consent prompts ran
-  // BEFORE build (see top of this function) so the render layer received
-  // correct gating. Here we persist the manifest for bundles the user
-  // approved and, for codex-consenting bundles, register the agent in
-  // ~/.codex/hooks.json. Doing this AFTER successful install keeps the
-  // invariant that no manifest / hook entry is written for a bundle whose
-  // render failed.
-  if (consentedBundles.length > 0) {
-    const home = o.agentSmithHome ?? defaultAgentSmithHome();
-    const codexHome = o.codexHome ?? defaultCodexHome();
-    const opencodeHome = o.opencodeConfigHome ?? defaultOpencodeConfigHome();
-    for (const { bundle: b, sources, platforms } of consentedBundles) {
-      if (platforms.includes("codex")) {
-        await registerAgentInCodexHooks(codexHome, b.config.name);
-        // One-time advisory: codex requires the user to run /hooks the
-        // first time the hooks.json sentinel changes, otherwise the
-        // SessionStart entry is silently ignored.
-        printErr(
-          `smith: open codex and type /hooks to trust the smith entry for ${b.config.name}.`,
-        );
-      }
-      if (platforms.includes("opencode")) {
-        // Register the agent in the shared agent-smith-refresh OpenCode
-        // plugin. Plugin dir + opencode.json entry are created on first
-        // call; subsequent agents are appended to the sentinel.
-        await registerAgentInOpencodePlugin(opencodeHome, b.config.name);
-        // Symmetric acknowledgment with the codex /hooks advisory above.
-        // Opencode plugins load automatically on the next session.created
-        // event, so no manual reload step is required — just confirm.
-        printErr(`smith: registered ${b.config.name} in the agent-smith-refresh OpenCode plugin.`);
-      }
-      await writeRefreshManifest(home, b.config.name, {
-        schemaVersion: 1,
-        agent: b.config.name,
-        refresh_consent: {
-          granted_at: new Date().toISOString(),
-          platforms,
-          sources,
-        },
-      });
-    }
-  }
-
-  return 0;
+    return 0;
   } finally {
     // Pool lifetime ends here so via-routed acquires can run during build
     // and finish before we tear down their connections. shutdown() is
@@ -819,16 +851,38 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
  * Single-bundle remotes auto-select. --all / --agents / name positional resolve directly.
  */
 async function resolveAgentSelection(
-  bundles: Array<{ name: string; description: string; targets?: string[]; alreadyInstalled: boolean }>,
-  o: { name?: string; agents?: string; all: boolean; isTty: boolean; read: () => Promise<string>; from: string; printErr: (m: string) => void },
+  bundles: Array<{
+    name: string;
+    description: string;
+    targets?: string[];
+    alreadyInstalled: boolean;
+  }>,
+  o: {
+    name?: string;
+    agents?: string;
+    all: boolean;
+    isTty: boolean;
+    read: () => Promise<string>;
+    from: string;
+    printErr: (m: string) => void;
+  },
 ): Promise<string[] | null> {
   const { promptMultiSelect } = await import("../multi-select");
   const valid = new Set(bundles.map((b) => b.name));
   const fail = (n: string) =>
-    new SmithError({ code: "usage-error", message: `unknown agent '${n}' (valid: ${[...valid].join(", ")})` });
-  if (o.name) { if (!valid.has(o.name)) throw fail(o.name); return [o.name]; }
+    new SmithError({
+      code: "usage-error",
+      message: `unknown agent '${n}' (valid: ${[...valid].join(", ")})`,
+    });
+  if (o.name) {
+    if (!valid.has(o.name)) throw fail(o.name);
+    return [o.name];
+  }
   if (o.agents) {
-    const list = o.agents.split(",").map((s) => s.trim()).filter(Boolean);
+    const list = o.agents
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     for (const a of list) if (!valid.has(a)) throw fail(a);
     return list;
   }
@@ -836,7 +890,11 @@ async function resolveAgentSelection(
   if (bundles.length === 1) return [bundles[0]!.name];
   if (o.isTty) {
     const idx = await promptMultiSelect(
-      bundles.map((b) => ({ label: b.name, hint: b.description.slice(0, 80), ...(b.alreadyInstalled ? { annotation: "[installed]" } : {}) })),
+      bundles.map((b) => ({
+        label: b.name,
+        hint: b.description.slice(0, 80),
+        ...(b.alreadyInstalled ? { annotation: "[installed]" } : {}),
+      })),
       { read: o.read },
     );
     return idx.map((i) => bundles[i]!.name);
@@ -856,10 +914,7 @@ async function resolveAgentSelection(
  * Order is preserved from the bundle's declared targets (not the filter),
  * to keep per-agent install order stable across invocations.
  */
-function applyPlatformFilter(
-  bundle: AgentBundle,
-  filter: PlatformId[] | undefined,
-): AgentBundle {
+function applyPlatformFilter(bundle: AgentBundle, filter: PlatformId[] | undefined): AgentBundle {
   if (!filter || filter.length === 0) return bundle;
   const declared: Target[] = bundle.config.targets;
   // PlatformId and Target are structurally identical unions today; widen
@@ -967,3 +1022,41 @@ function printConsentDetails(
   }
   printErr("");
 }
+
+// Matches loopback, link-local, RFC1918, and common IPv6 private prefixes.
+// Prevents SSRF attacks where the CLI could be pointed at internal services.
+const FORBIDDEN_HOSTS =
+  /^(localhost|0\.0\.0\.0|127\.|169\.254\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1$|fe80:|fc00:|fd00:)/i;
+
+const MAX_DOWNLOAD_BYTES = 200 * 1024 * 1024; // 200 MB, matches the GUI staging route
+
+/**
+ * Download an archive from an HTTPS URL to a temp file and return the local
+ * path. Used when `--from` is an https:// archive target.
+ *
+ * Exported for unit-testing the host and size gates.
+ */
+export async function downloadArchive(url: string): Promise<string> {
+  const u = new URL(url);
+  const host = u.hostname.toLowerCase();
+  if (FORBIDDEN_HOSTS.test(host)) {
+    throw new Error(`refusing to fetch archive from internal/loopback host: ${host}`);
+  }
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`download failed: ${resp.status} ${resp.statusText}`);
+  }
+  const len = parseInt(resp.headers.get("content-length") ?? "0", 10);
+  if (len > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`archive too large: ${len} bytes (max ${MAX_DOWNLOAD_BYTES})`);
+  }
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  if (bytes.length > MAX_DOWNLOAD_BYTES) {
+    throw new Error(`archive too large: ${bytes.length} bytes (max ${MAX_DOWNLOAD_BYTES})`);
+  }
+  const dir = await mkdtemp(join(tmpdir(), "smith-archive-dl-"));
+  const out = join(dir, "downloaded.smith-bundle.tgz");
+  await writeFile(out, bytes);
+  return out;
+}
+

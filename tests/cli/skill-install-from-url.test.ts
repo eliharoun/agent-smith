@@ -149,26 +149,34 @@ describe("smith skill install --from <url> [v1-task C3.10]", () => {
     }
   });
 
-  test("local path --from still works (regression: URL branch must not break path branch)", async () => {
-    // Build a local skill dir and pass it via --from. This is the
-    // pre-existing C3.10 behavior we must preserve.
-    const skillDir = await mkdtemp(join(tmpdir(), "skill-local-"));
-    try {
-      await Bun.write(join(skillDir, "SKILL.md"), SKILL_BODY("local-skill"));
+  test(
+    "local path --from still works (regression: URL branch must not break path branch)",
+    async () => {
+      // Build a local skill dir and pass it via --from. This is the
+      // pre-existing C3.10 behavior we must preserve.
+      const skillDir = await mkdtemp(join(tmpdir(), "skill-local-"));
+      try {
+        await Bun.write(join(skillDir, "SKILL.md"), SKILL_BODY("local-skill"));
 
-      const program = makeProgram();
-      await program.parseAsync(["skill", "install", "--from", skillDir], { from: "user" });
+        const program = makeProgram();
+        await program.parseAsync(["skill", "install", "--from", skillDir], { from: "user" });
 
-      const installed = JSON.parse(
-        await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).text(),
-      );
-      expect(installed.installed.some((e: { name: string }) => e.name === "local-skill")).toBe(
-        true,
-      );
-    } finally {
-      await rm(skillDir, { recursive: true, force: true });
-    }
-  });
+        const installed = JSON.parse(
+          await Bun.file(join(home, ".config", "agent-smith", "installed-skills.json")).text(),
+        );
+        expect(installed.installed.some((e: { name: string }) => e.name === "local-skill")).toBe(
+          true,
+        );
+      } finally {
+        await rm(skillDir, { recursive: true, force: true });
+      }
+    },
+    // In-isolation runtime sits right at bun's 5s default (~4.8-5.0s on a
+    // warm machine), so this test flakes when run alone. The full suite
+    // still completes in ~15s. Bump the per-test timeout to give the
+    // single-test invocation headroom without changing what it tests.
+    15000,
+  );
 
   test("--all installs every skill from a multi-skill remote", async () => {
     const remote = await createBareRemote();

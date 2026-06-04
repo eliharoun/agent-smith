@@ -1,0 +1,42 @@
+import { useEffect, useState } from "react";
+import type { ExportManifest } from "gui-shared";
+import { apiFetch } from "@/api/client";
+
+interface PlanState {
+  status: "idle" | "loading" | "ready" | "error";
+  manifest?: ExportManifest;
+  error?: string;
+}
+
+export function useExportPlan(name: string | null) {
+  const [state, setState] = useState<PlanState>({ status: "idle" });
+
+  useEffect(() => {
+    if (!name) {
+      setState({ status: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setState({ status: "loading" });
+    apiFetch<{ manifest: ExportManifest }>(
+      `/api/agents/${encodeURIComponent(name)}/export/plan`,
+      { method: "POST" },
+    )
+      .then((body) => {
+        if (cancelled) return;
+        if (!body || typeof body !== "object" || !("manifest" in body) || !body.manifest) {
+          setState({ status: "error", error: "server returned no manifest" });
+          return;
+        }
+        setState({ status: "ready", manifest: body.manifest });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ status: "error", error: String(err) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [name]);
+
+  return state;
+}

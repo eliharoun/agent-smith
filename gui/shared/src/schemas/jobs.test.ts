@@ -572,7 +572,12 @@ describe("Knowledge compile + serve (T11)", () => {
 
 describe("Multi-select install (Task 6)", () => {
   it("skill.install accepts from + skills[] + json", () => {
-    const r = JobRequest.safeParse({ command: "skill.install", from: "https://x/y", skills: ["a", "b"], targets: ["kiro"] });
+    const r = JobRequest.safeParse({
+      command: "skill.install",
+      from: "https://x/y",
+      skills: ["a", "b"],
+      targets: ["kiro"],
+    });
     expect(r.success).toBe(true);
   });
   it("skill.install rejects skills[] without from", () => {
@@ -584,7 +589,35 @@ describe("Multi-select install (Task 6)", () => {
     expect(r.success).toBe(true);
   });
   it("agent.install accepts from + agents[] + platforms", () => {
-    const r = JobRequest.safeParse({ command: "agent.install", from: "https://x/y", agents: ["a"], platforms: ["claude-code"] });
+    const r = JobRequest.safeParse({
+      command: "agent.install",
+      from: "https://x/y",
+      agents: ["a"],
+      platforms: ["claude-code"],
+    });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("agent.export", () => {
+  it("agent.export — full payload", () => {
+    const parsed = JobRequest.parse({
+      command: "agent.export",
+      name: "code-reviewer",
+      to: "/tmp/out",
+      includeSkills: true,
+      userMd: "stub",
+      compression: "gzip",
+      json: false,
+      dryRun: false,
+      stdout: false,
+    });
+    expect(parsed.command).toBe("agent.export");
+  });
+
+  it("agent.export — name is required", () => {
+    expect(() =>
+      JobRequest.parse({ command: "agent.export", to: "/tmp" }),
+    ).toThrow();
   });
 });

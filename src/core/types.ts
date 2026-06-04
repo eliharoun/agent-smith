@@ -75,6 +75,14 @@ export interface Source {
    * <url>` (C-series, v0.25.0). Undefined for local-only catalogs.
    */
   remote?: Remote;
+  /** Set when this catalog was created via `smith agent install --from <archive>`.
+   *  Distinct from `remote` (git-clone-backed) — imported archives have no upstream
+   *  to pull from. */
+  importedArchive?: {
+    artifactPath: string;
+    sha256: string;
+    importedAt: string;
+  };
 }
 
 /**
