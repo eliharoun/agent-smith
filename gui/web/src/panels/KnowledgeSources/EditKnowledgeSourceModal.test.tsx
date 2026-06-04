@@ -152,8 +152,9 @@ describe("EditKnowledgeSourceModal", () => {
       delivery: "file",
       summary: "team docs",
       toc: true,
-      retrieval: { mode: "bm25" },
     });
+    // bm25 is the default; should NOT be written to disk when set to default value.
+    expect("retrieval" in body.knowledge.sources[0]).toBe(false);
   });
 
   it("round-trips the via field on save (regression: silent strip)", async () => {

@@ -68,10 +68,13 @@ function tocLineFor(s: MaterializedSource, summary: string): string {
     target = s.files[0]?.relPath ?? null;
   }
   const targetPart = target ? ` → \`${target}\`` : "";
+  // Default to bm25 when no `retrieval` block is set — that matches what
+  // `smith knowledge serve` actually does (it indexes every materialized
+  // source regardless of this field). `off` opts out of the annotation
+  // explicitly; `external-mcp` carries its own routing hint.
+  const effectiveMode = s.retrieval?.mode ?? "bm25";
   const retrievalPart =
-    s.retrieval?.mode && s.retrieval.mode !== "off"
-      ? ` (searchable: ${s.retrieval.mode})`
-      : "";
+    effectiveMode === "off" ? "" : ` (searchable: ${effectiveMode})`;
   return `- \`${s.id}\` [${s.type}]${summaryPart}${targetPart}${retrievalPart}`;
 }
 
@@ -92,7 +95,7 @@ export function compile(
     return {
       source: s,
       tocLine: line,
-      retrievalMode: s.retrieval?.mode ?? "off",
+      retrievalMode: s.retrieval?.mode ?? "bm25",
       relPath: s.files[0]?.relPath ?? null,
       contentSha: s.files[0]?.sha256,
     };

@@ -4,6 +4,36 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] — 2026-06-04
+
+### Changed
+
+- `retrieval.mode` on a knowledge source now defaults to `bm25` instead
+  of `off`, both in the GUI's per-source edit modal and in the compile
+  step that writes the TOC annotation. This matches what the local BM25
+  server actually does today: `smith knowledge serve` builds an
+  in-memory BM25 index over every `.md`/`.txt`/`.json` file in the
+  materialized knowledge tree on startup, regardless of any per-source
+  setting. Setting `bm25` (now the default) adds a `(searchable: bm25)`
+  hint to the source's compiled TOC line, priming the agent toward
+  `knowledge.search` queries; `off` omits the hint (advisory marker
+  that the source isn't search-friendly); `external-mcp` declares a
+  remote MCP for retrieval (annotation only today; runtime delegation
+  is forward work).
+
+- The GUI no longer persists a `retrieval` block when the user picks
+  `bm25` (the implicit default). Existing bundles with explicit
+  `retrieval: { mode: "bm25" }` continue to work; new bundles stay
+  clean.
+
+### Help text
+
+- The retrieval-mode tooltip in the GUI is rewritten to explain that
+  the BM25 index is rebuilt per session in the server's process
+  memory (no persistent reverse-index file), that the field today
+  controls only the TOC annotation (a prompt-engineering hint),
+  and that runtime gating per source is forward work.
+
 ## [1.7.2] — 2026-06-04
 
 ### Fixed

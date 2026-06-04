@@ -86,7 +86,7 @@ back to the page over SSE.
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
 | Construct | `/catalogs/register` | `smith {agent,skill} register` |
 | Knowledge | `/knowledge` | `smith knowledge list` across agents |
-| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval, summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers`. CLI parity: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`. |
+| Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval—default `bm25` for search-style queries; see [guide/04](./guide/04-knowledge.md#retrieval-mode)—summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers`. CLI parity: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`. |
 | Knowledge | `/knowledge/refresh-history` | refresh-mode timeline across agents |
 | Knowledge | `/knowledge/:agent/refresh-history` | per-agent refresh history |
 | Knowledge | `/system/atlassian-setup` | Atlassian credential setup (Confluence/Jira) |
