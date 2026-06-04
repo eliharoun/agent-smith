@@ -413,3 +413,60 @@ describe("acquire-source: Phase 3 resolver", () => {
     expect(probeCalled).toBe(false);
   });
 });
+
+describe("runMaterializer — html-to-md filename rewrite", () => {
+  it("rewrites artifact filename and relPath from .html to .md after html-to-md transformation", () => {
+    const art: AcquiredArtifact = {
+      filename: "page.html",
+      relPath: "page.html",
+      bytes: Buffer.from("<html><body><h1>Title</h1></body></html>", "utf8"),
+      contentType: "text/html",
+      sourceUrl: "https://example.com/page",
+    };
+    const result = runMaterializer("html-to-md", art);
+    expect(art.filename).toBe("page.md");
+    expect(art.relPath).toBe("page.md");
+    expect(result.content).toContain("Title");
+  });
+
+  it("rewrites .htm extension to .md as well", () => {
+    const art: AcquiredArtifact = {
+      filename: "page.htm",
+      relPath: "page.htm",
+      bytes: Buffer.from("<html><body><h1>Title</h1></body></html>", "utf8"),
+      contentType: "text/html",
+      sourceUrl: "https://example.com/page",
+    };
+    runMaterializer("html-to-md", art);
+    expect(art.filename).toBe("page.md");
+    expect(art.relPath).toBe("page.md");
+  });
+
+  it("preserves filename when extension is already .md", () => {
+    const art: AcquiredArtifact = {
+      filename: "page.md",
+      relPath: "page.md",
+      bytes: Buffer.from("# Already markdown", "utf8"),
+      contentType: "text/markdown",
+    };
+    // Note: this doesn't go through html-to-md materializer in practice,
+    // but if it ever does, the rewrite should be a no-op.
+    runMaterializer("html-to-md", art);
+    expect(art.filename).toBe("page.md");
+    expect(art.relPath).toBe("page.md");
+  });
+
+  it("preserves filename when no extension present", () => {
+    const art: AcquiredArtifact = {
+      filename: "page",
+      relPath: "page",
+      bytes: Buffer.from("<html><body>x</body></html>", "utf8"),
+      contentType: "text/html",
+      sourceUrl: "https://example.com/page",
+    };
+    runMaterializer("html-to-md", art);
+    // No .html suffix to strip → leave alone (least surprise).
+    expect(art.filename).toBe("page");
+    expect(art.relPath).toBe("page");
+  });
+});

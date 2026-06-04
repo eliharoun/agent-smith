@@ -226,8 +226,25 @@ export function runMaterializer(
   switch (m) {
     case "json":
       return materializeJson(art.bytes);
-    case "html-to-md":
+    case "html-to-md": {
+      // Rewrite artifact filename: bytes after this materializer ARE markdown,
+      // so the on-disk file should have a .md extension regardless of what
+      // the input HTML's extension was. The sniffer picks `.html` based on
+      // the INPUT content-type; the OUTPUT type is markdown after turndown.
+      // Mutating in place because callers (refresh-source.ts) read these
+      // fields after runMaterializer returns to choose where to write.
+      if (art.filename.toLowerCase().endsWith(".html")) {
+        art.filename = `${art.filename.slice(0, -5)}.md`;
+      } else if (art.filename.toLowerCase().endsWith(".htm")) {
+        art.filename = `${art.filename.slice(0, -4)}.md`;
+      }
+      if (art.relPath?.toLowerCase().endsWith(".html")) {
+        art.relPath = `${art.relPath.slice(0, -5)}.md`;
+      } else if (art.relPath?.toLowerCase().endsWith(".htm")) {
+        art.relPath = `${art.relPath.slice(0, -4)}.md`;
+      }
       return materializeHtml(art.bytes.toString("utf8"), art.sourceUrl ?? "https://localhost/");
+    }
     case "passthrough":
     case "markdown":
     case "text":

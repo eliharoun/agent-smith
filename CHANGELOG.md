@@ -4,6 +4,25 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] — 2026-06-04
+
+### Fixed
+
+- HTML sources that pass through the `html-to-md` materializer now land
+  on disk with `.md` extensions instead of `.html`. The bytes have been
+  transformed to markdown after turndown; the extension now matches.
+  Side effect: BM25 search via `smith knowledge serve` now sees these
+  files (the indexer's allowlist already includes `.md` but not `.html`,
+  so wiki content was previously unsearchable via `knowledge.search` —
+  agents had to fall through to direct-by-path `knowledge.fetch`).
+
+### Migration
+
+Existing `.html` files on disk keep working until the next
+`smith knowledge fetch <agent>` (or `--source <id>`), which re-acquires
+through the new pipeline and writes `.md` files. To force the rewrite
+without waiting, run `smith knowledge fetch <agent>`.
+
 ## [1.7.1] — 2026-06-03
 
 Two fixes for knowledge-source refresh, both of which prevented the
