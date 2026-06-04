@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import { GuiState, type GuiStatePatch } from "gui-shared";
 
 export interface LoadOptions {
@@ -19,6 +20,7 @@ function defaults(currentVersion: string) {
     mode: "guided" as const,
     theme: { intensity: "medium" as const },
     port: 7777,
+    exportDir: "",
   };
 }
 
@@ -51,6 +53,14 @@ export async function saveGuiState(opts: SaveOptions) {
   };
   await persist(opts.path, next);
   return next;
+}
+
+/** Resolve the user-configured exportDir, falling back to ~/Downloads.
+ *  Always returns an absolute path. */
+export function resolveExportDir(state: { exportDir?: string }): string {
+  const configured = state.exportDir?.trim();
+  if (configured && configured.length > 0) return configured;
+  return join(homedir(), "Downloads");
 }
 
 async function persist(path: string, state: unknown) {

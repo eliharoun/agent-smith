@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { registerExportsRoute } from "./exports";
 
@@ -36,8 +38,10 @@ describe("POST /api/agents/:name/export/plan", () => {
     });
     const res = await app.request("/api/agents/code-reviewer/export/plan", { method: "POST" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { manifest: { bundle: { name: string } } };
+    const body = (await res.json()) as { manifest: { bundle: { name: string } }; defaultExportDir: string };
     expect(body.manifest.bundle.name).toBe("code-reviewer");
+    // The route must include the resolved default export directory.
+    expect(body.defaultExportDir).toBe(join(homedir(), "Downloads"));
     // Verify the route invokes smith with the canonical dry-run flags.
     expect(received.args).toEqual(["agent", "export", "code-reviewer", "--dry-run", "--json"]);
   });

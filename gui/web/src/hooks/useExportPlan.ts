@@ -5,6 +5,7 @@ import { apiFetch } from "@/api/client";
 interface PlanState {
   status: "idle" | "loading" | "ready" | "error";
   manifest?: ExportManifest;
+  defaultExportDir?: string;
   error?: string;
 }
 
@@ -18,7 +19,7 @@ export function useExportPlan(name: string | null) {
     }
     let cancelled = false;
     setState({ status: "loading" });
-    apiFetch<{ manifest: ExportManifest }>(
+    apiFetch<{ manifest: ExportManifest; defaultExportDir: string }>(
       `/api/agents/${encodeURIComponent(name)}/export/plan`,
       { method: "POST" },
     )
@@ -28,7 +29,11 @@ export function useExportPlan(name: string | null) {
           setState({ status: "error", error: "server returned no manifest" });
           return;
         }
-        setState({ status: "ready", manifest: body.manifest });
+        setState({
+          status: "ready",
+          manifest: body.manifest,
+          defaultExportDir: body.defaultExportDir,
+        });
       })
       .catch((err) => {
         if (!cancelled) setState({ status: "error", error: String(err) });

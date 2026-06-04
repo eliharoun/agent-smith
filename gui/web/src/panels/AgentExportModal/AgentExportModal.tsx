@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { apiFetch } from "@/api/client";
 import { useExportPlan } from "@/hooks/useExportPlan";
+import { useJobStream } from "@/hooks/useJobStream";
 import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 
@@ -15,7 +18,7 @@ export function AgentExportModal({ name, open, onClose }: Props) {
   const [step, setStep] = useState<Step>("plan");
   const [includeSkills, setIncludeSkills] = useState(true);
   const [userMd, setUserMd] = useState<"stub" | "keep" | "reject">("stub");
-  const [to, setTo] = useState(".");
+  const [jobId, setJobId] = useState<string | null>(null);
   const plan = useExportPlan(open ? name : null);
   const start = useStartJob();
 
@@ -25,27 +28,37 @@ export function AgentExportModal({ name, open, onClose }: Props) {
       setStep("plan");
       setIncludeSkills(true);
       setUserMd("stub");
-      setTo(".");
+      setJobId(null);
     }
   }, [open]);
 
   if (!open) return null;
 
+  const exportDir = plan.defaultExportDir ?? ".";
+
   function handleContinue() {
     if (step === "plan") {
       setStep("confirm");
     } else if (step === "confirm") {
-      start.mutate({
-        command: "agent.export",
-        name,
-        to,
-        includeSkills,
-        userMd,
-        compression: "gzip",
-        json: false,
-        dryRun: false,
-        stdout: false,
-      });
+      start.mutate(
+        {
+          command: "agent.export",
+          name,
+          to: exportDir,
+          includeSkills,
+          userMd,
+          compression: "gzip",
+          // Ask the CLI to emit a JSON line on stdout so we can parse the result.
+          json: true,
+          dryRun: false,
+          stdout: false,
+        },
+        {
+          onSuccess: (started) => {
+            setJobId(started.jobId);
+          },
+        },
+      );
       setStep("run");
     }
   }
@@ -70,20 +83,19 @@ export function AgentExportModal({ name, open, onClose }: Props) {
             setUserMd={setUserMd}
           />
         )}
-        {step === "confirm" && <ConfirmStep plan={plan} to={to} setTo={setTo} />}
-        {step === "run" && <RunStep />}
+        {step === "confirm" && <ConfirmStep plan={plan} />}
+        {step === "run" && <RunStep jobId={jobId} onClose={onClose} />}
 
-        <div className="flex gap-2 mt-4 justify-end">
-          <Button onClick={onClose} variant="ghost">
-            cancel
-          </Button>
-          <Button
-            onClick={handleContinue}
-            disabled={plan.status !== "ready" || step === "run"}
-          >
-            continue
-          </Button>
-        </div>
+        {step !== "run" && (
+          <div className="flex gap-2 mt-4 justify-end">
+            <Button onClick={onClose} variant="ghost">
+              cancel
+            </Button>
+            <Button onClick={handleContinue} disabled={plan.status !== "ready"}>
+              continue
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -148,35 +160,112 @@ function PlanStep({ plan, includeSkills, setIncludeSkills, userMd, setUserMd }: 
 
 interface ConfirmStepProps {
   plan: ReturnType<typeof useExportPlan>;
-  to: string;
-  setTo: (s: string) => void;
 }
 
-function ConfirmStep({ plan, to, setTo }: ConfirmStepProps) {
+function ConfirmStep({ plan }: ConfirmStepProps) {
   if (plan.status !== "ready" || !plan.manifest) return null;
   const m = plan.manifest;
+  const exportDir = plan.defaultExportDir ?? ".";
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-matrix-body">
         exporting <span className="text-matrix-green">{m.bundle.name}</span>
       </p>
-      <label className="flex flex-col gap-1 text-xs text-matrix-body font-mono">
-        output directory:
-        <input
-          type="text"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          className="bg-black border border-matrix-line text-matrix-body px-2 py-1 font-mono"
-        />
-      </label>
+      <div className="flex flex-col gap-1 text-xs text-matrix-body font-mono">
+        <span>save to:</span>
+        <span className="text-matrix-green">{exportDir}</span>
+        <Link
+          to="/system/settings"
+          className="text-matrix-green-muted underline hover:text-matrix-green text-[10px]"
+        >
+          change default in Settings ↗
+        </Link>
+      </div>
     </div>
   );
 }
 
-function RunStep() {
+interface ExportResult {
+  artifactPath: string;
+  sha256: string;
+  installCommand: string;
+  size?: number;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function RunStep({ jobId, onClose }: { jobId: string | null; onClose: () => void }) {
+  const events = useJobStream(jobId ?? undefined);
+  const [result, setResult] = useState<ExportResult | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
+
+  // Parse the JSON completion line emitted by `smith agent export --json`.
+  useEffect(() => {
+    if (result) return;
+    for (const ev of events) {
+      if (ev.type === "stdout") {
+        try {
+          const parsed = JSON.parse(ev.chunk.trim()) as Partial<ExportResult>;
+          if (parsed.artifactPath && parsed.sha256 && parsed.installCommand) {
+            setResult(parsed as ExportResult);
+          }
+        } catch {
+          // stdout lines that are not JSON (e.g. progress text) are ignored
+        }
+      }
+    }
+  }, [events, result]);
+
+  if (!jobId) return <div className="text-xs text-matrix-green-muted">// dispatching…</div>;
+
+  if (!result) {
+    return (
+      <div className="text-xs text-matrix-green-muted">
+        // exporting… (job {jobId.slice(0, 7)})
+      </div>
+    );
+  }
+
+  const shortSha = result.sha256.slice(0, 12);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(result?.installCommand ?? "").then(() => {
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 2000);
+    });
+  }
+
+  function handleShowInFolder() {
+    void apiFetch(`/api/fs/show?path=${encodeURIComponent(result?.artifactPath ?? "")}`, {
+      method: "POST",
+    });
+  }
+
   return (
-    <div className="text-xs text-matrix-green-muted">
-      // job dispatched — watch the job stream for progress
+    <div className="flex flex-col gap-3">
+      <h3 className="text-xs uppercase tracking-widest text-matrix-green">// exported</h3>
+      <p className="text-xs text-matrix-body">
+        saved to: <code className="text-matrix-green">{result.artifactPath}</code>
+      </p>
+      {result.size !== undefined && (
+        <p className="text-xs text-matrix-body">
+          {formatBytes(result.size)} · sha256:{shortSha}…
+        </p>
+      )}
+      {result.size === undefined && (
+        <p className="text-xs text-matrix-body">sha256:{shortSha}…</p>
+      )}
+      <div className="flex gap-2 flex-wrap">
+        <Button onClick={handleCopy}>{copyDone ? "copied!" : "copy install command"}</Button>
+        <Button onClick={handleShowInFolder}>show in folder</Button>
+        <Button onClick={onClose} variant="ghost">
+          close
+        </Button>
+      </div>
     </div>
   );
 }

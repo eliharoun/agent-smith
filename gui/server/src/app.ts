@@ -28,6 +28,7 @@ import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
 import { registerRegistryRoute } from "./routes/registry";
 import { registerSettingsRoute } from "./routes/settings";
 import { registerExportsRoute } from "./routes/exports";
+import { registerFsShowRoute } from "./routes/fs-show";
 import { registerImportStageRoute } from "./routes/import-stage";
 import { registerSkillsRoute } from "./routes/skills";
 import { registerStatusRoute } from "./routes/status";
@@ -179,9 +180,15 @@ export function createApp(deps: AppDeps) {
     registryPath,
     ...(deps.smithVersion !== undefined ? { smithVersion: deps.smithVersion } : {}),
   });
+  // Resolved here so both the exports route and the settings route share the
+  // same values without duplication further down in the function.
+  const guiStatePath = deps.guiStatePath ?? join(configRoot, "gui-state.json");
+  const currentVersion = deps.smithVersion ?? "unknown";
+
   registerRegistryRoute(app, { registryPath });
   registerRefreshManifestRoute(app, { agentSmithHome });
-  registerExportsRoute(app, {});
+  registerExportsRoute(app, { guiStatePath, smithVersion: currentVersion });
+  registerFsShowRoute(app);
   registerImportStageRoute(app);
   registerSkillsRoute(app, { skillRegistryPath, installedSkillsPath });
   registerCatalogsRoute(app, { registryPath, skillRegistryPath });
@@ -255,8 +262,6 @@ export function createApp(deps: AppDeps) {
   registerUpdateRoute(app);
   registerJackOutRoute(app);
 
-  const guiStatePath = deps.guiStatePath ?? join(configRoot, "gui-state.json");
-  const currentVersion = deps.smithVersion ?? "unknown";
   registerSettingsRoute(app, { guiStatePath, currentVersion });
   registerUserMdRoute(app, { configRoot });
 
