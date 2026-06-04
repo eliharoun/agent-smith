@@ -42,6 +42,7 @@ export function renderForTargets(
   knowledgeDir?: string,
   withRefreshHooks?: boolean,
   resolvedConventionUrisByTarget?: Partial<Record<Target, readonly string[]>>,
+  bodyOverrides?: Partial<Record<Target, string>>,
 ): RenderedAgent[] {
   return config.targets.map((target) => {
     const ctx: RenderContext = {
@@ -49,7 +50,8 @@ export function renderForTargets(
       ...(knowledgeDir ? { knowledgeDir } : {}),
       ...(withRefreshHooks === true ? { withRefreshHooks: true } : {}),
     };
-    let rendered = TRANSLATORS[target](config, body, ctx);
+    const targetBody = bodyOverrides?.[target] ?? body;
+    let rendered = TRANSLATORS[target](config, targetBody, ctx);
     rendered = injectKnowledgeIntoRender(rendered, knowledgeDir);
     rendered = injectPlatformConventions(
       rendered,

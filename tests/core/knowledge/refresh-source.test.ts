@@ -14,6 +14,7 @@ import type {
 } from "../../../src/core/knowledge/types";
 import { knowledgeDirFor } from "../../../src/io/knowledge-paths";
 import { McpClientPool } from "../../../src/io/mcp-client-pool";
+import { lazyUrlSource } from "../../_helpers/lazy-fixtures";
 
 const ECHO_FIXTURE = join(import.meta.dir, "..", "..", "_fixtures", "echo-mcp-server.ts");
 
@@ -707,5 +708,45 @@ describe("refreshSource: via routing", () => {
     const causePayloadCode = cause?.payload?.code;
     const combined = `${outer.message} ${causePayloadCode ?? ""}`;
     expect(combined).toMatch(/internal-error|mcpPool/i);
+  });
+});
+
+describe("refreshSource: lazy URL sources", () => {
+  test("returns kind: lazy-only without fetching", async () => {
+    const home = await makeHome();
+    const bundleDir = await makeBundle();
+    const source = lazyUrlSource({
+      id: "wiki",
+      url: "https://this-domain-does-not-resolve.invalid/x",
+    });
+    const result = await refreshSource({
+      agentSmithHome: home,
+      agent: "test-agent",
+      source,
+      bundleDir,
+    });
+    expect(result.kind).toBe("lazy-only");
+    if (result.kind === "lazy-only") {
+      expect(result.sourceId).toBe("wiki");
+    }
+  });
+
+  test("does not write any files for a lazy source", async () => {
+    const home = await makeHome();
+    const bundleDir = await makeBundle();
+    const source = lazyUrlSource({ id: "wiki" });
+    await refreshSource({
+      agentSmithHome: home,
+      agent: "test-agent",
+      source,
+      bundleDir,
+    });
+    let entries: string[] = [];
+    try {
+      entries = await readdir(join(knowledgeDirFor("test-agent", { agentSmithHome: home }), "sources"));
+    } catch {
+      /* sources dir may not exist */
+    }
+    expect(entries).not.toContain("wiki");
   });
 });

@@ -4,6 +4,41 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-06-04
+
+URL knowledge sources can now opt out of install-time fetching. With
+`lazy: true` set on a `type: url` source, the bundle ships only the
+URL and a description; the agent fetches the page on demand at runtime
+through its built-in fetch tool, or through an MCP tool when `via:` is
+set. Bundles that also target `agents-md` (Cursor, Windsurf, Aider) —
+which have no runtime fetch surface — auto-degrade for that target
+only: smith fetches each lazy URL at install time and renders the body
+inline (or as a sidecar file for large content) with a source URL
+reference.
+
+### Added
+
+- `lazy: true` on URL knowledge sources. When set, smith skips acquire
+  and materialize for that source; the compiled prompt's knowledge
+  index renders the URL plus the fetch tool the agent should call.
+  `delivery`, `materialize`, `extractor`, and `inlineBudgetTokens` are
+  forbidden alongside `lazy: true` (the schema rejects them with a
+  clear error).
+- `smith knowledge add <agent> <url> --lazy` flag for adding a lazy
+  URL source from the CLI. The installer warns when the description
+  is missing, too short, written in first or second person, or longer
+  than 1024 characters — lazy sources show only their description in
+  the agent's prompt until it fetches, so description quality matters.
+- "Lazy fetch" toggle on the URL knowledge source form in the browser
+  GUI. When enabled, the delivery / materialize / extractor fields are
+  hidden (since the schema forbids them on lazy sources).
+- `smith doctor` now includes a `lazy-fetch` section that flags lazy
+  URL sources whose targets lack a runtime fetch tool AND have no
+  `via:` routing to fall back on.
+- `smith knowledge fetch` for a lazy source revalidates that the URL
+  still resolves but never re-fetches the body — every conversation
+  fetches fresh content at runtime.
+
 ## [1.8.1] — 2026-06-04
 
 GUI export polish: configurable default export directory and a real

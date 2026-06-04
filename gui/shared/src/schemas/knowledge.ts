@@ -78,9 +78,6 @@ const SourceBase = z.object({
   retrieval: RetrievalSpec.optional(),
   // v1.2 routing
   via: Via.optional(),
-  // v1.2 forward-compat: Phase 2 will activate this. Phase 1 accepts and
-  // no-ops to keep bundles authored against the design doc parseable.
-  lazy: z.union([z.boolean(), z.literal("auto")]).optional(),
 });
 
 const FileSrc = SourceBase.extend({
@@ -97,11 +94,36 @@ const GlobSrc = SourceBase.extend({
   type: z.literal("glob"),
   path: z.string().min(1),
 }).strict();
+// URL sources support an optional `lazy` toggle. When `lazy: true`, smith
+// does not fetch at install time — the bundle ships only the URL +
+// description and the agent fetches at runtime. The lazy mode forbids
+// `delivery`, `materialize`, `extractor`, `inlineBudgetTokens` (no body to
+// budget against) — enforced via the superRefine below. Mirrors the CLI
+// source-of-truth in src/core/knowledge/schema.ts.
+//
+// Kept as a single ZodObject (rather than a nested union) so the outer
+// `discriminatedUnion("type", …)` still works: zod 4 forbids two options
+// sharing the same discriminator value and rejects nested unions wholesale.
 const UrlSrc = SourceBase.extend({
   type: z.literal("url"),
   url: z.url(),
   auth: z.enum(["atlassian", "none"]).optional(),
-}).strict();
+  lazy: z.boolean().optional(),
+})
+  .strict()
+  .superRefine((src, ctx) => {
+    if (src.lazy === true) {
+      for (const k of ["delivery", "materialize", "extractor", "inlineBudgetTokens"] as const) {
+        if (src[k] !== undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message: `${k} is not allowed when lazy: true (lazy URL sources are fetched at runtime, not install)`,
+            path: [k],
+          });
+        }
+      }
+    }
+  });
 const GitSrc = SourceBase.extend({
   type: z.literal("git"),
   url: z.string().min(1),
@@ -172,7 +194,7 @@ export const ManifestSourceEntry = z.object({
     })
     .partial()
     .optional(),
-  delivery: z.enum(["inline", "file", "auto"]).optional(),
+  delivery: z.enum(["inline", "file", "auto", "lazy"]).optional(),
   files: z.array(ManifestFile),
   fetchedAt: z.string().optional(),
   extractor: z.string().nullable().optional(),

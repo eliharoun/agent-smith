@@ -260,6 +260,71 @@ See `src/core/knowledge/pipeline.ts`.
 
 ---
 
+## Lazy URL sources
+
+For URL sources, you can opt out of install-time fetching: the bundle ships only the URL and a description, and the agent fetches the page on demand at runtime through its built-in fetch tool (or a routed MCP tool, when `via:` is set).
+
+```json
+{
+  "id": "platform-architecture",
+  "type": "url",
+  "url": "https://wiki.internal.example.com/architecture",
+  "lazy": true,
+  "description": "Platform service architecture. Use when answering deployment topology or service-boundary questions."
+}
+```
+
+When `lazy: true`:
+
+- Smith does not fetch the URL at install time, and `smith knowledge fetch` for that source revalidates only — never re-fetches the body.
+- The `delivery`, `materialize`, `extractor`, and `inlineBudgetTokens` fields are forbidden by the schema (they describe install-time materialization, which lazy skips).
+- The compiled prompt's knowledge index renders a single line per lazy source — `id`, description, the URL, and the fetch tool the agent should call.
+- The `description` field becomes the agent's only signal until it fetches, so write it carefully.
+
+### When to use lazy
+
+- The URL content drifts (an active runbook, a frequently-updated spec) and you want every conversation to see the current version.
+- The URL needs the recipient's auth (Atlassian Cloud, GitHub Enterprise, internal wikis) and the fetch tool already has those credentials.
+- The content is long-tail — the agent only needs it occasionally and prefetching would burn tokens for nothing.
+
+For URLs the agent will always need, leave `lazy` unset and let the install-time pipeline materialize the body once.
+
+### Description guidance
+
+Lazy sources show only their description in the agent's prompt until it fetches. Smith's installer warns at `smith agent install` time when the description is missing, too short, written in first or second person, or longer than 1024 characters. Best practices:
+
+- **Third person.** "Documents X. Use when Y." Not "I help with…" or "You can use this for…".
+- **Front-load trigger keywords.** The first ~80 characters carry the most weight when an agent decides whether to fetch.
+- **Cover both halves.** Say what the source contains AND when to reach for it.
+- **Stay under 1024 characters.** Smith warns above the cap; some runtimes truncate.
+
+### `via:` for authed URLs
+
+When a URL needs authentication that the agent's built-in fetch tool can't provide, set `via:` and the agent calls the named MCP tool instead:
+
+```json
+{
+  "id": "platform-architecture",
+  "type": "url",
+  "url": "https://wiki.internal.example.com/architecture",
+  "lazy": true,
+  "via": { "server": "internal-mcp", "tool": "fetch_page" },
+  "description": "Platform service architecture. Use when answering deployment topology questions."
+}
+```
+
+The same `via:` semantics described in [Routing URL fetches through MCP servers](#routing-url-fetches-through-mcp-servers) apply: the named server must be configured locally, and `mcp.required[]` should list it so recipients of the bundle catch missing dependencies at install time. `smith doctor` includes a `lazy-fetch` section that flags lazy URL sources whose targets ship no built-in fetch tool AND have no `via:` to fall back on.
+
+### AGENTS.md targets
+
+Bundles targeting `agents-md` (Cursor, Windsurf, Aider, etc.) cannot fetch URLs at runtime — those targets render a static prompt file with no tool-call surface. For these, smith auto-degrades: it fetches each lazy URL at install time and appends the body to the rendered AGENTS.md (inline if small, written as a sidecar file if large), with a `> source: <url>` reference so the agent can see where the content came from. Runtime targets in the same bundle (Claude Code, Kiro, OpenCode) keep the lazy TOC entry; only the agents-md output carries the materialized body.
+
+### Refresh
+
+`smith knowledge fetch <agent>` for a lazy source revalidates that the URL still resolves but does not re-fetch the body — refreshing material that the agent will fetch fresh on every call would be wasted work. The `refresh` field is still accepted on lazy sources (it documents intent and feeds into doctor's reporting), but the daemon's TTL poll and the session-start hooks both skip lazy entries.
+
+---
+
 ## Optional sources
 
 Set `optional: true` on a source to make `smith agent install` resilient to its runtime/IO failures:

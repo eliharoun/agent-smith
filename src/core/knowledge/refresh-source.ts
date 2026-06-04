@@ -78,6 +78,7 @@ export type RefreshSourceResult =
       durationMs: number;
     }
   | { kind: "inline-only"; sourceId: string; delivery: "inline" | "auto" }
+  | { kind: "lazy-only"; sourceId: string }
   | { kind: "lock-held"; sourceId: string }
   | { kind: "skipped"; sourceId: string; reason: "unsupported-source-type" };
 
@@ -190,7 +191,9 @@ function buildManifestEntry(
     scope: "agent",
     type: src.type,
     ...(Object.keys(provenance).length > 0 ? { source: provenance } : {}),
-    delivery: src.delivery === "auto" ? "file" : src.delivery,
+    // Lazy URL sources never reach this manifest path (refresh short-circuits
+    // them); fall back to "lazy" defensively if delivery is absent.
+    delivery: src.delivery === undefined ? "lazy" : src.delivery === "auto" ? "file" : src.delivery,
     files: files.map((f) => ({
       path: f.relPath,
       sha256: f.sha256,
@@ -251,6 +254,12 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
   //    since flipped this source to inline/auto/npm. sweepOrphanTmpDirs
   //    no-ops on a missing sources/ dir.
   await sweepOrphanTmpDirs(sourcesDir, sourceId);
+
+  // Lazy URL sources have no on-disk artifact to refresh. Return
+  // early without acquiring the lock or touching the manifest.
+  if (source.type === "url" && (source as { lazy?: boolean }).lazy === true) {
+    return { kind: "lazy-only", sourceId };
+  }
 
   // 2. Inline delivery → no per-source on-disk artifact to update.
   //

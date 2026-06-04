@@ -23,6 +23,7 @@ import { defaultCacheRoot } from "./cache-root";
 import { detectAuthenticatedProviders } from "./opencode-auth";
 import { type InstallResult, installRendered } from "./installer";
 import { cacheDirFor, type KnowledgePaths, knowledgeDirFor } from "./knowledge-paths";
+import { renderLazyAgentsMdSection } from "./lazy-agents-md";
 import type { KnowledgeSummary } from "./knowledge-summary";
 import { defaultReadPriorManifest, summarizeKnowledgeStage } from "./knowledge-summary";
 import { checkMcpAvailability, type McpAvailabilityPaths } from "./mcp-availability";
@@ -217,6 +218,11 @@ export interface BuildAndInstallOptions {
    * routing cache. Invoked after a successful probe.
    */
   recordRoute?: (route: { url: string; server: string; tool: string }) => Promise<void>;
+  /**
+   * Optional URL fetcher used by the agents-md degrade pass. Default: global
+   * fetch. Tests inject a fake fetcher to avoid real network calls.
+   */
+  fetchFn?: (url: string) => Promise<string>;
 }
 
 /**
@@ -409,6 +415,19 @@ export async function buildAndInstall(
           ? assembleBody(bundle.files, skillsSection, knowledgeSection, compiledKnowledge)
           : validationBody;
 
+      // agents-md target gets the lazy URL section appended (capable agent
+      // runtimes like Cursor/Windsurf/Copilot can re-fetch via their own
+      // tools; static-only consumers like Aider get the materialized body).
+      const bodyOverrides: Partial<Record<Target, string>> = {};
+      if (bundle.config.targets.includes("agents-md")) {
+        const lazySection = await renderLazyAgentsMdSection(mergedKnowledge, {
+          ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+        });
+        if (lazySection) {
+          bodyOverrides["agents-md"] = `${body}\n\n${lazySection}`;
+        }
+      }
+
       // Knowledge-aware total-body length check on the FINAL rendered body.
       // The prose-only validate() above gates author intent; this guards
       // against oversized renders shipping silently when knowledge is wired in.
@@ -497,6 +516,7 @@ export async function buildAndInstall(
         knowledgeDir,
         options.withRefreshHooksFor?.get(bundle.config.name) === true,
         resolvedConventionUrisByTarget,
+        bodyOverrides,
       );
       for (const r of rendered) {
         r.bundlePath = bundle.bundlePath;

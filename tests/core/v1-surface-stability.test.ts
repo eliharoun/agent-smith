@@ -175,14 +175,20 @@ describe("v1 surface stability — KnowledgeSourceSchema", () => {
     );
   });
 
-  test("every variant requires 'id', 'type', and 'delivery' from the base contract", () => {
-    // BaseFields contract: id (kebab), delivery (inline|file|auto), plus
-    // the type discriminator. Every variant must inherit these as required.
+  test("every variant requires 'id' and 'type'; non-url variants also require 'delivery'", () => {
+    // BaseFields contract: id (kebab), plus the type discriminator. Every
+    // variant must inherit these as required. `delivery` is required for
+    // every variant except url, where it's conditional on `lazy` (lazy URL
+    // sources omit delivery; eager URL sources still require it via a
+    // schema refinement, which doesn't surface in JSON-Schema's `required`).
     for (const variant of json.oneOf ?? []) {
       const req = new Set(variant.required ?? []);
       expect(req.has("id")).toBe(true);
       expect(req.has("type")).toBe(true);
-      expect(req.has("delivery")).toBe(true);
+      const t = typeOf(variant);
+      if (t !== "url") {
+        expect(req.has("delivery")).toBe(true);
+      }
     }
   });
 

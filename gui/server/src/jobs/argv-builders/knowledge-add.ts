@@ -16,6 +16,7 @@ interface Req {
   format?: "storage" | "view" | "markdown" | undefined;
   fields?: string | undefined;
   maxResults?: number | undefined;
+  lazy?: boolean | undefined;
 }
 
 export function buildKnowledgeAdd(req: Req): BuiltArgv {
@@ -35,6 +36,8 @@ export function buildKnowledgeAdd(req: Req): BuiltArgv {
 
   if (req.fields) argv.push("--fields", req.fields);
   if (req.maxResults !== undefined) argv.push("--max-results", String(req.maxResults));
+
+  if (req.lazy === true) argv.push("--lazy");
 
   // The auto-materialize tail (when install: true) acquires the agent lock
   // because it shells out to `smith agent install <agent>`. Always lock the

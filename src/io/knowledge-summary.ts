@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
-import type { KnowledgeManifest } from "../core/knowledge/types";
+import type { EffectiveDelivery, KnowledgeManifest } from "../core/knowledge/types";
 
 export interface KnowledgeSourceSummary {
   id: string;
-  delivery: "inline" | "file";
+  delivery: EffectiveDelivery;
   files: number;
   bytes: number;
   changed: boolean;
@@ -47,11 +47,10 @@ export async function summarizeKnowledgeStage(
   );
 
   const sources: KnowledgeSourceSummary[] = opts.currentManifest.sources.map((s) => {
-    // The source's `delivery` in the current manifest is always "inline" or "file" —
-    // "auto" is resolved by the pipeline before write. Narrowing here is a defensive
-    // assertion; if "auto" ever leaked through, treating it as "file" is the safer
-    // default for a presentation layer.
-    const delivery: "inline" | "file" = s.delivery === "inline" ? "inline" : "file";
+    // The manifest entry's `delivery` is the effective (computed) value:
+    // "inline", "file", or "lazy" (lazy URL sources). "auto" is resolved by
+    // the pipeline before write. Pass it through directly.
+    const delivery: EffectiveDelivery = s.delivery;
     const bytes = s.files.reduce((n, f) => n + f.bytes, 0);
     const prev = priorById.get(s.id);
     let changed = true;

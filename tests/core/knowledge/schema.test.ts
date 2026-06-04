@@ -189,23 +189,177 @@ describe("KnowledgeSourceSchema", () => {
       });
       expect(r.success).toBe(true);
     });
+  });
 
-    it("accepts lazy field (Phase 2 forward-compat — no-op in Phase 1)", () => {
+  describe("lazy URL sources", () => {
+    it("accepts a lazy URL source with description", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
-        url: "https://example.com",
+        id: "wiki",
+        type: "url",
+        url: "https://wiki.internal.example.com/x",
         lazy: true,
+        description: "Platform architecture wiki. Use when answering deployment questions.",
       });
       expect(r.success).toBe(true);
     });
 
-    it("accepts lazy: 'auto'", () => {
+    it("accepts lazy: false (explicit)", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        id: "wiki",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+        lazy: false,
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("rejects lazy on type=file", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "doc",
+        type: "file",
+        path: "./README.md",
+        delivery: "inline",
+        lazy: true,
+      });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(
+          r.error.issues.some((i) => i.path.includes("lazy") || i.message.toLowerCase().includes("lazy")),
+        ).toBe(true);
+      }
+    });
+
+    it("rejects lazy on type=git", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "repo",
+        type: "git",
+        url: "https://github.com/acme/repo",
+        delivery: "file",
+        lazy: true,
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects lazy on type=confluence", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "ENG",
+        type: "confluence",
+        space: "ENG",
+        delivery: "auto",
+        lazy: true,
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects lazy: 'auto' (only true|false now; 'auto' is gone)", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
         url: "https://example.com",
         lazy: "auto",
       });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects delivery alongside lazy: true", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        delivery: "inline",
+      });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        expect(
+          r.error.issues.some(
+            (i) => i.message.toLowerCase().includes("delivery") && i.message.toLowerCase().includes("lazy"),
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it("rejects materialize alongside lazy: true", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        materialize: "html-to-md",
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects extractor alongside lazy: true", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        extractor: "pdf-parse",
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("rejects inlineBudgetTokens alongside lazy: true", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        inlineBudgetTokens: 1000,
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it("accepts lazy: true with via: routing", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://wiki.internal.example.com/x",
+        lazy: true,
+        via: { server: "internal-mcp", tool: "fetch_page" },
+      });
       expect(r.success).toBe(true);
+    });
+
+    it("accepts lazy: true with summary, toc, retrieval (compile-stage fields)", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        summary: "Short TOC line.",
+        toc: true,
+        retrieval: { mode: "off" },
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("accepts lazy: true with description and refresh", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "wiki",
+        type: "url",
+        url: "https://example.com",
+        lazy: true,
+        description: "A wiki.",
+        refresh: { mode: "session" },
+      });
+      expect(r.success).toBe(true);
+    });
+  });
+
+  describe("lazy field removal from non-URL types (v1.2 forward-compat dropped)", () => {
+    it("rejects lazy on type=dir (used to be silently accepted)", () => {
+      const r = KnowledgeSourceSchema.safeParse({
+        id: "x",
+        type: "dir",
+        path: "./docs",
+        delivery: "file",
+        lazy: true,
+      });
+      expect(r.success).toBe(false);
     });
   });
 });

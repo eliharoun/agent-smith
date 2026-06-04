@@ -70,6 +70,11 @@ import {
   type McpDepFinding,
 } from "./check-mcp-deps";
 import {
+  checkLazyFetch,
+  type CheckLazyFetchOpts,
+  type LazyFetchFinding,
+} from "./check-lazy-fetch";
+import {
   checkUrlRouting,
   type CheckUrlRoutingOpts,
   type CheckUrlRoutingResult,
@@ -124,6 +129,7 @@ export type DoctorSectionId =
   | "knowledge-compile"
   | "mcp-spawn-commands"
   | "mcp-deps"
+  | "lazy-fetch"
   | "url-routing"
   | "knowledge-prompt-disk-consistency";
 
@@ -370,6 +376,17 @@ export interface RunDoctorInput {
    */
   mcpDeps?: CheckMcpDepsOpts;
   /**
+   * Optional lazy-fetch audit. When provided, walks each bundle's lazy URL
+   * sources and reports any that lack a runtime fetch path (no via routing
+   * AND no target with a built-in fetch tool, or via routing to an MCP
+   * server that isn't installed on any platform). Read-only; no repair.
+   * Informational only — never affects {@link DoctorReport.exitCode}. The
+   * CLI builds {@link CheckLazyFetchOpts} from `loadAllBundles` and the
+   * platform MCP-config readers; tests inject in-memory stubs so the
+   * section never touches real config files.
+   */
+  lazyFetch?: CheckLazyFetchOpts;
+  /**
    * Optional url-routing summary. When provided, walks the three routing
    * layers (curated registry, advertised `_meta` claims, user cache) and
    * emits the merged routing table plus any ambiguity findings. Read-only;
@@ -615,6 +632,14 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     emitDone(input, "mcp-deps", mcpDepsEventStatus(mcpDeps), mcpDepsSummary(mcpDeps));
   }
 
+  let lazyFetch: { findings: LazyFetchFinding[] } | undefined;
+  if (input.lazyFetch) {
+    emitStart(input, "lazy-fetch", "Lazy URL fetch");
+    const findings = await checkLazyFetch(input.lazyFetch);
+    lazyFetch = { findings };
+    emitDone(input, "lazy-fetch", lazyFetchEventStatus(lazyFetch), lazyFetchSummary(lazyFetch));
+  }
+
   let urlRouting: CheckUrlRoutingResult | undefined;
   if (input.urlRouting) {
     emitStart(input, "url-routing", "URL routing");
@@ -668,6 +693,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
     ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
     ...(mcpDeps ? { mcpDeps } : {}),
+    ...(lazyFetch ? { lazyFetch } : {}),
     ...(urlRouting ? { urlRouting } : {}),
     ...(knowledgeConsistency ? { knowledgeConsistency } : {}),
   };
@@ -1529,6 +1555,22 @@ function mcpDepsSummary(r: { findings: McpDepFinding[] }): string {
   if (errors > 0) parts.push(`${errors} required missing`);
   if (warnings > 0) parts.push(`${warnings} peer missing`);
   return `MCP dependencies: ${parts.join(", ")}`;
+}
+
+function lazyFetchEventStatus(r: { findings: LazyFetchFinding[] }): DoctorSectionDoneEvent["status"] {
+  if (r.findings.some((f) => f.severity === "error")) return "error";
+  if (r.findings.length > 0) return "warn";
+  return "ok";
+}
+
+function lazyFetchSummary(r: { findings: LazyFetchFinding[] }): string {
+  if (r.findings.length === 0) return "Lazy URL fetch: ok";
+  const errors = r.findings.filter((f) => f.severity === "error").length;
+  const warnings = r.findings.length - errors;
+  const parts: string[] = [];
+  if (errors > 0) parts.push(`${errors} unreachable`);
+  if (warnings > 0) parts.push(`${warnings} via missing`);
+  return `Lazy URL fetch: ${parts.join(", ")}`;
 }
 
 function urlRoutingEventStatus(r: CheckUrlRoutingResult): DoctorSectionDoneEvent["status"] {

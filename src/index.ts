@@ -306,6 +306,7 @@ knowledgeCmd
   .option("--delivery <delivery>", "How the source is delivered: 'inline' or 'file'")
   .option("--description <text>", "Human description shown in `knowledge list`")
   .option("--optional", "Mark this source as optional (won't fail validate if missing)")
+  .option("--lazy", "URL sources only: do not fetch at install; agent fetches at runtime")
   .option("--no-install", "Do not auto-run 'smith agent install <agent>' after adding")
   // Confluence-only flags.
   .option(
@@ -330,6 +331,7 @@ knowledgeCmd
           delivery?: string;
           description?: string;
           optional?: boolean;
+          lazy?: boolean;
           install?: boolean;
           pages?: string;
           maxPages?: number;
@@ -375,6 +377,7 @@ knowledgeCmd
               : {}),
             ...(opts.description ? { description: opts.description } : {}),
             ...(opts.optional ? { optional: true } : {}),
+            ...(opts.lazy === true ? { lazy: true } : {}),
           };
 
           switch (parsed.kind) {
@@ -475,6 +478,7 @@ knowledgeCmd
             : {}),
           ...(opts.description ? { description: opts.description } : {}),
           ...(opts.optional ? { optional: true } : {}),
+          ...(opts.lazy === true ? { lazy: true } : {}),
           ...(opts.pages ? { pages: opts.pages } : {}),
           ...(opts.maxPages !== undefined ? { maxPages: opts.maxPages } : {}),
           ...(opts.includeChildren ? { includeChildren: true } : {}),

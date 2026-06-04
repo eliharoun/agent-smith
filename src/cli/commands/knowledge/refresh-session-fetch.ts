@@ -127,6 +127,10 @@ export async function refreshOneSource(
       // Inline/auto delivery has no per-source on-disk artifact for the
       // primitive to swap; a full install rebuilds the prompt context.
       return runInstallFallback(agent, installImpl);
+    case "lazy-only":
+      // Lazy URL sources have no install-time artifact — the agent fetches
+      // at runtime. Nothing to refresh on disk; treat as a no-op success.
+      return { ok: true };
     case "skipped":
       // Currently only one skipped reason exists; switch in case more
       // arrive later so TypeScript flags unhandled additions.
