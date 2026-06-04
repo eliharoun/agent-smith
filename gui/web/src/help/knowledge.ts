@@ -42,10 +42,10 @@ export const knowledgeHelp: Record<string, FieldHelpEntry> = {
     help: "Whether to include this source in the compiled `## Knowledge` TOC. Default yes; turn off for sources you want compiled to disk but not advertised in the prompt.",
   },
   "knowledge.retrieval.mode": {
-    help: "Optional retrieval shape.\noff = no search tool.\nbm25 = smith's local stdio MCP exposes knowledge.search/knowledge.fetch over this source.\nexternal-mcp = points at a third-party MCP server.",
+    help: "How agents search this source.\nbm25 (default): in-memory BM25 index; adds search hint to TOC.\nexternal-mcp: delegate to a remote MCP server.\noff: advisory (source still indexed locally, but no TOC annotation).",
   },
   "knowledge.retrieval.mcpUrl": {
-    help: "URL of the external MCP server. Required when retrieval mode is `external-mcp`.",
+    help: "URL of the external retrieval MCP server. Required when mode is `external-mcp`. Today this lands in the compiled TOC as a routing hint; runtime delegation lands in a future smith release.",
   },
   "knowledge.materialize": {
     help: "How raw fetched content is converted before storage. markdown / text / html-to-md / json / passthrough. Default depends on type. (`pdf-extract` is reserved but not yet supported.)",

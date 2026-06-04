@@ -83,6 +83,33 @@ describe("compile", () => {
     expect(result.tocStanza).toMatch(/\(searchable: bm25\)/);
   });
 
+  it("defaults to bm25 retrieval annotation when no retrieval block is set", () => {
+    // Sources without an explicit retrieval block now get the (searchable: bm25)
+    // annotation by default — matches what `smith knowledge serve` actually does.
+    const result = compile(
+      [baseSource({ id: "implicit" })],
+      { progressive: true, tocMaxLines: 150, emitAgentsMd: false },
+      { rootDir: "knowledge" },
+    );
+    expect(result.tocStanza).toMatch(/\(searchable: bm25\)/);
+  });
+
+  it("omits the retrieval hint when retrieval.mode is explicitly 'off'", () => {
+    const result = compile(
+      [baseSource({ id: "advisory-off", retrieval: { mode: "off" } })],
+      { progressive: true, tocMaxLines: 150, emitAgentsMd: false },
+      { rootDir: "knowledge" },
+    );
+    // The bullet line for `advisory-off` must not carry an annotation;
+    // the preamble's explanation of (searchable: ...) is allowed to mention
+    // the word, so we match against the source's bullet line specifically.
+    const bullet = result.tocStanza
+      .split("\n")
+      .find((l) => l.includes("`advisory-off`"));
+    expect(bullet).toBeDefined();
+    expect(bullet).not.toMatch(/\(searchable:/);
+  });
+
   it("returns a content hash that is stable across calls with identical input", () => {
     const a = compile([baseSource({ id: "x" })], { progressive: true, tocMaxLines: 150, emitAgentsMd: false }, { rootDir: "k" });
     const b = compile([baseSource({ id: "x" })], { progressive: true, tocMaxLines: 150, emitAgentsMd: false }, { rootDir: "k" });

@@ -1192,6 +1192,42 @@ manually to retry.
 
 ---
 
+## Retrieval mode
+
+Each knowledge source in a compiled bundle carries an optional `retrieval.mode`
+field that controls whether the compiled TOC line hints that the source is
+searchable. The three modes:
+
+- **`bm25`** (default) — `smith knowledge serve` exposes `knowledge.search`
+  (BM25) and `knowledge.fetch` over the agent's whole materialized knowledge
+  tree. The reverse index is built in the server process's memory at startup
+  and rebuilt each session; there is no on-disk index file. Setting `bm25`
+  adds a `(searchable: bm25)` annotation to the source's compiled TOC line,
+  hinting to the agent that search-style queries are appropriate for this
+  source.
+
+- **`external-mcp`** — declare a remote MCP server (with `mcpUrl`) that the
+  agent should query instead of the local BM25 path. Currently the field writes
+  the annotation only; the local BM25 server still indexes the source's files.
+  A future smith release will gate the runtime so the local index skips
+  `external-mcp` sources and the agent routes search to the declared URL.
+
+- **`off`** — advisory marker that this source isn't intended for search-style
+  access. Today this only omits the TOC annotation — the local BM25 index still
+  ingests the file. The agent reads `off` sources via direct
+  `knowledge.fetch <path>` rather than `knowledge.search <query>`.
+
+The default is now `bm25`, matching what the BM25 server does: index every
+`.md`/`.txt`/`.json` file in the materialized knowledge tree on startup
+regardless of any per-source setting. Existing bundles with explicit
+`retrieval: { mode: "bm25" }` continue to work; new bundles stay clean because
+the GUI no longer persists a `retrieval` block when the user picks `bm25`.
+
+The retrieval-mode field is a compile-time annotation only today — it does not
+gate the BM25 index at runtime. Runtime gating per source is forward work.
+
+---
+
 ## Troubleshooting
 
 When a session-mode source doesn't refresh, or a hook silently fails to

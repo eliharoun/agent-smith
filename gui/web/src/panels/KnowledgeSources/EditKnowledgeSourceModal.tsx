@@ -178,7 +178,7 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
         : anySrc.toc === false
           ? "no"
           : "yes",
-    retrievalMode: retrieval?.mode ?? "off",
+    retrievalMode: retrieval?.mode ?? "bm25",
     retrievalMcpUrl: retrieval?.mcpUrl ?? "",
     via: (() => {
       // Only URL sources route via MCP. Defensively narrow other types to
@@ -274,7 +274,7 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
   }
   if (draft.summary.trim()) base.summary = draft.summary.trim();
   if (draft.toc !== "default") base.toc = draft.toc === "yes";
-  if (draft.retrievalMode !== "off") {
+  if (draft.retrievalMode !== "bm25") {
     const r: Record<string, unknown> = { mode: draft.retrievalMode };
     if (draft.retrievalMode === "external-mcp" && draft.retrievalMcpUrl.trim())
       r.mcpUrl = draft.retrievalMcpUrl.trim();
@@ -690,9 +690,9 @@ export function EditKnowledgeSourceModal({
                   value={draft.retrievalMode}
                   onChange={(v) => update("retrievalMode", v as RetrievalMode)}
                   options={[
-                    { v: "off", l: "off (default)" },
-                    { v: "bm25", l: "bm25 (built-in)" },
-                    { v: "external-mcp", l: "external-mcp" },
+                    { v: "bm25", l: "bm25 (default — local in-memory index)" },
+                    { v: "external-mcp", l: "external-mcp (delegate to a remote MCP)" },
+                    { v: "off", l: "off (advisory: not search-friendly)" },
                   ]}
                 />
                 {draft.retrievalMode === "external-mcp" && (

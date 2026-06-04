@@ -77,7 +77,7 @@ Three optional fields layer on top of every source variant. They only affect ren
 |---|---|---|
 | `summary` | string (1–280 chars) | One-line TOC entry. Falls back to `description`, then to the first sentence of the materialized content, then to `<id>: <type>`. |
 | `toc` | boolean | Default `true`. Set `false` to materialize the source (sidecar file is still written, refresh hooks still fire) but exclude it from the TOC stanza — useful for sources the agent should be able to fetch when explicitly asked but shouldn't see in working memory. |
-| `retrieval` | object | `{ mode: "off" \| "bm25" \| "external-mcp", mcpUrl?: string }`. When `mode != "off"`, the TOC line gets a `(searchable: <mode>)` suffix telling the agent to prefer the MCP search tool over scanning the file. `external-mcp` requires `mcpUrl` (validated by the schema). |
+| `retrieval` | object | `{ mode: "off" \| "bm25" \| "external-mcp", mcpUrl?: string }`. Default mode is `bm25`. When `mode != "off"`, the TOC line gets a `(searchable: <mode>)` suffix telling the agent to prefer search-style queries over scanning the file. `external-mcp` requires `mcpUrl` (validated by the schema). |
 
 Schema: `src/core/knowledge/schema.ts` (`BaseFields`). The TOC line shape is:
 
