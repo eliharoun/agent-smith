@@ -81,7 +81,7 @@ export async function exportAgent(
         JSON.stringify({ artifactPath: outPath, sha256: result.archiveSha256, installCommand: installCmd }),
       );
     } else {
-      process.stderr.write(summary + "\n");
+      process.stdout.write(summary + "\n");
     }
     return { exitCode: 0, artifactPath: outPath, archiveSha256: result.archiveSha256 };
   } catch (err) {

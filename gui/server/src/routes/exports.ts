@@ -1,11 +1,14 @@
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { runSmith as defaultRunSmith, type SmithRun } from "../services/run-smith";
+import { loadGuiState, resolveExportDir } from "../services/gui-state";
 
 const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/;
 
 export interface ExportsRouteDeps {
   runSmith?: (args: string[]) => Promise<SmithRun>;
+  guiStatePath?: string;
+  smithVersion?: string;
 }
 
 export function registerExportsRoute(app: Hono, deps: ExportsRouteDeps): void {
@@ -34,6 +37,20 @@ export function registerExportsRoute(app: Hono, deps: ExportsRouteDeps): void {
         502 as ContentfulStatusCode,
       );
     }
-    return c.json({ manifest });
+
+    // Resolve the user's preferred export directory (falls back to ~/Downloads
+    // when no path is configured in gui-state.json).
+    let defaultExportDir: string;
+    if (deps.guiStatePath) {
+      const guiState = await loadGuiState({
+        path: deps.guiStatePath,
+        currentVersion: deps.smithVersion ?? "unknown",
+      });
+      defaultExportDir = resolveExportDir(guiState);
+    } else {
+      defaultExportDir = resolveExportDir({});
+    }
+
+    return c.json({ manifest, defaultExportDir });
   });
 }

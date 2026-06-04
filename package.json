@@ -1,6 +1,6 @@
 {
   "name": "agent-smith",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "workspaces": ["gui/server", "gui/web", "gui/shared"],
   "description": "Lifecycle manager for persona-driven AI coding agents",
   "private": true,

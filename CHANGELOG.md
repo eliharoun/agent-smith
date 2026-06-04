@@ -4,6 +4,36 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] — 2026-06-04
+
+GUI export polish: configurable default export directory and a real
+completion view, plus a CLI fix where the success summary was being
+written to stderr (and thus appeared red in some terminals).
+
+### Added
+
+- New `exportDir` setting in `gui-state.json` (default: empty string,
+  resolved to `~/Downloads` server-side). Configurable via a new field on the
+  Settings page (next to the Port control).
+- GUI Export modal: Confirm step now shows the resolved save path
+  read-only with a "Change default" link to Settings, instead of
+  asking the user to type a path. Run step replaces its placeholder
+  with a live completion view that shows filename + size + sha256 +
+  "Copy install command" and "Show in folder" buttons.
+  The Cancel / Continue footer is hidden on the completion
+  step — the operation is done, so only Close remains.
+- New `POST /api/fs/show?path=...` route opens the parent directory
+  of an artifact in the OS file explorer (`open -R` / `explorer
+  /select,` / `xdg-open`). The path is required to live under the
+  user's home directory; any other path is refused.
+
+### Fixed
+
+- `smith agent export <name>`: success summary now goes to stdout
+  instead of stderr. Some terminals render stderr in red regardless
+  of the actual escape codes, making a successful export look like
+  an error.
+
 ## [1.8.0] — 2026-06-04
 
 Bundle archive export and import: produce a single `.smith-bundle.tgz`

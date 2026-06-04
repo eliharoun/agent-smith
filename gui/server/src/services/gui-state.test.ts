@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGuiState, saveGuiState } from "./gui-state";
+import { loadGuiState, resolveExportDir, saveGuiState } from "./gui-state";
 
 let dir: string;
 let file: string;
@@ -14,6 +14,28 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
+});
+
+describe("resolveExportDir", () => {
+  it("returns ~/Downloads when exportDir is empty string", () => {
+    expect(resolveExportDir({ exportDir: "" })).toBe(join(homedir(), "Downloads"));
+  });
+
+  it("returns ~/Downloads when exportDir is whitespace only", () => {
+    expect(resolveExportDir({ exportDir: "   " })).toBe(join(homedir(), "Downloads"));
+  });
+
+  it("returns ~/Downloads when exportDir is absent", () => {
+    expect(resolveExportDir({})).toBe(join(homedir(), "Downloads"));
+  });
+
+  it("returns the configured path when exportDir is set", () => {
+    expect(resolveExportDir({ exportDir: "/tmp/exports" })).toBe("/tmp/exports");
+  });
+
+  it("trims whitespace from a configured path", () => {
+    expect(resolveExportDir({ exportDir: "  /tmp/exports  " })).toBe("/tmp/exports");
+  });
 });
 
 describe("gui-state service", () => {
