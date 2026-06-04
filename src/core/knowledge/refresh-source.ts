@@ -252,8 +252,13 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
   //    no-ops on a missing sources/ dir.
   await sweepOrphanTmpDirs(sourcesDir, sourceId);
 
-  // 2. Inline/auto delivery → no per-source on-disk artifact to update.
-  if (source.delivery === "inline" || source.delivery === "auto") {
+  // 2. Inline delivery → no per-source on-disk artifact to update.
+  //
+  //    `delivery: "auto"` is NOT skipped here. Auto resolves to inline-vs-file
+  //    AFTER acquire based on size, so the file branch of auto needs the full
+  //    acquire+materialize chain to land bytes on disk. The downstream
+  //    materialize step makes the inline/file decision and writes accordingly.
+  if (source.delivery === "inline") {
     return { kind: "inline-only", sourceId, delivery: source.delivery };
   }
 
