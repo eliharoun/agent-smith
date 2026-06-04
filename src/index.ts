@@ -21,7 +21,7 @@ import { runDaemon } from "./daemon";
 import { stateHome } from "./io/state-home";
 
 const program = new Command();
-program.name("smith").description("Lifecycle manager for AI coding agents").version("1.8.1");
+program.name("smith").description("Lifecycle manager for AI coding agents").version("1.9.0");
 // Funnel commander's own usage errors (unknown command, missing required option,
 // --help, --version) through the catch at the bottom so formatCommanderError()
 // renders them with the same prefix as wrap()'s SmithError path.
