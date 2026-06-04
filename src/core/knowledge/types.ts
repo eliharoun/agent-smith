@@ -22,7 +22,7 @@ export type Materializer =
 export type PdfExtractor = "pdf-parse" | "mupdf";
 
 /** Delivery mode. */
-export type KnowledgeDelivery = "inline" | "file" | "auto";
+export type KnowledgeDelivery = "inline" | "file" | "auto" | "lazy";
 
 /** Refresh mode for a knowledge source.
  *  - `install`: materialized at `smith agent install` only (default; today's behavior)

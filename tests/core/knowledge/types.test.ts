@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type {
   KnowledgeBlock,
+  KnowledgeDelivery,
   KnowledgeManifest,
   KnowledgeSection,
   KnowledgeSource,
@@ -50,5 +51,19 @@ describe("knowledge types", () => {
       content: "hi there",
     };
     expect(m.files[0]?.sha256).toBe("deadbeef");
+  });
+});
+
+describe("KnowledgeDelivery type", () => {
+  it("includes lazy as a valid value", () => {
+    const v: KnowledgeDelivery = "lazy";
+    expect(v).toBe("lazy");
+  });
+
+  it("includes the existing values", () => {
+    const inline: KnowledgeDelivery = "inline";
+    const file: KnowledgeDelivery = "file";
+    const auto: KnowledgeDelivery = "auto";
+    expect([inline, file, auto]).toEqual(["inline", "file", "auto"]);
   });
 });
