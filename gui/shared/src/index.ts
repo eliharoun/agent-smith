@@ -6,6 +6,7 @@ export * from "./schemas/atlassian";
 export * from "./schemas/catalogs";
 export * from "./schemas/daemon";
 export * from "./schemas/doctor";
+export * from "./schemas/export-manifest";
 export * from "./schemas/git-verify";
 export * from "./schemas/history";
 export * from "./schemas/jack-out";

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "local-knowledge-bundle",
+  "description": "Use proactively as the local-knowledge test fixture.",
+  "targets": ["claude-code"],
+  "modelTier": "balanced",
+  "mode": "subagent",
+  "knowledge": {
+    "sources": [
+      {
+        "id": "notes",
+        "type": "dir",
+        "delivery": "file",
+        "path": "./notes/"
+      }
+    ]
+  }
+}

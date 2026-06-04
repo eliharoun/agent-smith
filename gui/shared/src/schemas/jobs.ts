@@ -117,6 +117,20 @@ const AgentDestroy = z
     path: ["confirmName"],
   });
 
+const AgentExport = z
+  .object({
+    command: z.literal("agent.export"),
+    name: z.string().min(1),
+    to: z.string().min(1).default("."),
+    includeSkills: z.boolean().default(true),
+    userMd: z.enum(["stub", "keep", "reject"]).default("stub"),
+    compression: z.enum(["gzip", "none"]).default("gzip"),
+    json: z.boolean().default(false),
+    dryRun: z.boolean().default(false),
+    stdout: z.boolean().default(false),
+  })
+  .strict();
+
 // ─── Skill commands ───────────────────────────────────────────────────────
 
 const SkillKind = z.enum(["user-global", "user-local", "team-shared"]);
@@ -375,6 +389,7 @@ export const JobRequest = z.discriminatedUnion("command", [
   AgentUninstallAll,
   AgentReconfigure,
   AgentDestroy,
+  AgentExport,
   // skills
   SkillRegister,
   SkillUnregister,

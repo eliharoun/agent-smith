@@ -9,7 +9,19 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Command, Option } from "commander";
+import { SmithError } from "../../../core/smith-error";
+import type { Source, SourceKind } from "../../../core/types";
+import { PLATFORM_IDS, type PlatformId } from "../../../io/platform-detect";
+import {
+  canonicalRegistryPath,
+  canonicalUserPath,
+  loadRegistry,
+  type Registry,
+} from "../../../io/registry";
 import { stateHome } from "../../../io/state-home";
+import { parseInitAgentFlags } from "../../parse-init-agent-flags";
+import { type WrapDeps, wrap } from "../../wrap";
+import { exportAgent } from "../export";
 import { initAgent } from "../init-agent";
 import { install } from "../install";
 import { installAll } from "../install-all";
@@ -17,17 +29,6 @@ import { list } from "../list";
 import { register } from "../register";
 import { unregister } from "../unregister";
 import { validate } from "../validate";
-import { parseInitAgentFlags } from "../../parse-init-agent-flags";
-import { wrap, type WrapDeps } from "../../wrap";
-import {
-  canonicalRegistryPath,
-  canonicalUserPath,
-  loadRegistry,
-  type Registry,
-} from "../../../io/registry";
-import { PLATFORM_IDS, type PlatformId } from "../../../io/platform-detect";
-import { SmithError } from "../../../core/smith-error";
-import type { Source, SourceKind } from "../../../core/types";
 import { agentCatalogs } from "./catalogs";
 
 /**
@@ -124,10 +125,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
       "Comma-separated skills the agent requires to be installed (each entry: name OR catalog/name)",
     )
     .option("--from <source>", "Clone an existing bundle")
-    .option(
-      "--from-apm <path>",
-      "Import a Microsoft APM bundle (apm.yml) as the starting point",
-    )
+    .option("--from-apm <path>", "Import a Microsoft APM bundle (apm.yml) as the starting point")
     .option(
       "--catalog <labelOrPath>",
       "Scaffold into a registered agent catalog (by label or path). Default: user-global.",
@@ -325,9 +323,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
           // Parse --platform-conventions / --no-platform-conventions.
           // Commander turns --no-platform-conventions into `false`; we
           // translate that to the explicit reject-all strategy.
-          const { parsePlatformConventions } = await import(
-            "../../parse-platform-conventions"
-          );
+          const { parsePlatformConventions } = await import("../../parse-platform-conventions");
           const conventionsStrategy =
             opts.platformConventions === false
               ? ("reject-all" as const)
@@ -355,6 +351,37 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(opts.forceUnlock ? { forceUnlock: true } : {}),
           });
         },
+      ),
+    );
+
+  parent
+    .command("export <name>")
+    .description("Package a bundle into a single shareable archive")
+    .option("--to <path>", "Output directory or file path", ".")
+    .option("--stdout", "Stream the archive to stdout (logs go to stderr)", false)
+    .option("--compression <mode>", "gzip | none", "gzip")
+    .option("--include-skills", "Embed required skills (default)", true)
+    .option("--no-include-skills", "Declare-only mode for skills")
+    .option("--user-md <policy>", "stub | keep | reject", "stub")
+    .option("--json", "Emit machine-readable output", false)
+    .option("--dry-run", "Plan and validate; print the manifest; write nothing", false)
+    .action(
+      wrap(
+        "agent export",
+        async (name: string, options: Record<string, unknown>) => {
+          const result = await exportAgent(name, {
+            to: String(options.to ?? "."),
+            includeSkills: options.includeSkills !== false,
+            userMd: (options.userMd as "stub" | "keep" | "reject") ?? "stub",
+            compression: (options.compression as "gzip" | "none") ?? "gzip",
+            json: Boolean(options.json),
+            dryRun: Boolean(options.dryRun),
+            stdout: Boolean(options.stdout),
+          });
+          if (result.exitCode !== 0) process.exit(result.exitCode);
+          return 0;
+        },
+        opts.wrapDepsOverride,
       ),
     );
 
@@ -411,9 +438,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
           const refreshConsent = resolveInstallRefreshConsent({ yes: opts.yes, explicit });
           const { parsePlatforms } = await import("../../parse-platforms");
           const platformFilter = parsePlatforms(opts.platforms);
-          const { parsePlatformConventions } = await import(
-            "../../parse-platform-conventions"
-          );
+          const { parsePlatformConventions } = await import("../../parse-platform-conventions");
           const conventionsStrategy =
             opts.platformConventions === false
               ? ("reject-all" as const)
@@ -429,9 +454,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             ...(opts.allowMissingMcp ? { allowMissingMcp: true } : {}),
             ...(opts.allowMissingCli ? { allowMissingCli: true } : {}),
             ...(opts.force ? { force: true } : {}),
-            ...(conventionsStrategy
-              ? { platformConventions: conventionsStrategy }
-              : {}),
+            ...(conventionsStrategy ? { platformConventions: conventionsStrategy } : {}),
           });
         },
       ),
@@ -485,12 +508,7 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
     .action(
       wrap(
         "agent uninstall-all",
-        async (opts: {
-          dryRun?: boolean;
-          yes?: boolean;
-          platforms?: string;
-          force?: boolean;
-        }) => {
+        async (opts: { dryRun?: boolean; yes?: boolean; platforms?: string; force?: boolean }) => {
           const { runUninstallAllCli } = await import("../uninstall-all");
           const { parsePlatforms } = await import("../../parse-platforms");
           const platformFilter = parsePlatforms(opts.platforms);

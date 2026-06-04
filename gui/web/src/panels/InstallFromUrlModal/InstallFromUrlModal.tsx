@@ -5,6 +5,61 @@ import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { FormField } from "@/ui/FormField";
 
+function DropZone({ onUploaded }: { onUploaded: (path: string) => void }) {
+  const [hover, setHover] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setHover(true);
+      }}
+      onDragLeave={() => setHover(false)}
+      onDrop={async (e) => {
+        e.preventDefault();
+        setHover(false);
+        setError(null);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length === 0) return;
+        if (files.length > 1) {
+          setError("drop a single .smith-bundle.tgz file");
+          return;
+        }
+        const file = files[0]!;
+        // A directory drop has size 0 and no type; flag it specifically.
+        if (file.size === 0 && !file.name.includes(".")) {
+          setError("dropped item looks like a folder; drop a .smith-bundle.tgz file");
+          return;
+        }
+        if (!file.name.endsWith(".smith-bundle.tgz")) {
+          setError("expected a .smith-bundle.tgz file");
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", file);
+        try {
+          const r = await fetch("/api/import/stage", { method: "POST", body: fd });
+          if (!r.ok) {
+            const body = (await r.json().catch(() => ({}))) as { error?: string };
+            setError(body.error ?? `upload failed (${r.status})`);
+            return;
+          }
+          const body = (await r.json()) as { path: string };
+          onUploaded(body.path);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "upload failed");
+        }
+      }}
+      className={`border border-dashed border-matrix-green-muted rounded p-3 text-center text-xs font-mono ${
+        hover ? "bg-matrix-green/10" : ""
+      }`}
+    >
+      drop a <code>.smith-bundle.tgz</code> here
+      {error && <div className="text-matrix-red mt-1">{error}</div>}
+    </div>
+  );
+}
+
 type Platform = "opencode" | "claude-code" | "codex" | "kiro";
 
 interface Props {
@@ -232,11 +287,12 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
         ) : (
           /* Step 1: URL + ref input */
           <div className="flex flex-col gap-3">
+            <DropZone onUploaded={(path) => setUrl(path)} />
             <FormField
-              label="git url"
+              label="git url or bundle archive"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://… or git@host:…"
+              placeholder="https://… or git@host:… or path to .smith-bundle.tgz"
             />
             <FormField
               label="git ref (branch / tag / sha)"

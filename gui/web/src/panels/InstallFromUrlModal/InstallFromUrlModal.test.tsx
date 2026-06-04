@@ -112,6 +112,38 @@ describe("InstallFromUrlModal", () => {
     expect(mutate.mock.calls[0]![0].ref).toBeUndefined();
   });
 
+  it("drop zone rejects a non-.smith-bundle.tgz file with a visible error", async () => {
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    const dropZone = screen.getByText(/drop a/i).closest("div")!;
+    const badFile = new File(["content"], "agent.tar.gz", { type: "application/gzip" });
+    fireEvent.drop(dropZone, {
+      dataTransfer: { files: [badFile] },
+    });
+    await waitFor(() => expect(screen.getByText(/expected a \.smith-bundle\.tgz file/i)).toBeInTheDocument());
+  });
+
+  it("drop zone uploads a .smith-bundle.tgz and pre-fills the URL field", async () => {
+    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("/api/import/stage")) {
+        return { ok: true, json: async () => ({ path: "/tmp/staged.smith-bundle.tgz" }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    const dropZone = screen.getByText(/drop a/i).closest("div")!;
+    const goodFile = new File(["archive bytes"], "my-agent.smith-bundle.tgz", { type: "application/gzip" });
+    fireEvent.drop(dropZone, {
+      dataTransfer: { files: [goodFile] },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/git url/i)).toHaveValue("/tmp/staged.smith-bundle.tgz"),
+    );
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/import/stage",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("seeds url from initialUrl prop", () => {
     render(<InstallFromUrlModal kind="skill" open onClose={() => {}} initialUrl="https://github.com/x/y" />);
     expect(screen.getByLabelText(/git url/i)).toHaveValue("https://github.com/x/y");

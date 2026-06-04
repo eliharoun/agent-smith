@@ -4,6 +4,62 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-06-04
+
+Bundle archive export and import: produce a single `.smith-bundle.tgz`
+file that packages a bundle plus its required skills and local
+knowledge, and consume it with `smith agent install --from <archive>`.
+The archive declares MCP-server and credential needs in the manifest so
+the recipient sees them up-front; remote knowledge sources are
+re-fetched at install time using the recipient's own credentials.
+
+### Added
+
+- `smith agent export <name>`: package a bundle into a deterministic
+  `.smith-bundle.tgz` archive. Embeds local knowledge (`type: file` /
+  `dir` / `glob`) by default and required skills opt-in
+  (`--include-skills`, default on). Flags: `--to <path>`, `--stdout`,
+  `--user-md <stub|keep|reject>`, `--compression <gzip|none>`,
+  `--json`, `--dry-run`.
+- `smith agent install --from <path-or-url>`: now accepts
+  `.smith-bundle.tgz` archives in addition to git URLs. HTTPS URLs are
+  downloaded with a 200 MB cap and a host-allowlist that refuses
+  loopback / link-local / RFC1918 addresses.
+- GUI: **Export** button on the agent detail view opens a three-step
+  modal (plan → confirm → run) that surfaces the manifest preview and
+  dispatches the export job.
+- GUI: **Install from URL** modal accepts archive paths in the URL
+  field and adds a drag-and-drop zone that uploads the archive to a
+  new `POST /api/import/stage` endpoint with size + filename
+  sanitization.
+- New manifest schema (`_smith-export.json`) declares MCP-server
+  requirements, credential needs, remote-knowledge endpoints, and
+  embedded-vs-declared skill list. Recipients verify per-file sha256
+  hashes before staging.
+- Recipient catalog distinction: imported-archive catalogs surface as
+  `imported-archive` in `smith agent list` / `smith agent catalogs`.
+  Running `smith agent sync` against an imported-archive label prints
+  an advisory and exits `0` instead of attempting a git pull.
+
+### Changed
+
+- Producer-side determinism: archive bytes are stable across machines
+  for the same logical inputs (lexicographic entry sort, epoch-pinned
+  mtimes, `userAgent` strips host platform, manifest `contents.files`
+  sorted by path). Re-running `smith agent export <name>` produces a
+  byte-identical archive.
+
+### Security
+
+- Archive importer enforces path-containment before every filesystem
+  write; manifest-driven staging refuses entries the manifest doesn't
+  list; `bundle.name` schema rejects path-traversal sequences before
+  any disk work; `ZERO_HASH` skip restricted to the manifest
+  self-entry only; `readArchive` caps decompressed size and entry
+  count to defend against tar bombs; symlinks in knowledge sources
+  are refused at export time so producers can't accidentally embed
+  files outside the bundle directory.
+
 ## [1.7.3] — 2026-06-04
 
 ### Changed

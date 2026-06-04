@@ -292,7 +292,7 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--no-skills` | bool | `false` | Skip required-skill installs entirely; warn at end. |
 | `--no-refresh-hooks` | bool | `false` | Skip refresh hook install; no consent prompt, no `SessionStart` block written, no `refresh-manifest.json`. Refresh stays manual via `smith knowledge fetch`. |
 | `--refresh-consent <yn>` | enum: `y\|yes\|n\|no` (case-insensitive) | — | Pre-answer the refresh-hook consent prompt. Required in non-TTY/CI when you want hooks (default in non-TTY is *no* with a warning). See [guide/04 — Consent and the refresh manifest](./guide/04-knowledge.md#consent-and-the-refresh-manifest). |
-| `--from <url>` | git URL (https://, ssh://, git@, file://) | — | Clone an external git repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. Skips local lookup; `[name]` becomes optional when the cloned repo contains exactly one bundle. Refuses (exit 2, `already-exists`) when the URL is already registered under a different label — the error message names the existing catalog (v1-task RC2-4). v1-task C3.9. See [guide/15 — Sharing via direct URL](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
+| `--from <url-or-path>` | git URL (https://, ssh://, git@, file://) **or** path / HTTPS URL ending in `.smith-bundle.tgz` | — | Two modes. **Git URL:** clone the repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. **Archive (`.smith-bundle.tgz`):** verify, hash-check, stage under `<stateHome>/imported/<sha-prefix>/<name>/`, register as an imported-archive catalog, then install. HTTPS URLs are downloaded with a 200 MB cap; loopback / link-local / RFC1918 hosts are refused. Skips local lookup; `[name]` becomes optional when the source contains exactly one bundle. See [guide/15 — Sharing & distribution](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
 | `--ref <ref>` | git ref | remote HEAD | Git branch, tag, or SHA to check out after cloning with `--from`. Ignored without `--from`. |
 | `--force` | bool | `false` | Bypass smith's would-clobber refusal: write the rendered file even if the destination exists and isn't claimed by smith's `installed-agents.json` manifest. Also re-claims a manifest entry whose recorded path no longer matches the new render's relativePath (rename / translator change). |
 | `--allow-missing-mcp` | bool | `false` | Demote missing-MCP-server errors to warnings (install blocks by default). |
@@ -324,6 +324,38 @@ smith agent install code-reviewer --with-skills
 Install every bundle in every registered catalog. Same flag set as `agent install` (including `--force`, `--platform-conventions`, `--no-platform-conventions`, `--platforms`, `--allow-missing-mcp`, `--allow-missing-cli`, `--refresh-consent`).
 
 **Synopsis:** `smith agent install-all [--yes] [--with-skills] [--no-skills] [--force] [--platform-conventions <strategy>] [--no-platform-conventions] [--platforms <list>] [--allow-missing-mcp] [--allow-missing-cli] [--refresh-consent <yn>]`
+
+#### `smith agent export <name>`
+
+Package a bundle into a single `.smith-bundle.tgz` archive that a recipient can install via `smith agent install --from <archive>`. Embeds local knowledge (`type: file` / `dir` / `glob`) and — by default — every skill in `requires.skills[]`. Does NOT contain MCP servers, credentials, or remote knowledge content; those are declared in the manifest and the recipient brings or fetches them at install time.
+
+**Synopsis:** `smith agent export [--to <path>] [--stdout] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--json] [--dry-run] <name>`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--to <path>` | path | `.` | Output directory or file path. Directory targets produce `<name>-<sha>.smith-bundle.tgz`. |
+| `--stdout` | bool | `false` | Stream archive bytes to stdout (logs go to stderr). Mutually exclusive with `--to`. |
+| `--include-skills` / `--no-include-skills` | bool | embed | When on, embed required skill source dirs under `skills/<name>/`. When off, declare in `requires.skills[]` and let the recipient resolve from their own catalogs. |
+| `--user-md <policy>` | enum | `stub` | `stub` always emits the canonical `USER.md` stub; `keep` ships verbatim; `reject` refuses if not already a stub. |
+| `--compression <gzip\|none>` | enum | `gzip` | Use `none` to skip gzip wrapping when streaming through your own compression layer. |
+| `--json` | bool | `false` | Emit machine-readable progress on stderr; artifact path on stdout. |
+| `--dry-run` | bool | `false` | Plan and validate; print the manifest; write nothing to disk. |
+
+**Notes:**
+- Refuses bundles whose knowledge sources use absolute paths or paths that escape the bundle directory — the producer fixes the source declarations and re-exports.
+- Re-running with the same inputs produces a byte-identical archive (modulo timestamps, which are ms-stripped for determinism).
+- Recipient side: `smith agent install --from <path-or-https-url-to-archive>` accepts both local paths and HTTPS URLs ending in `.smith-bundle.tgz`. Imported catalogs surface as `(imported-archive)` in `smith agent list` / `smith agent catalogs`; `smith agent sync` against an imported-archive label prints an advisory and exits `0` instead of attempting a git pull.
+
+**Example:**
+```bash
+smith agent export code-reviewer --to ~/Downloads/
+# → ~/Downloads/code-reviewer-abc1234.smith-bundle.tgz
+# Hand the archive (or its HTTPS URL) to a teammate; they run:
+smith agent install --from ~/Downloads/code-reviewer-abc1234.smith-bundle.tgz
+```
+
+See [guide/15 — Sharing via exported archive](./guide/15-sharing-and-distribution.md#98-sharing-via-exported-archive) for the full publisher / consumer flow.
 
 #### `smith agent uninstall <name>`
 

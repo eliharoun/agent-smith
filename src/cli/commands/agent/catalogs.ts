@@ -27,9 +27,10 @@ export async function agentCatalogs(paths: AgentCatalogsPaths = {}): Promise<num
   }
   for (const s of reg.sources) {
     const gitSuffix = s.gitRemote ? pc.dim(` (git: ${s.gitRemote})`) : "";
+    const kindAnnotation = s.importedArchive ? "imported-archive" : s.kind;
     console.log(
       pc.bold(s.label),
-      pc.dim(`[${s.kind}]`),
+      pc.dim(`[${kindAnnotation}]`),
       pc.dim(`[${catalogMode(s)}]`),
       pc.dim("→"),
       s.rootPath + gitSuffix,

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "with-skill-bundle",
+  "description": "Use proactively as the skill-embedding test fixture.",
+  "targets": ["claude-code"],
+  "modelTier": "balanced",
+  "mode": "subagent",
+  "requires": {
+    "skills": [{ "name": "fixture-skill" }]
+  }
+}
