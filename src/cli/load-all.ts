@@ -6,6 +6,7 @@ import type { AgentBundle, Source, SourceKind } from "../core/types";
 import { loadBundle } from "../io/bundle-loader";
 import { canonicalUserPath, resolveAllSources, type Registry } from "../io/registry";
 import { listAgentDirs } from "../io/sources";
+import { inspectFailuresForStaleness } from "./staleness-hint";
 
 export interface BundleLoadFailure {
   sourceKind: SourceKind;
@@ -148,6 +149,8 @@ export function warnAllLoadFailures(
   for (const f of failures) {
     printer(pc.yellow(`warn: [${f.sourceLabel}] ${f.bundlePath}: ${f.reason}`));
   }
+  const hint = inspectFailuresForStaleness(failures);
+  if (hint !== null) printer(pc.yellow(hint));
 }
 
 /**

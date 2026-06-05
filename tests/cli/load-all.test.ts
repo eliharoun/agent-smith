@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   aggregateLoadFailures,
+  type BundleLoadFailure,
   findBundleOrFail,
   loadAllBundles,
   warnAllLoadFailures,
@@ -327,5 +328,40 @@ describe("warnAllLoadFailures", () => {
     ];
     warnAllLoadFailures(failures, (m) => calls.push(m));
     expect(calls.length).toBe(1);
+  });
+
+  test("appends a staleness hint exactly once when failures look schema-shaped", () => {
+    const calls: string[] = [];
+    const failures: BundleLoadFailure[] = [
+      {
+        sourceKind: "user-global",
+        sourceLabel: "user-global",
+        bundlePath: "/p/q",
+        reason: "agent.config.json validation failed: knowledge.sources.0: Unrecognized key: \"lazy\"",
+      },
+      {
+        sourceKind: "user-global",
+        sourceLabel: "user-global",
+        bundlePath: "/p/r",
+        reason: "agent.config.json validation failed: knowledge.sources.0: Unrecognized key: \"via\"",
+      },
+    ];
+    warnAllLoadFailures(failures, (m) => calls.push(m));
+    expect(calls.length).toBe(3); // 2 warnings + 1 hint line
+    expect(calls.at(-1)).toContain("smith daemon stop && smith daemon start");
+  });
+
+  test("does NOT append a staleness hint when failures are non-schema-shaped", () => {
+    const calls: string[] = [];
+    const failures: BundleLoadFailure[] = [
+      {
+        sourceKind: "user-global",
+        sourceLabel: "user-global",
+        bundlePath: "/p/q",
+        reason: "config-missing: /p/q/agent.config.json",
+      },
+    ];
+    warnAllLoadFailures(failures, (m) => calls.push(m));
+    expect(calls.length).toBe(1); // only the warning, no hint
   });
 });
