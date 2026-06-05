@@ -627,7 +627,10 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   let mcpSpawnCommands: McpSpawnSection | undefined;
   if (input.mcpSpawnCommands) {
     emitStart(input, "mcp-spawn-commands", "MCP spawn commands");
-    mcpSpawnCommands = await checkMcpSpawnCommands(input.mcpSpawnCommands);
+    mcpSpawnCommands = await checkMcpSpawnCommands({
+      ...input.mcpSpawnCommands,
+      installedPlatforms,
+    });
     emitDone(
       input,
       "mcp-spawn-commands",
@@ -662,7 +665,10 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
   if (input.knowledgeConsistency) {
     emitStart(input, "knowledge-prompt-disk-consistency", "Knowledge prompt-disk consistency");
-    knowledgeConsistency = await checkKnowledgeConsistency(input.knowledgeConsistency);
+    knowledgeConsistency = await checkKnowledgeConsistency({
+      ...input.knowledgeConsistency,
+      installedPlatforms,
+    });
     emitDone(
       input,
       "knowledge-prompt-disk-consistency",
