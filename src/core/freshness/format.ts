@@ -811,6 +811,8 @@ function formatRefreshFinding(f: RefreshFinding): string {
       return `[orphaned-consent]    ${f.agent} on ${f.platform} — manifest consents but agent is not installed for this platform`;
     case "stale-consent-uninstalled":
       return `[stale-consent]       ${f.agent} on ${f.platform} — consent recorded but ${f.platform} CLI not installed (run \`smith doctor --fix-knowledge-refresh\` to clean up)`;
+    case "consent-without-need":
+      return `[consent-without-need] ${f.agent} on ${f.platform} — bundle has no session/always sources today; revoke with \`smith doctor --fix-knowledge-refresh\` (or \`smith agent reconfigure ${f.agent} --revoke ${f.platform}\`)`;
     case "corrupt-cache":
       return `[corrupt-cache]       ${f.agent}/${f.sourceId} — refresh cache entry is unparseable or off-schema`;
     case "unmanaged-codex-hooks":
