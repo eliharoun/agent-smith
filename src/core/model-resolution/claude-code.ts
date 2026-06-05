@@ -50,7 +50,16 @@ export async function resolveClaudeCodeModel(
   canonical: CanonicalConfig,
   env: ModelResolutionEnv,
 ): Promise<string | undefined> {
-  if (canonical.modelTier === "inherit") return undefined;
+  if (canonical.modelTier === "inherit") {
+    // Inherit-tier means "use whatever the user has set as the default
+    // for this platform." If the platform CLI isn't installed, there's
+    // nothing to inherit from — refuse to render rather than emit a
+    // file the user will never load.
+    if (env.installed && !env.installed.has("claude-code")) {
+      throw new PlatformUnavailableError("claude-code", "claude CLI not on PATH");
+    }
+    return undefined;
+  }
   const tier = canonical.modelTier;
 
   // 1. Per-bundle model override

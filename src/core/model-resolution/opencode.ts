@@ -42,7 +42,16 @@ export async function resolveOpenCodeModel(
   if (canonical.model !== undefined) return canonical.model;
 
   // 2. inherit → no model line.
-  if (canonical.modelTier === "inherit" || canonical.modelTier === undefined) return undefined;
+  if (canonical.modelTier === "inherit" || canonical.modelTier === undefined) {
+    // Inherit-tier means "use whatever the user has set as the default
+    // for this platform." If the platform CLI isn't installed, there's
+    // nothing to inherit from — refuse to render rather than emit a
+    // file the user will never load.
+    if (env.installed && !env.installed.has("opencode")) {
+      throw new PlatformUnavailableError("opencode", "opencode CLI not on PATH");
+    }
+    return undefined;
+  }
 
   const tier = canonical.modelTier;
 
@@ -84,6 +93,13 @@ export async function resolveOpenCodeModel(
   }
 
   // Step 8: Curated fallback chain.
+  // Defense-in-depth: if the install caller has detected the installed
+  // platforms and opencode isn't among them, refuse to emit a curated
+  // literal for a CLI that isn't there. The caller can drop the target
+  // cleanly instead of writing a file the user will never load.
+  if (env.installed && !env.installed.has("opencode")) {
+    throw new PlatformUnavailableError("opencode", "opencode CLI not on PATH");
+  }
   for (const provider of preferences) {
     const entry =
       PROVIDER_TABLE_V1_0_0_RC_5[tier][
