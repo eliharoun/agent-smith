@@ -251,4 +251,12 @@ describe("runDoctorCli --fix-knowledge-refresh", () => {
     // Output mentions migrate-codex.
     expect(stdout.value).toMatch(/smith knowledge migrate-codex/);
   });
+
+  // Note: `consent-without-need` reclassification path is exercised by
+  // the unit test in tests/core/freshness/check-refresh-hooks.test.ts.
+  // An end-to-end test through runDoctorCli would require registering a
+  // real bundle in the test registry (the reclassification reads the
+  // bundle's session/always source list); the unit-level coverage plus
+  // the existing orphaned-consent integration test (which exercises the
+  // same `reconfigureAgent({ revoke })` primitive) is sufficient.
 });
