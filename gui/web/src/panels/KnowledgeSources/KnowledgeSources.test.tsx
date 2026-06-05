@@ -26,10 +26,23 @@ function mockFetch(
     }>;
     bundleHasEntry?: boolean;
   },
+  detectedPlatformsProvider?: () => Array<"opencode" | "claude-code" | "codex" | "kiro">,
 ) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
+    // Detected platforms — used by the consent banner to filter the
+    // platforms it grants. Default to all 4 so older tests that don't
+    // specify keep working.
+    if (url.includes("/api/platforms/detected") && (init?.method ?? "GET") === "GET") {
+      const detected = detectedPlatformsProvider?.() ?? [
+        "opencode",
+        "claude-code",
+        "codex",
+        "kiro",
+      ];
+      return new Response(JSON.stringify({ detected }), { status: 200 });
+    }
     // Consent endpoint — must come before the generic /api/knowledge GET
     // matcher below.
     if (url.endsWith("/consent") && init?.method === "PUT") {
@@ -152,10 +165,19 @@ describe("KnowledgeSources", () => {
         ],
       }),
       calls,
+      undefined,
+      undefined,
+      // Detection returns only the platforms whose CLI is on PATH —
+      // consent must be granted for exactly that set, not the legacy
+      // hardcoded 4-platform list.
+      () => ["claude-code", "kiro"],
     ) as unknown as typeof fetch;
     renderPanel();
     await waitFor(() => expect(screen.getByText(/has not been authorized/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /authorize and refresh/i }));
+    // Wait for detection to land so the button is enabled before clicking.
+    const authorize = screen.getByRole("button", { name: /authorize and refresh/i });
+    await waitFor(() => expect(authorize).not.toBeDisabled());
+    fireEvent.click(authorize);
     // PUT /consent must fire BEFORE the knowledge.fetch dispatch so the
     // banner disappears (manifest is now on disk). Without this order,
     // the previous bug had the banner persist indefinitely because the
@@ -163,6 +185,10 @@ describe("KnowledgeSources", () => {
     await waitFor(() => {
       const put = calls.find((c) => c.url.endsWith("/consent") && c.init?.method === "PUT");
       expect(put).toBeDefined();
+      const consentBody = JSON.parse((put!.init!.body as string) ?? "{}");
+      // Platforms list must reflect the detected set, not the previous
+      // hardcoded ["opencode","claude-code","codex","kiro"] payload.
+      expect(consentBody).toEqual({ platforms: ["claude-code", "kiro"], sources: [] });
       const post = calls.find((c) => c.url.includes("/api/jobs") && c.init?.method === "POST");
       expect(post).toBeDefined();
       const body = JSON.parse((post!.init!.body as string) ?? "{}");

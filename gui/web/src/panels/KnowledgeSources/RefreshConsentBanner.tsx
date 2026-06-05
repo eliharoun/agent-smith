@@ -4,6 +4,12 @@ import { Button } from "@/ui/Button";
 interface Props {
   agent: string;
   onAuthorizeAndRefresh: () => void;
+  /**
+   * Disables the "authorize and refresh" button. Used while platform
+   * detection is still loading so the click can't fire with an empty
+   * platforms list (which would silently skip granting consent).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -11,7 +17,7 @@ interface Props {
  * hides the banner locally for the session only; the consent state on disk
  * is unchanged.
  */
-export function RefreshConsentBanner({ agent, onAuthorizeAndRefresh }: Props) {
+export function RefreshConsentBanner({ agent, onAuthorizeAndRefresh, disabled }: Props) {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
   return (
@@ -25,7 +31,9 @@ export function RefreshConsentBanner({ agent, onAuthorizeAndRefresh }: Props) {
         <Button variant="ghost" onClick={() => setDismissed(true)}>
           dismiss
         </Button>
-        <Button onClick={onAuthorizeAndRefresh}>authorize and refresh</Button>
+        <Button onClick={onAuthorizeAndRefresh} disabled={disabled}>
+          authorize and refresh
+        </Button>
       </div>
     </div>
   );
