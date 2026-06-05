@@ -5,6 +5,7 @@ import type { AgentKnowledgeView, SourceJoined } from "gui-shared";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { writeRefreshManifest } from "../../../../src/core/knowledge/refresh-manifest";
+import { detectInstalledPlatforms as defaultDetectInstalledPlatforms } from "../../../../src/io/platform-detect";
 import { HttpError } from "../middleware/error";
 import { parseKnowledgeConfig } from "../services/parse-knowledge-config";
 import {
@@ -20,6 +21,12 @@ export interface KnowledgeRouteDeps {
   registryPath: string;
   agentSmithHome?: string;
   cacheRoot?: string;
+  /**
+   * Probe for installed platform CLIs. Defaults to the production
+   * `detectInstalledPlatforms` from `src/io/platform-detect.ts`. Tests
+   * inject a fixed Set so they don't depend on the real PATH.
+   */
+  detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
 }
 
 const AGENT_NAME_RE = /^[A-Za-z0-9_-]+$/;
@@ -158,9 +165,21 @@ export function registerKnowledgeRoute(app: Hono, deps: KnowledgeRouteDeps): voi
     if (!parsed.success) {
       throw new HttpError(400, "BAD_REQUEST", parsed.error.message);
     }
+    // Defense in depth: even if a buggy client sends platforms whose CLIs
+    // aren't installed, never let them land in the consent manifest. They
+    // would only show up later as orphaned-consent doctor findings.
+    const detect = deps.detectInstalledPlatforms ?? defaultDetectInstalledPlatforms;
+    const installed = await detect();
+    const filteredPlatforms = parsed.data.platforms.filter((p) => installed.has(p));
+    const dropped = parsed.data.platforms.filter((p) => !installed.has(p));
+    if (dropped.length > 0) {
+      process.stderr.write(
+        `[consent] dropped uninstalled platforms from consent for agent ${agent}: ${dropped.join(", ")}\n`,
+      );
+    }
     const home = deps.agentSmithHome ?? defaultAgentSmithHome();
     await writeRefreshConsent(home, agent, {
-      platforms: parsed.data.platforms,
+      platforms: filteredPlatforms,
       sources: parsed.data.sources,
     });
     return c.json({ ok: true });
