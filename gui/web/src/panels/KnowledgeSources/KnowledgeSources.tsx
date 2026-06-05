@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { agentsApi } from "@/api/agents";
 import { useAgent, useSaveAgentConfig } from "@/hooks/useAgents";
+import { useDetectedPlatforms } from "@/hooks/useDetectedPlatforms";
 import { useGrantRefreshConsent, useKnowledge } from "@/hooks/useKnowledge";
 import { useReinstall } from "@/hooks/useReinstall";
 import { useStartJob } from "@/hooks/useStartJob";
@@ -96,6 +97,7 @@ export function KnowledgeSources({ agent }: Props) {
   const detail = useAgent(agent);
   const start = useStartJob();
   const grantConsent = useGrantRefreshConsent(agent);
+  const detected = useDetectedPlatforms();
   const saveConfig = useSaveAgentConfig(agent);
   // Hoist `useReinstall` to this panel so the post-save notification's
   // "Re-install now" action — fired from the Add/Edit modals — runs through
@@ -362,14 +364,27 @@ export function KnowledgeSources({ agent }: Props) {
       {!consentGranted && needsConsent && (
         <RefreshConsentBanner
           agent={agent}
+          disabled={detected.isLoading}
           onAuthorizeAndRefresh={() => {
+            // Grant consent only for platforms whose CLI is actually on
+            // PATH. Granting for absent platforms produces orphaned-consent
+            // doctor findings and confuses the refresh-hook installer
+            // downstream. If detection hasn't returned yet OR returned an
+            // empty set, silently no-op rather than send a misleading
+            // default — the banner re-enables once detection settles, and
+            // the user can click again. Defaulting to claude-code here
+            // would silently break opencode-only systems.
+            const platforms = detected.data?.detected ?? [];
+            if (platforms.length === 0) {
+              return;
+            }
             // Persist the consent manifest synchronously, then dispatch
-            // knowledge.fetch. Previously this only dispatched the fetch
-            // — the CLI's interactive prompt doesn't fire under
-            // spawn-from-GUI, so the manifest was never written and the
-            // banner persisted forever after every "authorize" click.
+            // knowledge.fetch. Without the explicit PUT, the CLI's
+            // interactive prompt doesn't fire under spawn-from-GUI, so the
+            // manifest was never written and the banner persisted forever
+            // after every "authorize" click.
             grantConsent.mutate(
-              { platforms: ["opencode", "claude-code", "codex", "kiro"], sources: [] },
+              { platforms, sources: [] },
               {
                 onSuccess: () => {
                   start.mutate({ command: "knowledge.fetch", agent });
