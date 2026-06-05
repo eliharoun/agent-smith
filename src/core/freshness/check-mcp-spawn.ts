@@ -59,6 +59,13 @@ export interface CheckMcpSpawnInput {
   which?: (command: string) => string | null;
   /** Test seam: realpath of the running smith binary. Defaults to `process.argv[1]` realpath. */
   resolveSmithPath?: () => string | null;
+  /**
+   * Optional gating set of platforms whose CLI was detected on PATH. When
+   * provided, platforms NOT in the set are skipped entirely (no findings
+   * emitted for their config). When omitted, all four platforms are
+   * inspected (back-compat with existing callers and tests).
+   */
+  installedPlatforms?: Set<McpSpawnPlatform>;
 }
 
 /**
@@ -78,6 +85,7 @@ export async function checkMcpSpawnCommands(
   // for human consumption and for snapshot-style assertions.
   const platforms: McpSpawnPlatform[] = ["claude-code", "codex", "kiro", "opencode"];
   for (const platform of platforms) {
+    if (input.installedPlatforms && !input.installedPlatforms.has(platform)) continue;
     const path = configPathFor(platform, input.paths);
     const entries = await readPlatformEntries(platform, path);
     for (const entry of entries) {

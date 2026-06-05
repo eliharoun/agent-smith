@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { knowledgeDirFor } from "../../io/knowledge-paths";
 import type { KnowledgeManifest } from "../knowledge/types";
 import type { InstallPaths, Target } from "../types";
+import type { PlatformId } from "./types";
 
 export interface KnowledgeConsistencyReport {
   status: "ok" | "drift" | "skipped";
@@ -33,9 +34,18 @@ export interface CheckKnowledgeConsistencyInput {
   agentSmithHome: string;
   installPaths: InstallPaths;
   agents: string[];
+  /**
+   * Optional gating set of platforms whose CLI was detected on PATH. When
+   * provided, only the intersection of the default targets
+   * (`opencode`, `claude-code`, `codex`) and the installed set is checked.
+   * When omitted, all three default targets are checked (back-compat).
+   * Note: `agents-md` is a manifest-level target and never appears in
+   * `installedPlatforms`, so it is naturally excluded by the cast.
+   */
+  installedPlatforms?: Set<PlatformId>;
 }
 
-const TARGETS: Target[] = ["opencode", "claude-code", "codex"];
+const TARGETS_DEFAULT: Target[] = ["opencode", "claude-code", "codex"];
 
 /** Extract `sources/...` paths from Knowledge Index bullets in a prompt. */
 function extractIndexBullets(content: string): string[] {
@@ -126,10 +136,14 @@ export async function checkKnowledgeConsistency(
 
   const reports: KnowledgeConsistencyAgentReport[] = [];
 
+  const targets = input.installedPlatforms
+    ? TARGETS_DEFAULT.filter((t) => input.installedPlatforms!.has(t as PlatformId))
+    : TARGETS_DEFAULT;
+
   for (const agent of input.agents) {
     const knowledgeDir = knowledgeDirFor(agent, { agentSmithHome: input.agentSmithHome });
 
-    for (const target of TARGETS) {
+    for (const target of targets) {
       const path = promptPath(agent, target, input.installPaths);
       let content: string;
       try {
