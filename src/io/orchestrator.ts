@@ -469,11 +469,14 @@ export async function buildAndInstall(
           resolvedModels[target] = await RESOLVERS[target](bundle.config, modelEnv);
           resolvedTargets.push(target);
         } catch (err) {
-          // PlatformUnavailableError = "user doesn't have this CLI". This
-          // is not actionable — the user simply doesn't use this platform —
-          // so the install drops the target silently. Doctor still reports
-          // the platform's absence in its readiness matrix.
           if (err instanceof PlatformUnavailableError) {
+            // The install caller should already have filtered against
+            // detectInstalledPlatforms() before reaching us. If a resolver
+            // still throws PlatformUnavailableError, that's a real signal —
+            // surface it so the user sees what happened.
+            warnings.push(
+              `[${bundle.config.name}/${target}] target skipped: ${target} CLI not detected`,
+            );
             continue;
           }
           warnings.push(

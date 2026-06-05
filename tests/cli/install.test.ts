@@ -706,4 +706,51 @@ describe("cli/install", () => {
       }
     });
   });
+
+  describe("platform detection — write gating", () => {
+    test("does not pass undetected platforms to buildAndInstall", async () => {
+      // Bundle declares all four CLI-bound targets; only two are detected
+      // on PATH. The orchestrator must receive a bundle narrowed to the
+      // detected set so it never speculatively writes ~/.config/opencode/
+      // or ~/.codex/ for a user who doesn't have those CLIs installed.
+      let receivedBundles: AgentBundle[] = [];
+      const errs: string[] = [];
+      const code = await install({
+        name: "foo",
+        paths,
+        loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+        loadAllBundles: async () => ({
+          bundles: [
+            fakeBundle("foo", {
+              targets: ["opencode", "claude-code", "codex", "kiro", "agents-md"],
+            }),
+          ],
+          failures: [],
+        }),
+        buildAndInstall: async (bundles) => {
+          receivedBundles = bundles;
+          return emptyResult;
+        },
+        readAvailableMcpServers: async () => ({}),
+        loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+        detectInstalledPlatforms: async () => new Set(["claude-code", "kiro"] as const),
+        print: () => {},
+        printErr: (m) => errs.push(m),
+      });
+      expect(code).toBe(0);
+      expect(receivedBundles).toHaveLength(1);
+      const targetsSeen = receivedBundles[0]!.config.targets;
+      // Detected CLI targets stay; agents-md is not gated by detection.
+      expect(targetsSeen).toContain("claude-code");
+      expect(targetsSeen).toContain("kiro");
+      expect(targetsSeen).toContain("agents-md");
+      // Undetected targets are dropped before render.
+      expect(targetsSeen).not.toContain("opencode");
+      expect(targetsSeen).not.toContain("codex");
+      // Skip one-liner reaches stderr for each undetected target.
+      const allErr = errs.join("\n");
+      expect(allErr).toMatch(/opencode.*not detected/);
+      expect(allErr).toMatch(/codex.*not detected/);
+    });
+  });
 });

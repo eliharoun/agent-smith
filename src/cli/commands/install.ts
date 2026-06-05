@@ -7,6 +7,7 @@ import { probeRoute } from "../../core/knowledge/probe-route";
 import { installLockPath } from "../../core/knowledge/refresh-lock";
 import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refresh-manifest";
 import { detectInstalledPlatforms as defaultDetectInstalledPlatforms } from "../../io/platform-detect";
+import { renderSkippedPlatforms, resolveExecutionPlatforms } from "../../io/platform-execution";
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
 import {
   loadRouteCache as defaultLoadRouteCache,
@@ -489,7 +490,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // that retain a reference to the loaded bundle (e.g. a future caller
   // that caches load results) see unfiltered targets.
   const filteredBundle = applyPlatformFilter(bundle, o.platformFilter);
-  const bundles = [filteredBundle];
+  let bundles = [filteredBundle];
 
   // Preflight MCP dependencies BEFORE the consent loop so the user doesn't
   // answer prompts for an install that's about to refuse. `mcp.required[]`
@@ -620,6 +621,35 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // doesn't have. Detected once per install so subsequent gates downstream
   // share the same view of the world.
   const installedPlatforms = await (o.detectInstalledPlatforms ?? defaultDetectInstalledPlatforms)();
+
+  // Compute the execution plan per bundle and narrow declared targets to
+  // detected (or force-filtered) platforms before render. Skipped
+  // platforms surface as a one-liner on stderr so the user knows why a
+  // target they declared is missing from the install summary. `agents-md`
+  // is a Target with no CLI dependency and is preserved as-is.
+  const isPlatformId = (t: Target): t is PlatformId =>
+    t === "opencode" || t === "claude-code" || t === "codex" || t === "kiro";
+  bundles = bundles.map((b) => {
+    const plan = resolveExecutionPlatforms({
+      manifestTargets: b.config.targets.filter(isPlatformId),
+      installed: installedPlatforms,
+      ...(o.platformFilter
+        ? {
+            forceFilter: o.platformFilter.filter((t): t is PlatformId =>
+              isPlatformId(t as Target),
+            ),
+          }
+        : {}),
+    });
+    const skipped = renderSkippedPlatforms(plan);
+    if (skipped.length > 0) printErr(skipped);
+    const targetsForRender: Target[] = [
+      ...plan.execution,
+      ...b.config.targets.filter((t) => t === "agents-md"),
+    ];
+    if (targetsForRender.length === b.config.targets.length) return b;
+    return { ...b, config: { ...b.config, targets: targetsForRender } };
+  });
 
   try {
     // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
