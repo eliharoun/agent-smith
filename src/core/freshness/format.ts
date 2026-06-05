@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import pc from "picocolors";
 import { tokenCreationInstructions } from "../../io/atlassian-auth";
 import { stateHome } from "../../io/state-home";
 import type { WorkspaceVersionStatus } from "../../io/workspace-version";
@@ -108,7 +109,14 @@ export function formatKiroSection(
 
 /** Render a DoctorReport as a human-readable plain-text block (no trailing newline). */
 export function formatReport(report: DoctorReport): string {
-  const blocks: string[] = ["Platform schema freshness:", ""];
+  const blocks: string[] = [];
+  if (report.skippedPlatforms.length > 0) {
+    blocks.push(
+      pc.dim(`Skipped platforms (CLI not on PATH): ${report.skippedPlatforms.join(", ")}`),
+    );
+    blocks.push("");
+  }
+  blocks.push("Platform schema freshness:", "");
   for (const p of report.platforms) {
     if (p.platform === "opencode") blocks.push(formatOpencodeSection(p));
     else if (p.platform === "claude-code") blocks.push(formatClaudeCodeSection(p));
@@ -801,6 +809,8 @@ function formatRefreshFinding(f: RefreshFinding): string {
       return `[missing-hook]        ${f.agent} on ${f.platform} — consented but no on-disk hook references this agent`;
     case "orphaned-consent":
       return `[orphaned-consent]    ${f.agent} on ${f.platform} — manifest consents but agent is not installed for this platform`;
+    case "stale-consent-uninstalled":
+      return `[stale-consent]       ${f.agent} on ${f.platform} — consent recorded but ${f.platform} CLI not installed (run \`smith doctor --fix-knowledge-refresh\` to clean up)`;
     case "corrupt-cache":
       return `[corrupt-cache]       ${f.agent}/${f.sourceId} — refresh cache entry is unparseable or off-schema`;
     case "unmanaged-codex-hooks":

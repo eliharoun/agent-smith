@@ -736,6 +736,14 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
             print(`  ✓ cleared orphan consent: ${f.agent}/${f.platform}`);
             break;
+          case "stale-consent-uninstalled":
+            // The platform's CLI isn't on PATH. Revoking the manifest
+            // entry is the same as orphaned-consent — strip the dead
+            // consent record so the manifest reflects current reality.
+            // The hook primitive on the missing platform is a no-op.
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
+            print(`  ✓ cleared stale consent: ${f.agent}/${f.platform} (CLI not installed)`);
+            break;
           case "unmanaged-codex-hooks":
             print(`  ! ${f.path} requires manual migration: run 'smith knowledge migrate-codex'`);
             break;

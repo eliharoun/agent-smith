@@ -42,6 +42,7 @@ export type RefreshPlatformId = "claude-code" | "codex" | "opencode" | "kiro";
 export type Finding =
   | { kind: "missing-hook"; agent: string; platform: RefreshPlatformId }
   | { kind: "orphaned-consent"; agent: string; platform: RefreshPlatformId }
+  | { kind: "stale-consent-uninstalled"; agent: string; platform: RefreshPlatformId }
   | { kind: "corrupt-cache"; agent: string; sourceId: string }
   | { kind: "unmanaged-codex-hooks"; path: string };
 
@@ -61,6 +62,14 @@ export interface CheckRefreshHooksInput {
   codexHooksPath: string;
   /** Root containing `plugins/agent-smith-refresh/.smith-managed`. */
   opencodeConfigHome: string;
+  /** Platforms whose CLI is currently on PATH. When a consent record
+   *  names a platform NOT in this set, the finding is reclassified
+   *  to `stale-consent-uninstalled` (info-level) instead of being
+   *  treated as drift. The global `unmanaged-codex-hooks` check is
+   *  also suppressed when codex is absent. Omitting this field
+   *  preserves the legacy "treat all platforms as installed"
+   *  behaviour for callers that haven't been updated yet. */
+  installedPlatforms?: Set<RefreshPlatformId>;
 }
 
 // Kiro support: Task 2.5 adds the kiro-hooks module. Until then,
@@ -94,6 +103,14 @@ export async function checkRefreshHooks(
       // Defensive narrowing: the manifest schema admits any PlatformId but
       // we only act on the three the refresh subsystem covers.
       if (!isRefreshPlatform(platform)) continue;
+      // If the platform's CLI isn't installed at all, this is healthy
+      // stale-state, not drift. The consent record exists from a previous
+      // install when the platform was present; the user simply uninstalled
+      // it later. No action needed unless the user wants to clean up.
+      if (input.installedPlatforms && !input.installedPlatforms.has(platform)) {
+        findings.push({ kind: "stale-consent-uninstalled", agent, platform });
+        continue;
+      }
       const installed = await isAgentInstalled(agent, platform, input.installPaths);
       if (!installed) {
         findings.push({ kind: "orphaned-consent", agent, platform });
@@ -125,10 +142,21 @@ export async function checkRefreshHooks(
   // Global: unmanaged codex hooks.json with a SessionStart hand-written
   // by the user. We DO NOT flag a missing file; only a file we'd refuse
   // to overwrite.
-  const unmanaged = await detectUnmanagedCodexHooks(input.codexHooksPath);
-  if (unmanaged) findings.push(unmanaged);
+  //
+  // Only flag unmanaged codex hooks when codex is actually installed.
+  // If codex isn't on PATH, the file isn't smith's to manage and the
+  // user doesn't use codex; flagging it would be advisory at best and
+  // confusing at worst.
+  if (!input.installedPlatforms || input.installedPlatforms.has("codex")) {
+    const unmanaged = await detectUnmanagedCodexHooks(input.codexHooksPath);
+    if (unmanaged) findings.push(unmanaged);
+  }
 
-  return { status: findings.length === 0 ? "ok" : "warn", findings };
+  // `stale-consent-uninstalled` is info-level: it documents healthy
+  // stale-state without bumping the section to warn. Only the other
+  // (drift-bearing) finding kinds count toward warn.
+  const warnFindings = findings.filter((f) => f.kind !== "stale-consent-uninstalled");
+  return { status: warnFindings.length === 0 ? "ok" : "warn", findings };
 }
 
 // ---------------------------------------------------------------------------
