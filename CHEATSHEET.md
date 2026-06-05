@@ -20,6 +20,7 @@ For concepts, narrative, and design rationale see [`GUIDE.md`](./GUIDE.md).
   - [Skills](#skills)
   - [Daemon](#daemon)
 - [Required skills (`requires.skills`)](#required-skills-requiresskills)
+- [Platform conventions (`platformConventions`)](#platform-conventions-platformconventions)
 - [Error output format](#error-output-format)
 - [Exit codes](#exit-codes)
 - [Paths reference](#paths-reference)
@@ -76,6 +77,7 @@ back to the page over SSE.
 | Section | Route | Wraps |
 |---|---|---|
 | Construct | `/` | dashboard (system summary + recent jobs) |
+| Onboarding | `/onboarding` | first-run setup wizard |
 | Construct | `/agents` | `smith agent list` + per-platform install grid |
 | Construct | `/agents/new` | guided `smith agent init` |
 | Construct | `/agents/install-matrix` | bulk `smith agent install` across platforms |
@@ -94,6 +96,7 @@ back to the page over SSE.
 | System | `/system/daemon` | `smith daemon {start,stop,status}` + live log tail (SSE) + `pullIntervalMs` / `heartbeatIntervalMs` tuning |
 | System | `/system/update` | preview commits behind `origin/main` + run `smith update` with streamed progress |
 | System | `/system/history` | persistent job history with debounced regex search across past output |
+| System | `/system/model-config` | per-target model configuration overrides |
 | System | `/system/settings` | GUI settings |
 | System | `/system/jack-out` | `smith jack-out` with typed-phrase confirm (`jack-out`), MatrixRain runtime, disconnect-as-success semantic |
 
@@ -187,7 +190,7 @@ Add an agent catalog (a directory containing one or more agent bundles) to the r
 |---|---|---|---|
 | `--kind <kind>` | enum: `user-global\|project\|registered` (**required**) | — | `user-global` = your `~/.config/agent-smith/agents/`. `project` = a per-repo `.agent-smith/` dir. `registered` = a shared/team catalog tracked in git. |
 | `--label <label>` | string | derived from path | Display label for `smith agent list` / `smith status`. |
-| `--git-remote <url>` | URL | — | Required-remote URL for `kind=registered`. Validated against actual git remotes. When the URL matches a catalog already in either registry, smith prints a one-line warning (does NOT refuse — duplicate links are sometimes legitimate; v1-task RC2-5). Use `smith doctor` (`duplicate-catalogs` section) to audit the resulting clusters. |
+| `--git-remote <url>` | URL | — | Required-remote URL for `kind=registered`. Validated against actual git remotes. When the URL matches a catalog already in either registry, smith prints a one-line warning (does NOT refuse — duplicate links are sometimes legitimate). Use `smith doctor` (`duplicate-catalogs` section) to audit the resulting clusters. |
 | `--allow-empty` | bool | `false` | Allow registering a catalog dir that contains zero bundles. |
 | `--skip-git-check` | bool | `false` | Skip the git-remote validation. |
 
@@ -207,7 +210,7 @@ Remove an agent catalog from the registry. Path is normalized identically to `ag
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--purge-clone` | bool | `false` | Also `rm -rf` the on-disk clone. Layered safety guard (v1-task RC2-9): refused unless **all four** hold — catalog mode is `managed`, `rootPath` is contained under `<stateHome>/remote/`, target contains a `.git/`, and `git remote get-url origin` matches the registered `remote.url` (modulo URL normalization). Failure surfaces the exact guard that tripped. Use when you want to fully retire a catalog installed via `agent install --from <url>`. v1-task C3.13. |
+| `--purge-clone` | bool | `false` | Also `rm -rf` the on-disk clone. Layered safety guard: refused unless **all four** hold — catalog mode is `managed`, `rootPath` is contained under `<stateHome>/remote/`, target contains a `.git/`, and `git remote get-url origin` matches the registered `remote.url` (modulo URL normalization). Failure surfaces the exact guard that tripped. Use when you want to fully retire a catalog installed via `agent install --from <url>`. |
 
 **Notes:**
 - Exits `1` if the path isn't a registered catalog.
@@ -221,13 +224,13 @@ Print every bundle across every registered agent catalog, with target-install st
 
 #### `smith agent catalogs`
 
-List registered agent catalogs. Parity with `smith skill catalogs`. Each row carries a dim `[managed]` or `[linked]` badge (v1-task RC2-6): **managed** catalogs are smith-owned clones (installed via `agent install --from <url>`, located under `<stateHome>/remote/`) — eligible for `sync` and `unregister --purge-clone`; **linked** catalogs are user-owned working copies (registered via `agent register`) — smith never modifies them.
+List registered agent catalogs. Parity with `smith skill catalogs`. Each row carries a dim `[managed]` or `[linked]` badge: **managed** catalogs are smith-owned clones (installed via `agent install --from <url>`, located under `<stateHome>/remote/`) — eligible for `sync` and `unregister --purge-clone`; **linked** catalogs are user-owned working copies (registered via `agent register`) — smith never modifies them.
 
 **Synopsis:** `smith agent catalogs`
 
 #### `smith agent sync [name]`
 
-Pull updates from the upstream git remote for one or all remote-backed agent catalogs (catalogs registered with a `remote` block — typically those installed via `agent install --from <url>`). Catalogs without a `remote` are skipped silently. Updates `lastPulledSha`, `lastRemoteSha`, and timestamps in `registry.json` after each successful pull. v1-task C3.11.
+Pull updates from the upstream git remote for one or all remote-backed agent catalogs (catalogs registered with a `remote` block — typically those installed via `agent install --from <url>`). Catalogs without a `remote` are skipped silently. Updates `lastPulledSha`, `lastRemoteSha`, and timestamps in `registry.json` after each successful pull.
 
 **Synopsis:** `smith agent sync [--check] [--all] [name]`
 
@@ -269,6 +272,8 @@ Print canonical paths plus an `Agent catalogs (N)` and `Skill catalogs (N)` summ
 
 **Synopsis:** `smith status`
 
+**Notes:** When any registered catalog still resides at the rc.1 clone location (`<configDir>/remote/...`), `status` appends a one-line yellow nudge directing you to `smith migrate-clones`.
+
 ---
 
 ### Install & uninstall
@@ -304,6 +309,7 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--verbose` | bool | `false` | Show info-level warnings (pattern fallbacks, platform truisms). |
 | `--platform-conventions <strategy>` | enum: `accept-all\|reject-all\|use-defaults\|prompt` | (3-tier resolver) | Convention-injection strategy. Per-bundle `platformConventions` field wins (tier 1); else `~/.config/agent-smith/conventions.json` saved prefs (tier 2); else this flag → interactive prompt (TTY) → fail-safe-reject (non-TTY). `accept-all` emits every registered convention for every target; `use-defaults` emits only those marked `promptDefault: true`. |
 | `--no-platform-conventions` | bool | `false` | Alias for `--platform-conventions=reject-all` (this run only; doesn't persist to `conventions.json`). |
+| `--force-unlock` | bool | `false` | Drop a stuck per-agent install lock (left by a killed run) before installing. |
 
 **Notes:**
 - Skill-mode precedence: `--no-skills` wins, then `--yes`/`--with-skills` (auto-install), else default `prompt`.
@@ -431,7 +437,7 @@ smith agent reconfigure my-agent --grant codex --revoke opencode    # combo
 
 #### `smith jack-out`
 
-Full offboarding: `agent uninstall-all` + `rm -rf ~/.config/agent-smith`. Requires the typed token `jack-out` for confirmation. Prints manual-cleanup instructions for `~/.local/bin/smith` and `~/.agent-smith/` (neither is removed automatically).
+Full offboarding. Delegates per-bundle cleanup to `agent destroy --yes --force` for every bundle owned by smith (i.e. `user-global` bundles under `<configDir>/agents/`), then uninstalls every entry in `installed-skills.json`, removes `<configDir>/`, removes runtime-state files (`daemon.{pid,log,heartbeat.json}`, `gui-jobs.jsonl`, `gui-jobs-output/`) from `<runtimeStateHome>/`, removes the CLI symlink at `~/.local/bin/smith`, strips the agent-smith marker block from your shell rc (`.zshrc`/`.bash_profile`/`.bashrc`), then removes the source clone at `~/.agent-smith/`. Preserves: `<runtimeStateHome>/remote/` (managed via `unregister --purge-clone`) and any catalogs registered outside `<configDir>`. Requires the typed token `jack-out` for confirmation.
 
 **Synopsis:** `smith jack-out [--dry-run] [--yes]`
 
@@ -450,9 +456,9 @@ Full offboarding: `agent uninstall-all` + `rm -rf ~/.config/agent-smith`. Requir
 
 #### `smith doctor`
 
-Health check across up to 17 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `mcp-deps`, `knowledge-refresh`, `knowledge-compile`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section (v1-task RC2-10) groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code. v1-task C3.14.
+Health check across up to 17 sections: `opencode`, `claude-code`, `codex`, `kiro`, `model-resolution`, `workspace`, `atlassian-auth`, `skill-drift`, `agent-required-skills`, `registry-hygiene`, `remote-catalogs`, `duplicate-catalogs`, `mcp-deps`, `knowledge-refresh`, `knowledge-compile`, `knowledge-prompt-disk-consistency`, `agent-drift`. Platform sections (`opencode`/`claude-code`/`codex`/`kiro`) and the OpenCode-specific `model-resolution` section are auto-filtered to the platforms whose CLI binary (`opencode`/`claude`/`codex`/`kiro-cli` or `kiro`) is detected on PATH. The `remote-catalogs` section is offline-safe — it reports drift recorded by prior `sync --check` runs (`lastPulledSha` vs. `lastRemoteSha`) and entries whose `lastCheckedAt` is older than 7 days; live drift detection requires running `smith agent sync --check --all`. The `duplicate-catalogs` section groups both registries by normalized git URL (scheme/case/`.git`-suffix insensitive) and warns on clusters of size ≥ 2 so users can clean up duplicate registrations accumulated under rc.1 (which did not refuse duplicate `install --from` runs); informational only — never affects exit code.
 
-**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile]`
+**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile] [--fix-mcp-commands]`
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -465,6 +471,7 @@ Health check across up to 17 sections: `opencode`, `claude-code`, `codex`, `kiro
 | `--skip-model-resolution` | bool | `false` | Skip the v0.6.0 model-resolution check (faster but less complete). Auto-skipped when OpenCode is not on PATH. |
 | `--fix-knowledge-refresh` | bool | `false` | Auto-repair drift in the `knowledgeRefresh` section: `missing-hook` and `orphaned-consent` route through `smith agent reconfigure`; `corrupt-cache` removes the bad meta file (next refresh repopulates). `unmanaged-codex-hooks` is **not** auto-fixed — prints a hint to run `smith knowledge migrate-codex`. See [guide/14 — Knowledge-refresh drift](./guide/14-cli-reference.md#knowledge-refresh-drift-and-auto-repair). |
 | `--fix-knowledge-compile` | bool | `false` | Auto-repair drift in the `knowledgeCompile` section: re-runs `smith knowledge compile <agent>` for every `missing-manifest` or `drift` finding. Both kinds repair via the same path because a re-compile rebuilds the TOC stanza and overwrites a stale or corrupt `compile-manifest.json` from the already-materialized files. See [guide/14 — Knowledge-compile drift](./guide/14-cli-reference.md#knowledge-compile-drift-and-auto-repair). |
+| `--fix-mcp-commands` | bool | `false` | Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. `smith`) to absolute paths so GUI launches from Spotlight/dock spawn correctly. Use after a doctor `mcp-deps` section flags fragile-command findings. |
 
 **Notes:**
 - Exit code is its own taxonomy: `0` = clean, `1` = drift detected, `2` = network error. `smith update` propagates this verbatim.
@@ -492,7 +499,7 @@ Pull the latest `agent-smith` from `origin/main`, run `bun install`, refresh the
 | `--dry-run` | bool | `false` | Show what update would do without pulling, installing, or running doctor. |
 
 **Notes:**
-- Pipeline (6 steps): resolve workspace → `git pull --ff-only` → `bun install` → `bun run gui:build` → `smith agent install agent-smith` (refreshes knowledge dir) → `smith doctor`.
+- **Pipeline (7 steps):** resolve workspace → `git pull --ff-only` → `bun install` → rewrite `~/.local/bin/smith` launcher (idempotent; same shape as `bin/install` Step 6) → `bun run gui:build` → `smith agent install agent-smith` (refreshes knowledge dir) → `smith doctor`. Launcher / GUI-build / reinstall failures are warn-and-continue; final exit is `3` (EXIT_PARTIAL) if any of them failed and doctor passed.
 - Workspace dirty (`git status` not clean) inside `~/.agent-smith/` exits `1`.
 - Workspace not resolvable from `import.meta.url` (running from outside the clone) exits `1` with a reinstall hint.
 - `git pull` / `bun install` / `git fetch` / `gui:build` / `agent-smith` reinstall failures emit `3` (EXIT_PARTIAL).
@@ -564,14 +571,15 @@ Print materialized knowledge for one agent, or — if the agent declares sources
 
 #### `smith knowledge fetch <agent>`
 
-Re-fetch URL/git caches for an agent and re-install. Use after upstream content changes.
+Re-acquire `<agent>`'s knowledge sources and re-render its prompts. With `--source <id>`, surgically refreshes only that source — other sources' caches and content are untouched. After every successful refresh, writes `~/.cache/agent-smith/agents/<agent>/sources/<id>.meta.json` so the GUI's refresh-history view has data.
 
-**Synopsis:** `smith knowledge fetch [--source <id>] <agent>`
+**Synopsis:** `smith knowledge fetch [--source <id>] [--force-unlock] <agent>`
 
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--source <id>` | string | — | Fetch only the source with this id; omit to refetch every source. |
+| `--source <id>` | string | — | Surgically refresh ONLY this source: clears just that source's URL/git acquirer cache (other sources' caches stay intact), re-acquires it, and writes its `.meta.json`. Without the flag, every source is re-fetched. |
+| `--force-unlock` | bool | `false` | Drop a stuck per-agent install lock left by a killed earlier run. ENOENT is silent. Same contract as `smith agent install --force-unlock`. |
 
 **Example:**
 ```bash
@@ -646,6 +654,23 @@ Inverse of `wire`: removes the per-agent key from the bundle's `mcpServers[]` an
 ```bash
 smith knowledge unwire billing-expert
 ```
+
+#### `smith knowledge route <agent>`
+
+Run the interactive MCP server/tool picker against existing URL knowledge sources and persist the chosen route as `via: { server, tool }` in `agent.config.json`. By default, iterates every URL source that does NOT already have `via:` set, skipping already-routed sources to avoid double-prompting. With `--source <id>`, runs the picker against that single source whether or not it already has `via:`. Designed for retroactively routing internal/auth-gated URL sources through an MCP fetcher (e.g. an internal-wiki MCP) without hand-editing JSON.
+
+**Synopsis:** `smith knowledge route <agent> [--source <id>] [--clear-via]`
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--source <id>` | string | — | Route only the source with this id (default: every URL source without `via:`). |
+| `--clear-via` | bool | `false` | Remove `via:` from the source identified by `--source`, switching it back to direct-HTTP fetching. Requires `--source`. `mcpServers[]` and `mcp.required[]` are left intact. |
+
+**Notes:**
+- Non-interactive sessions (no TTY) skip the picker silently.
+- See [guide/04 — Routing URL fetches through MCP servers](./guide/04-knowledge.md#routing-url-fetches-through-mcp-servers).
 
 #### `smith knowledge remove <agent> <source-id>`
 
@@ -741,6 +766,9 @@ Two invocation forms:
 | `--description <text>` | string | empty | Human-readable note shown in `smith knowledge list`. |
 | `--optional` | bool | `false` | Demote this source's runtime/IO failures (network, missing file, git auth) to warnings instead of aborting `smith agent install`. Mirrors npm `optionalDependencies`. Author bugs (schema violations) still abort. |
 | `--no-install` | bool | `false` (i.e. install runs) | Skip the auto-`smith agent install <agent>` step that normally runs after `add`. Use this when you're staging multiple sources before materializing. |
+| `--lazy` | bool | `false` | URL sources only (`type=url`). Skip materialization at install; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types. |
+
+> Schema fields like `summary`, `toc`, `materialize`, `extractor`, `refresh`, `retrieval`, `retrievalMcpUrl`, `inlineBudgetTokens`, and `via` are **not** CLI flags on `knowledge add`. Edit them via the GUI's per-source Edit modal (`/knowledge/:agent`), via `smith knowledge route` (for `via:` only), or by hand-editing `agent.config.json` and re-running `smith agent install <agent>`.
 
 **Notes:**
 - Schema accepts `materialize: "pdf-extract"` but the validator rejects it. Same status as `npm` — declared, not yet implemented.
@@ -910,7 +938,7 @@ Print discovered skills with their drift status.
 
 #### `smith skill catalogs`
 
-List every registered skill catalog (including the default-registered `atlassian-skills`). Rows carry the same `[managed]` / `[linked]` badges as `agent catalogs` (v1-task RC2-6); a `(git: <url>)` suffix is appended for any catalog with a `gitRemote` so the upstream is visible at a glance.
+List every registered skill catalog (including the default-registered `atlassian-skills`). Rows carry the same `[managed]` / `[linked]` badges as `agent catalogs`; a `(git: <url>)` suffix is appended for any catalog with a `gitRemote` so the upstream is visible at a glance.
 
 **Synopsis:** `smith skill catalogs`
 
@@ -925,7 +953,7 @@ Add a skill catalog (a directory of `SKILL.md`-rooted skills) to `~/.config/agen
 |---|---|---|---|
 | `--kind <kind>` | enum: `user-global\|user-local\|team-shared` (**required**) | — | `user-global` = personal skills in `~/`. `user-local` = per-machine skills. `team-shared` = shared/team catalog tracked in git. (Note: different value set than `smith agent register`'s `--kind`.) |
 | `--label <label>` | string | `<kind>:<absPath>` | Display label. |
-| `--git-remote <url>` | URL | — | Required-remote URL for `kind=team-shared`. Same duplicate-warn behavior as `agent register` (v1-task RC2-5). |
+| `--git-remote <url>` | URL | — | Required-remote URL for `kind=team-shared`. Same duplicate-warn behavior as `agent register`. |
 | `--allow-empty` | bool | `false` | Allow registering a catalog with zero skills. |
 | `--skip-git-check` | bool | `false` | Skip git-remote validation. |
 
@@ -941,7 +969,7 @@ Remove a skill catalog. Refuses only `protected` catalogs. Removing a catalog wh
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--purge-clone` | bool | `false` | Also `rm -rf` the on-disk clone. Layered safety guard (v1-task RC2-9): refused unless catalog mode is `managed`, `rootPath` is under `<stateHome>/remote/`, target contains `.git/`, and origin URL matches the registered `remote.url`. Use to fully retire a catalog installed via `skill install --from <url>`. v1-task C3.13. |
+| `--purge-clone` | bool | `false` | Also `rm -rf` the on-disk clone. Layered safety guard: refused unless catalog mode is `managed`, `rootPath` is under `<stateHome>/remote/`, target contains `.git/`, and origin URL matches the registered `remote.url`. Use to fully retire a catalog installed via `skill install --from <url>`. |
 
 **Notes:**
 - Exits `1` if the catalog isn't registered.
@@ -949,7 +977,7 @@ Remove a skill catalog. Refuses only `protected` catalogs. Removing a catalog wh
 
 #### `smith skill sync [name]`
 
-Pull updates from the upstream git remote for one or all remote-backed skill catalogs. Mirror of `agent sync` — same semantics, same flags, separate registry (`skill-catalogs.json`). v1-task C3.12.
+Pull updates from the upstream git remote for one or all remote-backed skill catalogs. Mirror of `agent sync` — same semantics, same flags, separate registry (`skill-catalogs.json`).
 
 **Synopsis:** `smith skill sync [--check] [--all] [name]`
 
@@ -977,7 +1005,7 @@ smith skill sync --all --check
 
 Install a skill into all platform skill directories. `<ref>` is `<catalog>/<name>` or bare `<name>` (when unambiguous across catalogs).
 
-**Synopsis:** `smith skill install [--from <pathOrUrl>] [--as <name>] [--targets <list>] [--git-ref <ref>] [<ref>]`
+**Synopsis:** `smith skill install [--from <pathOrUrl>] [--as <name>] [--targets <list>] [--git-ref <ref>] [--all] [--skills <list>] [--json] [<ref>]`
 
 **Args:**
 | Arg | Required | Description |
@@ -987,10 +1015,13 @@ Install a skill into all platform skill directories. `<ref>` is `<catalog>/<name
 **Flags:**
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--from <pathOrUrl>` | path or git URL | — | Ad-hoc install. **Local path** — auto-creates a catalog; tilde expansion is supported (`~/path/to/skill`). **Git URL** (https://, ssh://, git@, file://) — clones into `<stateHome>/remote/<host>/<owner>/<repo>`, registers, then installs (v1-task C3.10). URL form detected by scheme. See [guide/15 — Sharing via direct URL](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
+| `--from <pathOrUrl>` | path or git URL | — | Ad-hoc install. **Local path** — auto-creates a catalog; tilde expansion is supported (`~/path/to/skill`). **Git URL** (https://, ssh://, git@, file://) — clones into `<stateHome>/remote/<host>/<owner>/<repo>`, registers, then installs. URL form detected by scheme. See [guide/15 — Sharing via direct URL](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
 | `--as <name>` | string | derived | Catalog label for the auto-created ad-hoc catalog (local-path branch only). |
 | `--targets <list>` | comma-list of `opencode\|claude-code\|codex\|kiro` | all four | Restrict installation to specific platforms. |
 | `--git-ref <ref>` | git ref | remote HEAD | Branch, tag, or SHA to check out after cloning with `--from <url>`. Ignored for local paths. |
+| `--all` | bool | `false` | Install every skill discovered in `--from <url>` (URL form only). Mutually exclusive with `<ref>` and `--skills`. |
+| `--skills <list>` | comma-list | — | Restrict install to specific skills discovered in `--from <url>` (URL form only). Mutually exclusive with `<ref>` and `--all`. |
+| `--json` | bool | `false` | Discover skills from `--from <url>`, print JSON, do not install. |
 
 **Notes:**
 - Codex skills must be `SKILL.md` *directories* (not single files); the installer enforces this.
@@ -1283,7 +1314,11 @@ All smith state lives under one root resolved by `stateHome()` (`src/io/state-ho
 
 | Var | Read by | Effect |
 |---|---|---|
+| `SMITH_BIN` | GUI MCP-config writers, refresh-hook installers | Override for the resolved `smith` binary path; honored by GUI MCP-config writers and refresh-hook installers when smith can't be found via PATH heuristics. |
 | `SMITH_DEBUG` | `wrap()` (every command) | when truthy, prints the underlying error and stack trace below the formatted error block |
+| `SMITH_DOCTOR_PROBE_META` | `smith doctor` | `=1` enables URL-routing `_meta` probe in `smith doctor`'s `url-routing` section. Experimental. Default off. |
+| `SMITH_HINT_PENDING` | post-install hint banner | `=1` triggers a one-shot post-install hint banner about pending platform-detection sync operations. Default off. |
+| `SMITH_PROBE_META` | `smith agent install`, `smith knowledge fetch` | `=1` enables Layer 2 `_meta` self-claim collection during `smith agent install` and `smith knowledge fetch`. Experimental; spawns every declared MCP server up front. Default off. |
 | `AGENT_SMITH_DEBUG` | every command (via `isDebug()`) | **deprecated alias for `SMITH_DEBUG`**; setting it triggers a one-shot deprecation warning on stderr. Use `SMITH_DEBUG` instead. |
 | `EDITOR` | `init-user` | editor for `USER.md` (default `vi`) |
 | `XDG_CONFIG_HOME` | every smith command (via `stateHome()`) | base dir for smith's state root; resolves to `${XDG_CONFIG_HOME}/agent-smith/...` when set, `~/.config/agent-smith/...` when unset/empty |
@@ -1361,6 +1396,6 @@ smith agent validate my-agent && smith agent install my-agent && smith doctor
 smith update --dry-run
 ```
 
-### Exit codes
+### Exit-code recipes
 
 See the top-level [Exit codes](#exit-codes) section for the full taxonomy and triage table.
