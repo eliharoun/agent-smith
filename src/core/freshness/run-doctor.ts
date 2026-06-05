@@ -1404,7 +1404,9 @@ async function checkRegistryHygiene(
       continue;
     }
     if (!sniff.exists) {
-      warnings.push(`agent catalog '${s.label}': rootPath ${s.rootPath} does not exist`);
+      warnings.push(
+        `agent catalog '${s.label}': rootPath ${s.rootPath} does not exist — run \`smith agent unregister ${s.label}\` to remove it`,
+      );
       continue;
     }
     if (sniff.agentBundles === 0 && !sniff.isSingleAgentBundle) {
@@ -1445,7 +1447,9 @@ async function checkRegistryHygiene(
       continue;
     }
     if (!sniff.exists) {
-      warnings.push(`skill catalog '${c.label}': rootPath ${c.rootPath} does not exist`);
+      warnings.push(
+        `skill catalog '${c.label}': rootPath ${c.rootPath} does not exist — run \`smith skill unregister ${c.label}\` to remove it`,
+      );
       continue;
     }
     if (sniff.skillBundles === 0 && !sniff.isSingleSkillBundle) {
