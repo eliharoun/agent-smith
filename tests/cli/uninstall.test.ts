@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { runUninstallCli } from "../../src/cli/commands/uninstall";
 import { SmithError } from "../../src/core/smith-error";
 import type { InstallPaths } from "../../src/core/types";
+import type { PlatformId } from "../../src/io/platform-detect";
 import type { Registry } from "../../src/io/registry";
 import { fakeBundle } from "../_helpers/fakeBundle";
 
@@ -15,6 +16,13 @@ const paths: InstallPaths = {
   kiro: "/fake/kiro/agents",
   "agents-md": "/fake/agents-md/agents",
 };
+
+// Default detect-stub for back-compat: pretend every platform CLI is on
+// PATH so existing tests continue exercising the "- not found:" branch
+// rather than the new "~ <platform>: not installed — skipped" branch.
+// Tests covering the new branch override per-call.
+const allInstalled = (): Promise<Set<PlatformId>> =>
+  Promise.resolve(new Set<PlatformId>(["opencode", "claude-code", "codex", "kiro"]));
 
 // Hermetic knowledge paths so plan + remove don't touch the real user home.
 // Subdir under tmpdir() that we never create — knowledge dir is plan-stat'd
@@ -99,6 +107,10 @@ describe("cli/uninstall runUninstallCli", () => {
       name: "foo",
       paths,
       knowledgePaths,
+      // Pin to "all installed" so the missing path renders as "- not found:"
+      // (file-level miss) rather than "~ claude-code: not installed —
+      // skipped" (platform-level miss).
+      detectInstalledPlatforms: allInstalled,
       loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
       loadAllBundles: async () => ({
         bundles: [fakeBundle("foo", { targets: ["opencode", "claude-code", "codex"] })],
@@ -134,6 +146,48 @@ describe("cli/uninstall runUninstallCli", () => {
     const firstRemoved = printed.findIndex((m) => m.includes("removed:"));
     const firstNotFound = printed.findIndex((m) => m.includes("not found:"));
     expect(firstRemoved).toBeLessThan(firstNotFound);
+  });
+
+  test("notFound paths whose platform CLI is missing render as 'not installed — skipped'", async () => {
+    const printed: string[] = [];
+    const code = await runUninstallCli({
+      name: "foo",
+      paths,
+      knowledgePaths,
+      // Bundle declares all three platforms but only claude-code's CLI is on PATH.
+      // opencode + codex paths should render with the platform-level "skipped"
+      // line, not the file-level "- not found:" line.
+      detectInstalledPlatforms: () =>
+        Promise.resolve(new Set<PlatformId>(["claude-code"])),
+      loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+      loadAllBundles: async () => ({
+        bundles: [fakeBundle("foo", { targets: ["opencode", "claude-code", "codex"] })],
+        failures: [],
+      }),
+      print: (m) => printed.push(m),
+      // Every rmFile call ENOENTs so all three paths land in `notFound`.
+      rmFile: async () => {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      },
+      rmDir: async () => {
+        const err = new Error("ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      },
+    });
+    expect(code).toBe(0);
+    const skippedLines = printed.filter((m) => m.includes("not installed — skipped"));
+    expect(skippedLines).toHaveLength(2);
+    expect(skippedLines.some((l) => l.includes("opencode"))).toBe(true);
+    expect(skippedLines.some((l) => l.includes("codex"))).toBe(true);
+    // claude-code is "installed" → the missing file falls through to the
+    // file-level not-found branch.
+    const notFoundLines = printed.filter((m) =>
+      m.includes("- not found:") && m.includes("/fake/claude/agents/foo.md"),
+    );
+    expect(notFoundLines).toHaveLength(1);
   });
 
   test("filesystem error returns exit 3 but still attempts the others", async () => {
