@@ -72,7 +72,7 @@ The 16 spokes are grouped by intent. Each one is a self-contained reference for 
 
 ### Sharing (distributing bundles to teammates)
 
-- [15 — Sharing and distribution](./guide/15-sharing-and-distribution.md). End-to-end publisher and consumer flows for agent bundles and skills, knowledge portability matrix, Atlassian credentials when sharing, team patterns (single shared catalog, tiered catalogs, personal override), and the v0.25.0 direct-URL flow (`smith agent install --from <url>` + `smith agent sync` for one-command installs of external bundles).
+- [15 — Sharing and distribution](./guide/15-sharing-and-distribution.md). End-to-end publisher and consumer flows for agent bundles and skills, knowledge portability matrix, Atlassian credentials when sharing, team patterns (single shared catalog, tiered catalogs, personal override), the v0.25.0 direct-URL flow (`smith agent install --from <url>` + `smith agent sync` for one-command installs of external bundles), and the v1.8.0 archive flow (`smith agent export` produces a `.smith-bundle.tgz` that recipients install via `smith agent install --from <archive>`).
 
 ---
 
