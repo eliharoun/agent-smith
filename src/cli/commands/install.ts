@@ -691,8 +691,13 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         .filter((x) => x.sessionSources.length > 0);
 
       for (const { bundle: b, sessionSources } of eligibleBundles) {
+        // Defense in depth: even though we already narrowed
+        // `b.config.targets` to detected platforms above, intersect with
+        // `installedPlatforms` here too. The redundant guard is cheap and
+        // keeps this loop correct if a future caller reaches it without
+        // passing through the upstream narrowing.
         const targets = b.config.targets.filter((t): t is PlatformId =>
-          CONSENT_PLATFORMS.includes(t as PlatformId),
+          CONSENT_PLATFORMS.includes(t as PlatformId) && installedPlatforms.has(t as PlatformId),
         );
         if (targets.length === 0) continue;
 

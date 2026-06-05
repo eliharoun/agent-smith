@@ -271,6 +271,67 @@ describe("install refresh consent", () => {
     expect(manifest).toBeUndefined();
   });
 
+  test("consent loop does not prompt for platforms not on PATH", async () => {
+    // Bundle declares all four CLIs as targets, but only claude-code is
+    // detected on PATH. The consent loop MUST prompt only for claude-code.
+    // Regression: previously the loop iterated `bundle.config.targets`
+    // filtered solely by CONSENT_PLATFORMS, which would prompt for codex
+    // and opencode even when their CLIs weren't installed.
+    const bundle = fakeBundle("multi-target", {
+      targets: ["opencode", "claude-code", "codex", "kiro"],
+    });
+    bundle.config.knowledge = {
+      sources: [
+        {
+          id: "live-docs",
+          type: "url",
+          url: "https://example.com",
+          delivery: "file",
+          refresh: { mode: "session" },
+        },
+      ],
+    };
+
+    const promptedPlatforms: string[] = [];
+    const stderrLines: string[] = [];
+    const exit = await install({
+      name: "multi-target",
+      paths: fakePaths,
+      skillMode: "no-skills",
+      // Claude-only detection. opencode/codex/kiro are NOT on PATH.
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
+      // Force TTY so the consent loop reaches the prompt branch (the
+      // non-TTY branch would skip silently — distinct path).
+      isTTY: () => true,
+      prompt: async () => "y",
+      loadRegistry: async () => fakeRegistry,
+      loadAllBundles: async () => ({ bundles: [bundle], failures: [] }),
+      buildAndInstall: async () => emptyResult,
+      agentSmithHome: workDir,
+      codexHome,
+      print: () => {},
+      printErr: (msg) => {
+        stderrLines.push(msg);
+        // `printConsentPrompt` emits a line of the form
+        //   "To enable auto-refresh on <platform>, ..."
+        const m = msg.match(/^To enable auto-refresh on ([\w-]+)/);
+        if (m && m[1]) promptedPlatforms.push(m[1]);
+      },
+    });
+    expect(exit).toBe(0);
+    // Only claude-code should have triggered a consent prompt.
+    expect(promptedPlatforms).toEqual(["claude-code"]);
+    expect(promptedPlatforms).not.toContain("opencode");
+    expect(promptedPlatforms).not.toContain("codex");
+    expect(promptedPlatforms).not.toContain("kiro");
+    // Sanity: codex hooks file must NOT have been touched (no consent
+    // ever recorded for codex).
+    expect(await readCodexHooks(codexHome)).toBeUndefined();
+    // And the manifest reflects only claude-code consent.
+    const manifest = await readRefreshManifest(workDir, "multi-target");
+    expect(manifest?.refresh_consent.platforms).toEqual(["claude-code"]);
+  });
+
   test("consent granted DOES opt-in the bundle for hook emission", async () => {
     const { capture, getMap } = captureRefreshHooksFor();
     const bundle = bundleWithSessionSource("approved-hook-check");
