@@ -75,6 +75,86 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+async function runPostinstallDaemonRestart(): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const { openSync } = await import("node:fs");
+  const { readFile } = await import("node:fs/promises");
+  const { join: pjoin } = await import("node:path");
+  const { runtimeStateHome } = await import("../src/io/runtime-state-home");
+  const { restartDaemonIfStale } = await import("../src/daemon/restart-on-upgrade");
+
+  const stateDir = runtimeStateHome();
+  const pidPath = pjoin(stateDir, "daemon.pid");
+  const heartbeatPath = pjoin(stateDir, "daemon.heartbeat.json");
+  const logPath = pjoin(stateDir, "daemon.log");
+
+  const result = await restartDaemonIfStale({
+    log: (line) => console.log(`agent-smith: ${line}`),
+    errLog: (line) => console.warn(`agent-smith: ${line}`),
+    pidFileExists: async () => {
+      try {
+        await readFile(pidPath, "utf-8");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    readPidFile: async () => {
+      try {
+        return await readFile(pidPath, "utf-8");
+      } catch {
+        return null;
+      }
+    },
+    readHeartbeat: async () => {
+      try {
+        const raw = await readFile(heartbeatPath, "utf-8");
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    },
+    isAlive: (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    killProcess: (pid, signal) => process.kill(pid, signal),
+    spawnDetached: () => {
+      const entry = process.argv[1];
+      if (!entry) return 0;
+      // The smith binary's entry-point is the same script that drives `smith daemon start`.
+      // Resolve it relative to this script: scripts/bootstrap.ts → ../src/index.ts is the
+      // CLI entry. We invoke it via bun for parity with how the user runs it.
+      const repoRoot = (() => {
+        const here = new URL(import.meta.url).pathname;
+        return pjoin(here, "..", "..");
+      })();
+      const cliEntry = pjoin(repoRoot, "src", "index.ts");
+      const fd = openSync(logPath, "a");
+      const child = spawn("bun", [cliEntry, "daemon", "start"], {
+        detached: true,
+        stdio: ["ignore", fd, fd],
+      });
+      child.unref();
+      return child.pid ?? 0;
+    },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+    recencyGuardMs: 60_000,
+    shutdownTimeoutMs: 10_000,
+    pollIntervalMs: 250,
+    optOut: process.env.SMITH_NO_DAEMON_AUTO_RESTART === "1",
+  });
+
+  if (result.action === "restarted") {
+    console.log(`agent-smith: daemon restarted (pid ${result.pid})`);
+  }
+}
+
 export async function bootstrap(opts: BootstrapOptions): Promise<BootstrapResult> {
   const result: BootstrapResult = {
     skillsLinked: 0,
@@ -214,6 +294,14 @@ if (import.meta.main) {
         `agent-smith: bootstrap complete (Installed ${result.bundledSkillsInstalled} bundled skills, ${result.skillsLinked} skills linked${result.warnings.length > 0 ? `, ${result.warnings.length} warnings` : ""})`,
       );
       for (const w of result.warnings) console.warn(`  warning: ${w}`);
+      try {
+        await runPostinstallDaemonRestart();
+      } catch (err) {
+        // Fail-soft: never break `bun install` because of daemon orchestration.
+        console.warn(
+          `agent-smith: daemon restart skipped: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       // Postinstall ALWAYS exits 0 — never break `bun install`.
       process.exit(0);
     }
