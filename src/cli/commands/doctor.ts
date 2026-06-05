@@ -9,7 +9,12 @@ import codexData from "../../../data/codex-tool-map.json" with { type: "json" };
 import kiroData from "../../../data/kiro-tool-map.json" with { type: "json" };
 import vendoredSchema from "../../../data/opencode.config.schema.json" with { type: "json" };
 import schemaMetaRaw from "../../../data/opencode.config.schema.meta.json" with { type: "json" };
-import type { RefreshPlatformId } from "../../core/freshness/check-refresh-hooks";
+import {
+  checkRefreshHooks,
+  type RefreshPlatformId,
+} from "../../core/freshness/check-refresh-hooks";
+import { checkKnowledgeCompile } from "../../core/freshness/check-knowledge-compile";
+import { checkMcpSpawnCommands } from "../../core/freshness/check-mcp-spawn";
 import { formatFailuresOnly, formatReport, formatReportCompact } from "../../core/freshness/format";
 import { parseSchemaMeta, parseToolMapMeta } from "../../core/freshness/meta-schema";
 import type {
@@ -18,7 +23,15 @@ import type {
   DoctorSectionId,
   DoctorSectionStartEvent,
 } from "../../core/freshness/run-doctor";
-import { runDoctor } from "../../core/freshness/run-doctor";
+import {
+  knowledgeCompileEventStatus,
+  knowledgeCompileSummary,
+  knowledgeRefreshEventStatus,
+  knowledgeRefreshSummary,
+  mcpSpawnEventStatus,
+  mcpSpawnSummary,
+  runDoctor,
+} from "../../core/freshness/run-doctor";
 import type { DoctorDeps, SchemaCache } from "../../core/freshness/types";
 import { CURATED_FALLBACK_V0_6_0 } from "../../core/model-resolution";
 import { toMessage } from "../../core/to-message";
@@ -146,6 +159,24 @@ async function readCacheFromDisk(path: string): Promise<SchemaCache | null> {
 async function writeCacheToDisk(path: string, value: SchemaCache): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(value));
+}
+
+/**
+ * Replace the in-place `status` and `summary` fields of the captured-summary
+ * entry whose id matches `id`. Used by the `--fix-*` post-fix re-runs to
+ * keep the rendered compact summary line consistent with the post-fix
+ * `report.<section>` state. No-op when no entry exists for `id`.
+ */
+function replaceCapturedSummary(
+  captured: CapturedSectionSummary[],
+  id: DoctorSectionId,
+  next: { status: CapturedSectionSummary["status"]; summary: string },
+): void {
+  const idx = captured.findIndex((c) => c.id === id);
+  if (idx < 0) return;
+  const existing = captured[idx];
+  if (!existing) return;
+  captured[idx] = { ...existing, status: next.status, summary: next.summary };
 }
 
 /**
@@ -574,6 +605,35 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     },
   };
 
+  // Inputs for the three sections that have a `--fix-*` flag are extracted
+  // to locals so the post-fix re-runs (Bug 5 / Task 9) can re-invoke their
+  // check function with the EXACT same shape as the original call. This
+  // keeps the re-rendered section faithful to the upstream gating
+  // (installedPlatforms filter, candidate list, etc.). See the post-fix
+  // re-run block below `runDoctor`.
+  const knowledgeRefreshInput = {
+    agentSmithHome: opts.knowledgeRefreshPaths?.agentSmithHome ?? defaultAgentSmithHome(),
+    cacheRoot: opts.knowledgeRefreshPaths?.cacheRoot ?? defaultCacheRoot(),
+    installPaths: opts.knowledgeRefreshPaths?.installPaths ?? defaultInstallPaths(),
+    codexHooksPath: join(
+      opts.knowledgeRefreshPaths?.codexHome ?? defaultCodexHome(),
+      "hooks.json",
+    ),
+    opencodeConfigHome:
+      opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
+    bundles: new Map(bundleResult.bundles.map((b) => [b.config.name, b])),
+  };
+  const knowledgeCompileInput = { candidates: knowledgeCompileCandidates };
+  const mcpSpawnInput = {
+    paths: opts.mcpSpawn?.paths ?? defaultMcpSpawnPaths(),
+    ...(opts.mcpSpawn?.which ? { which: opts.mcpSpawn.which } : {}),
+    // Resolve `smith`'s realpath up-front so the synchronous resolver
+    // seam can return it without doing FS work per-finding. The async
+    // realpath() is a one-shot probe at startup; tests bypass this via
+    // the explicit seam.
+    resolveSmithPath: opts.mcpSpawn?.resolveSmithPath ?? (await buildSmithPathResolver()),
+  };
+
   const report = await runDoctor({
     vendoredSchema: vendoredSchema as Record<string, unknown>,
     schemaMeta,
@@ -643,19 +703,8 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       registryPath: opts.registryPath ?? canonicalRegistryPath(),
       skillRegistryPath: opts.skillRegistryPath ?? canonicalSkillRegistryPath(),
     },
-    knowledgeRefresh: {
-      agentSmithHome: opts.knowledgeRefreshPaths?.agentSmithHome ?? defaultAgentSmithHome(),
-      cacheRoot: opts.knowledgeRefreshPaths?.cacheRoot ?? defaultCacheRoot(),
-      installPaths: opts.knowledgeRefreshPaths?.installPaths ?? defaultInstallPaths(),
-      codexHooksPath: join(
-        opts.knowledgeRefreshPaths?.codexHome ?? defaultCodexHome(),
-        "hooks.json",
-      ),
-      opencodeConfigHome:
-        opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
-      bundles: new Map(bundleResult.bundles.map((b) => [b.config.name, b])),
-    },
-    knowledgeCompile: { candidates: knowledgeCompileCandidates },
+    knowledgeRefresh: knowledgeRefreshInput,
+    knowledgeCompile: knowledgeCompileInput,
     mcpDeps: {
       installedAgents: await mcpDepsDi.loadInstalledAgents(),
       readAvailable: mcpDepsDi.readAvailable,
@@ -668,15 +717,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       loadCache: urlRoutingDi.loadCache,
       listMetaClaims: urlRoutingDi.listMetaClaims,
     },
-    mcpSpawnCommands: {
-      paths: opts.mcpSpawn?.paths ?? defaultMcpSpawnPaths(),
-      ...(opts.mcpSpawn?.which ? { which: opts.mcpSpawn.which } : {}),
-      // Resolve `smith`'s realpath up-front so the synchronous resolver
-      // seam can return it without doing FS work per-finding. The async
-      // realpath() is a one-shot probe at startup; tests bypass this via
-      // the explicit seam.
-      resolveSmithPath: opts.mcpSpawn?.resolveSmithPath ?? (await buildSmithPathResolver()),
-    },
+    mcpSpawnCommands: mcpSpawnInput,
   });
 
   // --- --fix-knowledge-refresh auto-repair ----------------------------------
@@ -762,6 +803,23 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         print(`  ✗ repair failed for ${f.kind}: ${toMessage(err)}`);
       }
     }
+    // Re-run the section so the printed report reflects post-fix state. The
+    // initial run cached a pre-fix snapshot; without this re-run, users see
+    // `✓ re-registered ...` lines followed by the same warning text the fix
+    // just cleared. The check is read-only and cheap to run twice.
+    const refreshInstalled = new Set(
+      [...installedPlatforms].filter(
+        (p): p is RefreshPlatformId => p === "claude-code" || p === "codex" || p === "opencode",
+      ),
+    );
+    report.knowledgeRefresh = await checkRefreshHooks({
+      ...knowledgeRefreshInput,
+      installedPlatforms: refreshInstalled,
+    });
+    replaceCapturedSummary(captured, "knowledge-refresh", {
+      status: knowledgeRefreshEventStatus(report.knowledgeRefresh),
+      summary: knowledgeRefreshSummary(report.knowledgeRefresh),
+    });
   }
 
   // --- --fix-knowledge-compile auto-repair ---------------------------------
@@ -801,6 +859,14 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         print(`  ✗ repair failed for ${f.agent}: ${toMessage(err)}`);
       }
     }
+    // Re-run after fixes so the rendered report reflects post-fix state
+    // (Bug 5 / Task 9). The detector is pure read-of-disk; running it twice
+    // in one CLI invocation is cheap.
+    report.knowledgeCompile = await checkKnowledgeCompile(knowledgeCompileInput);
+    replaceCapturedSummary(captured, "knowledge-compile", {
+      status: knowledgeCompileEventStatus(report.knowledgeCompile),
+      summary: knowledgeCompileSummary(report.knowledgeCompile),
+    });
   }
 
   // --- --fix-mcp-commands auto-repair ---------------------------------------
@@ -827,6 +893,18 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         print(`  ✗ rewrite failed for ${f.platform}/${f.serverName}: ${toMessage(err)}`);
       }
     }
+    // Re-run after rewrites so the rendered report reflects post-fix state
+    // (Bug 5 / Task 9). Findings whose `resolvedAbsolute` was null remain
+    // (we couldn't fix those); everything else now spawns from an absolute
+    // path and is no longer flagged.
+    report.mcpSpawnCommands = await checkMcpSpawnCommands({
+      ...mcpSpawnInput,
+      installedPlatforms,
+    });
+    replaceCapturedSummary(captured, "mcp-spawn-commands", {
+      status: mcpSpawnEventStatus(report.mcpSpawnCommands),
+      summary: mcpSpawnSummary(report.mcpSpawnCommands),
+    });
   }
 
   if (opts.json) {
