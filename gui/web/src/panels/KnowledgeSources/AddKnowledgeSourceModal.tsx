@@ -1,4 +1,4 @@
-import type { KnowledgeSource } from "gui-shared";
+import type { KnowledgeSource, Platform } from "gui-shared";
 import { useState } from "react";
 import { useAgent, useSaveAgentConfig } from "@/hooks/useAgents";
 import { useStartJob } from "@/hooks/useStartJob";
@@ -12,6 +12,7 @@ import { JiraForm } from "./sourceForms/JiraForm";
 import { NpmForm } from "./sourceForms/NpmForm";
 import type { FormSubmit, SourceFormProps } from "./sourceForms/types";
 import { UrlForm } from "./sourceForms/UrlForm";
+import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 
 type SourceType = "file" | "dir" | "glob" | "url" | "git" | "npm" | "confluence" | "jira";
 
@@ -40,7 +41,19 @@ const TYPE_DESCRIPTIONS: Record<SourceType, string> = {
 interface Props {
   agent: string;
   existingIds: string[];
+  /**
+   * Re-install dispatcher used by the save-success notification's
+   * "Re-install now" action. Lifted into the parent so the hook owning the
+   * progress→success notification lifecycle survives this modal's unmount
+   * on save. Optional in tests that don't exercise the post-save toast
+   * path; the parent always wires it.
+   */
+  reinstall?: (targets: Platform[]) => void;
   onClose: () => void;
+}
+
+function noopReinstall(_targets: Platform[]): void {
+  void _targets;
 }
 
 /**
@@ -58,12 +71,18 @@ interface Props {
  * modal extend `mcpServers[]` atomically when the picked server isn't
  * already declared.
  */
-export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) {
+export function AddKnowledgeSourceModal({
+  agent,
+  existingIds,
+  reinstall,
+  onClose,
+}: Props) {
   const [type, setType] = useState<SourceType | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const start = useStartJob();
   const detail = useAgent(agent);
   const saveConfig = useSaveAgentConfig(agent);
+  const notifyAfterSave = useSaveSuccessNotification(agent, reinstall ?? noopReinstall);
   const formId = "knowledge-add-form";
 
   const Form = type ? FORMS[type] : null;
@@ -116,6 +135,11 @@ export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) 
 
       try {
         await saveConfig.mutateAsync(patch as Parameters<typeof saveConfig.mutateAsync>[0]);
+        // Fire post-save notification (drift-aware) before unmounting. The
+        // helper does its own apiFetch; the action closure (Re-install now)
+        // delegates to the parent-owned `reinstall` so its
+        // progress→success/error lifecycle survives this modal's close.
+        void notifyAfterSave("Knowledge source added");
         onClose();
       } catch (err) {
         setSubmitErr(err instanceof Error ? err.message : String(err));
@@ -124,6 +148,12 @@ export function AddKnowledgeSourceModal({ agent, existingIds, onClose }: Props) 
     }
 
     start.mutate({ command: "knowledge.add", agent, ...s.request });
+    // The non-via path dispatches a `knowledge.add` job that auto-installs
+    // by default — drift will be empty by the time the job completes. We
+    // notify "Knowledge source added." immediately for symmetry with the
+    // via-save path; the user gets visible feedback even before the job
+    // finishes.
+    void notifyAfterSave("Knowledge source added");
     onClose();
   };
 

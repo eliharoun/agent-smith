@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { agentsApi } from "@/api/agents";
 import { useAgent, useSaveAgentConfig } from "@/hooks/useAgents";
 import { useGrantRefreshConsent, useKnowledge } from "@/hooks/useKnowledge";
+import { useReinstall } from "@/hooks/useReinstall";
 import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
@@ -96,6 +97,12 @@ export function KnowledgeSources({ agent }: Props) {
   const start = useStartJob();
   const grantConsent = useGrantRefreshConsent(agent);
   const saveConfig = useSaveAgentConfig(agent);
+  // Hoist `useReinstall` to this panel so the post-save notification's
+  // "Re-install now" action — fired from the Add/Edit modals — runs through
+  // a hook instance that survives the modal's unmount-on-save. The modal
+  // itself can't own this hook: by the time the user clicks the toast
+  // action, the modal is already gone.
+  const { reinstall } = useReinstall(agent);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<KnowledgeSource | null>(null);
   const [editing, setEditing] = useState<KnowledgeSource | null>(null);
@@ -404,6 +411,7 @@ export function KnowledgeSources({ agent }: Props) {
         <AddKnowledgeSourceModal
           agent={agent}
           existingIds={sources.map((s) => s.source.id)}
+          reinstall={reinstall}
           onClose={() => setAddOpen(false)}
         />
       )}
@@ -424,6 +432,7 @@ export function KnowledgeSources({ agent }: Props) {
               ? (raw.filter((v): v is string => typeof v === "string") as string[])
               : [];
           })()}
+          reinstall={reinstall}
           onClose={() => setEditing(null)}
         />
       )}

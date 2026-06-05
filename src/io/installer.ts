@@ -74,7 +74,17 @@ function sortKeysDeep(value: unknown): unknown {
   return out;
 }
 
-function serialize(rendered: RenderedAgent): string {
+/**
+ * Deterministic byte-equivalent serialization of a rendered agent.
+ *
+ * Exported because the GUI server's drift-check (gui/server src/services/render-dry-run.ts)
+ * needs to produce the EXACT same byte sequence the installer hashes, so
+ * comparing a fresh dry-run hash against `installed-agents.json`'s
+ * `contentHash` is meaningful. Reimplementing this elsewhere would silently
+ * lie about drift the moment serialization details (sortKeys, line endings,
+ * yaml line width) change.
+ */
+export function serialize(rendered: RenderedAgent): string {
   if (rendered.format === "json") {
     return `${JSON.stringify(sortKeysDeep(rendered.data), null, 2)}\n`;
   }

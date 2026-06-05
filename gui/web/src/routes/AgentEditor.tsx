@@ -10,6 +10,7 @@ import { AgentPermissionsView } from "@/panels/AgentPermissionsView";
 import { AgentPersonaEditor } from "@/panels/AgentPersonaEditor";
 import { AgentSkillsView } from "@/panels/AgentSkillsView";
 import { AgentTargetsForm } from "@/panels/AgentTargetsForm";
+import { ReinstallButton } from "@/panels/AgentEditor/ReinstallButton";
 import { KnowledgeSources } from "@/panels/KnowledgeSources";
 import { RemoteSyncConfirm } from "@/panels/RemoteSyncConfirm";
 import { Button } from "@/ui/Button";
@@ -97,6 +98,7 @@ export function AgentEditor() {
                   {behind ? "Sync now" : "Up to date"}
                 </Button>
               )}
+              <ReinstallButton agent={a.name} />
               <Button variant="ghost" onClick={() => setExportOpen(true)}>
                 Export
               </Button>

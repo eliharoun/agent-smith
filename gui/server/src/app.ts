@@ -9,17 +9,23 @@ import { authMiddleware } from "./middleware/auth";
 import { errorHandler, errorMiddleware } from "./middleware/error";
 import { originGuard } from "./middleware/origin-guard";
 import { registerAgentsRoutes } from "./routes/agents";
-import { registerConventionsRoutes } from "./routes/conventions";
 import { registerAtlassianRoute } from "./routes/atlassian";
 import { registerCatalogsRoute } from "./routes/catalogs";
+import { registerConventionsRoutes } from "./routes/conventions";
 import { registerDaemonRoute } from "./routes/daemon";
 import { registerDoctorRoute } from "./routes/doctor";
+import { registerDriftCheckRoute } from "./routes/drift-check";
+import { registerExportsRoute } from "./routes/exports";
+import { registerFsShowRoute } from "./routes/fs-show";
 import { registerGitVerifyRoute } from "./routes/git-verify";
 import { registerHistoryRoute } from "./routes/history";
+import { registerImportStageRoute } from "./routes/import-stage";
+import { registerInstallStateRoute } from "./routes/install-state";
 import { registerInstalledStatusesRoute } from "./routes/installed-statuses";
 import { registerJackOutRoute } from "./routes/jack-out";
 import { registerJobsRoutes } from "./routes/jobs";
 import { registerKnowledgeRoute } from "./routes/knowledge";
+import { registerKnowledgeCacheRoute } from "./routes/knowledge-cache";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerMcpPickerRoute } from "./routes/mcp-picker";
 import { registerModelConfigRoute } from "./routes/model-config";
@@ -27,9 +33,6 @@ import { registerOnboardingRoute } from "./routes/onboarding";
 import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
 import { registerRegistryRoute } from "./routes/registry";
 import { registerSettingsRoute } from "./routes/settings";
-import { registerExportsRoute } from "./routes/exports";
-import { registerFsShowRoute } from "./routes/fs-show";
-import { registerImportStageRoute } from "./routes/import-stage";
 import { registerSkillsRoute } from "./routes/skills";
 import { registerStatusRoute } from "./routes/status";
 import { registerUpdateRoute } from "./routes/update";
@@ -70,14 +73,9 @@ export interface AppDeps {
    * Tests inject paths under a tmpdir; production reads HOME and lets the
    * service compute defaults.
    */
-  mcpConfigPathsFor?: () => Record<
-    "opencode" | "claude-code" | "codex" | "kiro",
-    string
-  >;
+  mcpConfigPathsFor?: () => Record<"opencode" | "claude-code" | "codex" | "kiro", string>;
   /** v2.1-E: detected platforms for the wiring routes. Tests inject. */
-  detectMcpPlatforms?: () => Promise<
-    Set<"opencode" | "claude-code" | "codex" | "kiro">
-  >;
+  detectMcpPlatforms?: () => Promise<Set<"opencode" | "claude-code" | "codex" | "kiro">>;
   /**
    * C4.3.2: same-origin Origin header required on state-changing /api/*
    * requests (CSRF defense, security-audit HIGH-2). The production caller
@@ -163,6 +161,12 @@ export function createApp(deps: AppDeps) {
   // Register the bulk installed-statuses route BEFORE the parametric
   // /api/agents/:name route so static path matching isn't ambiguous.
   registerInstalledStatusesRoute(app, { registryPath, installPathsFor });
+  // Per-agent install-state and drift-check. Mounted BEFORE registerAgentsRoutes
+  // so the more specific `/api/agents/:name/install-state` and
+  // `/api/agents/:name/drift-check` paths are matched before the catch-all
+  // parametric routes registered there.
+  registerInstallStateRoute(app, { agentSmithHome });
+  registerDriftCheckRoute(app, { agentSmithHome, registryPath });
   registerAgentsRoutes(app, { registryPath, installPathsFor });
   registerConventionsRoutes(app);
 
@@ -193,6 +197,7 @@ export function createApp(deps: AppDeps) {
   registerSkillsRoute(app, { skillRegistryPath, installedSkillsPath });
   registerCatalogsRoute(app, { registryPath, skillRegistryPath });
   registerKnowledgeRoute(app, { registryPath, agentSmithHome });
+  registerKnowledgeCacheRoute(app, { registryPath, agentSmithHome });
   registerMcpRoutes(app, {
     registryPath,
     ...(deps.mcpConfigPathsFor ? { configPathsFor: deps.mcpConfigPathsFor } : {}),
@@ -234,7 +239,9 @@ export function createApp(deps: AppDeps) {
           detectAllPlatforms: () => Promise<Record<string, unknown>>;
         };
         return (await mod.detectAllPlatforms()) as Awaited<
-          ReturnType<NonNullable<import("./services/model-config").ModelConfigDeps["detectAllPlatforms"]>>
+          ReturnType<
+            NonNullable<import("./services/model-config").ModelConfigDeps["detectAllPlatforms"]>
+          >
         >;
       } catch {
         // Detector failed to load (e.g. a build issue). Fall through —
