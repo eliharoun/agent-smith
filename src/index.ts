@@ -15,10 +15,25 @@ import { skillRegister } from "./cli/commands/skill/register";
 import { skillUnregister } from "./cli/commands/skill/unregister";
 import { status } from "./cli/commands/status";
 import { intArg } from "./cli/option-parsers";
+import { renderPendingHint } from "./cli/pending-hint";
 import { formatCommanderError, wrap } from "./cli/wrap";
 import { SmithError } from "./core/smith-error";
 import { runDaemon } from "./daemon";
+import { detectInstalledPlatforms } from "./io/platform-detect";
 import { stateHome } from "./io/state-home";
+
+if (process.env.SMITH_HINT_PENDING === "1") {
+  detectInstalledPlatforms()
+    .then((installed) =>
+      renderPendingHint({ stateHome: stateHome(), installedPlatforms: installed }),
+    )
+    .then((hint) => {
+      if (hint) console.error(hint);
+    })
+    .catch(() => {
+      /* silent — startup hint is best-effort */
+    });
+}
 
 const program = new Command();
 program.name("smith").description("Lifecycle manager for AI coding agents").version("1.9.2");
