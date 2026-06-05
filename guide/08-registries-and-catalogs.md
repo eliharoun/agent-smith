@@ -156,6 +156,16 @@ Each row: `<name>` `(<kind>)` `→` `<comma-separated targets>`. Empty registry 
 
 Lists registered agent catalog sources. See [CLI reference](14-cli-reference.md#smith-agent-catalogs) for full details. Symmetric to `smith skill catalogs`.
 
+### `smith agent catalog rename <old-label> <new-label>`
+
+Rename a registered agent catalog's label without re-registering. Useful when a catalog's display label needs to change after registration. The on-disk path stays the same; only the registry's stored label updates.
+
+```bash
+smith agent catalog rename old-name new-name
+```
+
+See [guide/14 — agent catalog rename](./14-cli-reference.md) for full details.
+
 ### `smith status`
 
 Print both registries side-by-side. This is the canonical way to inspect the registry state without parsing JSON.
@@ -232,6 +242,9 @@ Beyond the protected built-in, two flags distinguish three operational flavors:
 | Built-in | `true` | — | smith itself | yes | yes |
 | Regular | — | — | `smith skill register <path> --kind <k>` | yes | yes |
 | Ad-hoc | — | `true` | `smith skill install --from <path>` (auto-registers a synthetic catalog) | yes | only with `--all` |
+| Remote-backed | — | — | `smith {agent,skill} install --from <url>`; the underlying clone lives at `<runtimeStateHome>/remote/<host>/<owner>/<repo>` and `smith {agent,skill} sync` updates it | yes | yes |
+
+If you have rc.1-era clones at `<configDir>/remote/...`, run `smith migrate-clones` to relocate them to `<runtimeStateHome>/remote/...`. See [guide/13 — Path migration](./13-paths-and-state.md) for the rc.1 → rc.2 history.
 
 ## Commands
 
@@ -321,6 +334,16 @@ if (match.protected) {
 > **Important — older docs claimed unregister refuses catalogs whose skills are still installed. That is not true.** The only refusal is the `protected` check. If you unregister a regular catalog while skills installed from it remain in `installed-skills.json`, those skills are not deleted from any platform. Their install records simply become **drift** with status `source-missing` (see below).
 
 Exit codes: `0` on success, `1` if no matching catalog (`not-found` SmithError) or if the catalog is protected.
+
+### `smith skill catalog rename <old-label> <new-label>`
+
+Rename a registered skill catalog's label without re-registering. The on-disk path stays the same; only the registry's stored label updates. Mirrors the agent-side `smith agent catalog rename`.
+
+```bash
+smith skill catalog rename old-team-skills team-skills
+```
+
+See [guide/14 — skill catalog rename](./14-cli-reference.md) for full details.
 
 ### Ad-hoc registration via `smith skill install --from`
 

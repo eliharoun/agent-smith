@@ -16,7 +16,7 @@ The terse reference for each command (synopsis, every flag, every exit code) liv
 
 ## Mental model
 
-Three of the four commands operate on the *rendered/installed copies* of agents — the platform-specific files written to `~/.config/opencode/agents/`, `~/.claude/agents/`, `~/.agents/skills/<name>/`, and `~/.kiro/agents/<name>.json`. None of them touch the source bundles in `~/.config/agent-smith/agents/` (or any registered catalog) until you run `smith jack-out`, which removes the entire smith config dir.
+Three of the five commands (`agent uninstall`, `agent uninstall-all`, `jack-out`) operate on the rendered/installed copies. `agent destroy` operates partially on the source (removes the user-global bundle dir) and partially on the rendered copies. `smith update` operates on the source clone (`git pull`).
 
 ```
                                 ┌─ smith agent uninstall <name>      → remove rendered files for one bundle
@@ -44,9 +44,10 @@ What it does:
 2. Refuses if the workspace has uncommitted changes (`git status` shows porcelain output).
 3. `git pull --ff-only origin main`. Refuses on non-fast-forward (e.g. you've made local commits that haven't been pushed).
 4. `bun install` to sync any updated dependencies. The bundled-skill bootstrap postinstall hook fires and installs any new bundled skills.
-5. Rebuilds the GUI SPA bundle (`bun run gui:build`). Warn-and-continue on failure — the CLI still works and the user can retry `bun run gui:build` manually.
-6. Re-installs the agent-smith bundle in-process (`smith agent install agent-smith`) to refresh its knowledge directory. The bundle declares the curated guide files as a `dir` knowledge source pointing at `../../guide`, so re-installing picks up any guide updates that shipped in the same pull and re-materializes them under `~/.config/agent-smith/knowledge/agent-smith/sources/agent-smith-guide/`. If this step fails (rare — would mean the bundle's config or the guide files themselves are broken), `smith update` records the failure and continues to doctor; doctor's exit code wins, and only if doctor returns 0 does the reinstall failure surface as `EXIT_PARTIAL` (3) with `Re-run: smith agent install agent-smith`.
-7. Runs `smith doctor` to verify the install is healthy. Doctor's exit code is propagated, so any drift, schema mismatch, or auth issue surfaces immediately.
+5. Rewrite `~/.local/bin/smith` launcher (`writeLauncher` in `src/io/launcher.ts`). Older installs whose launcher was a symlink to `src/index.ts` get refreshed to the bun-path-hardcoded wrapper so future updates run consistently. Warn-and-continue on failure.
+6. Rebuilds the GUI SPA bundle (`bun run gui:build`). Warn-and-continue on failure — the CLI still works and the user can retry `bun run gui:build` manually.
+7. Re-installs the agent-smith bundle in-process (`smith agent install agent-smith`) to refresh its knowledge directory. The bundle declares the curated guide files as a `dir` knowledge source pointing at `../../guide`, so re-installing picks up any guide updates that shipped in the same pull and re-materializes them under `~/.config/agent-smith/knowledge/agent-smith/sources/agent-smith-guide/`. If this step fails (rare — would mean the bundle's config or the guide files themselves are broken), `smith update` records the failure and continues to doctor; doctor's exit code wins, and only if doctor returns 0 does the reinstall failure surface as `EXIT_PARTIAL` (3) with `Re-run: smith agent install agent-smith`.
+8. Runs `smith doctor` to verify the install is healthy. Doctor's exit code is propagated, so any drift, schema mismatch, or auth issue surfaces immediately.
 
 Flags:
 - `--dry-run`: prints what would happen (`git fetch` + commit count) without mutating anything.
@@ -55,7 +56,7 @@ Exit codes:
 - 0: success, doctor clean.
 - 1: refusal (dirty tree, non-fast-forward, corrupt install) — also propagated from doctor when doctor reports drift.
 - 2: doctor reported a transient/network error fetching schemas, **or** doctor refused to run because no platform CLI (`opencode`/`claude`/`codex`/`kiro`) was detected on `PATH`; the pull + install succeeded. The `--json` envelope distinguishes the two cases — refusal emits `{"error":"no-platform-detected"}`. See [Doctor](./10-doctor.md#refusal-no-supported-platform-detected) for the refusal contract.
-- 3: partial failure — `git pull`, `git fetch`, or `bun install` failed before doctor ran; or the GUI build failed; or the post-pull `smith agent install agent-smith` reinstall failed (knowledge dir refresh) and doctor returned 0. See `src/cli/exit-codes.ts` for the canonical taxonomy.
+- 3: partial failure — `git pull`, `git fetch`, or `bun install` failed before doctor ran; or the launcher refresh failed; or the GUI build failed; or the post-pull `smith agent install agent-smith` reinstall failed (knowledge dir refresh) and doctor returned 0. See `src/cli/exit-codes.ts` for the canonical taxonomy.
 
 Recovery from doctor schema drift: `smith update` is the recovery path. Re-run after a `bun run refresh-schemas` upstream lands.
 

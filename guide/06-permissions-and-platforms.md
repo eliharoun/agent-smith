@@ -397,7 +397,7 @@ for PR operations — you can list them in `agent.config.json`:
   "name": "release-coordinator",
   "description": "Coordinates release ticketing and PR sweeps",
   "targets": ["opencode", "claude-code", "codex"],
-  "modelTier": "sonnet",
+  "modelTier": "balanced",
   "mcpServers": ["linear", "github"]
 }
 ```

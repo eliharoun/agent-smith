@@ -58,7 +58,7 @@ This is a deliberate trade-off: doctor's exit-code semantics pre-date the unifie
 
 ## SmithError variant catalog
 
-Every classified error in smith is a `SmithError` carrying a discriminated payload. The union has 18 variants (`src/core/smith-error.ts`). For each variant: what triggers it, what the renderer prints, what exit code it maps to, and an example.
+Every classified error in smith is a `SmithError` carrying a discriminated payload. The union has 19 variants (`src/core/smith-error.ts`). For each variant: what triggers it, what the renderer prints, what exit code it maps to, and an example.
 
 The renderer is the same for every variant (`src/cli/wrap.ts`):
 
