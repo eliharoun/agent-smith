@@ -666,6 +666,45 @@ describe("cli/init-agent", () => {
     expect(stat.isSymbolicLink()).toBe(true);
   });
 
+  test("defaults targets to detected platforms + agents-md when --targets is omitted", async () => {
+    // Inject a known detection set so the test does not depend on what
+    // CLIs happen to be on the host PATH. The default-target path runs
+    // only when the caller omits `--targets` AND the source config (if
+    // any) does not declare `targets` — this scaffolds a fresh bundle
+    // with no source so the detection result drives the field directly.
+    const code = await initAgent(
+      "detected-defaults",
+      {
+        description: "Use proactively to verify default-target detection",
+        modelTier: "balanced",
+        detectInstalledPlatforms: async () => new Set(["claude-code", "kiro"]),
+      },
+      { agentsDir, canonicalUserPath: userPath },
+    );
+    expect(code).toBe(0);
+    const cfg = JSON.parse(
+      await readFile(join(agentsDir, "detected-defaults", "agent.config.json"), "utf8"),
+    );
+    expect(cfg.targets).toEqual(["claude-code", "kiro", "agents-md"]);
+  });
+
+  test("defaults targets to [agents-md] when zero platforms are detected", async () => {
+    const code = await initAgent(
+      "no-platforms",
+      {
+        description: "Use proactively to verify zero-detection fallback",
+        modelTier: "balanced",
+        detectInstalledPlatforms: async () => new Set(),
+      },
+      { agentsDir, canonicalUserPath: userPath },
+    );
+    expect(code).toBe(0);
+    const cfg = JSON.parse(
+      await readFile(join(agentsDir, "no-platforms", "agent.config.json"), "utf8"),
+    );
+    expect(cfg.targets).toEqual(["agents-md"]);
+  });
+
   test("self-bootstraps canonical USER.md when missing on fresh state", async () => {
     // rc.3 contract: smith agent init on truly-fresh state (no
     // canonical USER.md) must create the canonical file with the
