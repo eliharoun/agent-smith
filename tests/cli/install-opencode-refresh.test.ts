@@ -57,6 +57,13 @@ const fakePaths: InstallPaths = {
   "agents-md": "/fake/agents-md",
 };
 
+// Pretend every CLI is detected so the install pipeline doesn't drop the
+// opencode target before the consent loop runs. Without this stub the
+// detection would consult the live PATH and the consent assertions would
+// see an empty platform list.
+const ALL_DETECTED = async () =>
+  new Set(["opencode", "claude-code", "codex", "kiro"] as const);
+
 describe("install opencode refresh consent", () => {
   let agentHome: string;
   let opencodeHome: string;
@@ -81,6 +88,7 @@ describe("install opencode refresh consent", () => {
         failures: [],
       }),
       buildAndInstall: async () => emptyResult,
+      detectInstalledPlatforms: ALL_DETECTED,
       agentSmithHome: agentHome,
       opencodeConfigHome: opencodeHome,
       print: () => {},
@@ -135,6 +143,7 @@ describe("install opencode refresh consent", () => {
         failures: [],
       }),
       buildAndInstall: async () => emptyResult,
+      detectInstalledPlatforms: ALL_DETECTED,
       agentSmithHome: agentHome,
       opencodeConfigHome: opencodeHome,
       print: () => {},
@@ -187,6 +196,7 @@ describe("install opencode refresh consent", () => {
           failures: [],
         }),
         buildAndInstall: async () => emptyResult,
+        detectInstalledPlatforms: ALL_DETECTED,
         agentSmithHome: agentHome,
         opencodeConfigHome: opencodeHome,
         print: () => {},

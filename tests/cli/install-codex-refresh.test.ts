@@ -51,6 +51,13 @@ const fakePaths: InstallPaths = {
   "agents-md": "/fake/agents-md",
 };
 
+// Pretend every CLI is detected so the install pipeline doesn't drop the
+// codex/claude-code targets these tests rely on. Without this stub the
+// detection would consult the live PATH and skip targets, defeating the
+// per-platform consent assertions below.
+const ALL_DETECTED = async () =>
+  new Set(["opencode", "claude-code", "codex", "kiro"] as const);
+
 describe("install codex refresh consent", () => {
   let agentHome: string;
   let codexHome: string;
@@ -75,6 +82,7 @@ describe("install codex refresh consent", () => {
         failures: [],
       }),
       buildAndInstall: async () => emptyResult,
+      detectInstalledPlatforms: ALL_DETECTED,
       agentSmithHome: agentHome,
       codexHome,
       print: () => {},
@@ -181,6 +189,7 @@ describe("install codex refresh consent", () => {
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({ bundles: [bundle], failures: [] }),
       buildAndInstall: capture,
+      detectInstalledPlatforms: ALL_DETECTED,
       agentSmithHome: agentHome,
       codexHome,
       print: () => {},

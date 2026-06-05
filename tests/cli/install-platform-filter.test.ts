@@ -22,6 +22,12 @@ const emptyResult: OrchestratorResult = {
   knowledge: [],
 };
 
+// All four CLI-bound platforms are "detected" so the install path doesn't
+// drop targets the test isn't trying to exercise. The narrowing pass added
+// alongside detect-and-skip would otherwise filter against the live PATH.
+const ALL_DETECTED = async () =>
+  new Set(["opencode", "claude-code", "codex", "kiro"] as const);
+
 describe("install CLI: --platforms filter", () => {
   test("restricts targets to the intersection when filter overlaps declared targets", async () => {
     let recordedTargets: string[] | undefined;
@@ -38,6 +44,7 @@ describe("install CLI: --platforms filter", () => {
         return emptyResult;
       },
       platformFilter: ["opencode"],
+      detectInstalledPlatforms: ALL_DETECTED,
       noRefreshHooks: true,
       print: () => {},
       printErr: () => {},
@@ -60,6 +67,7 @@ describe("install CLI: --platforms filter", () => {
           return emptyResult;
         },
         platformFilter: ["codex"],
+        detectInstalledPlatforms: ALL_DETECTED,
         noRefreshHooks: true,
         print: () => {},
         printErr: () => {},
@@ -82,6 +90,7 @@ describe("install CLI: --platforms filter", () => {
         recordedTargets = [...first.config.targets];
         return emptyResult;
       },
+      detectInstalledPlatforms: ALL_DETECTED,
       noRefreshHooks: true,
       print: () => {},
       printErr: () => {},
