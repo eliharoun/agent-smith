@@ -4,6 +4,29 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] — 2026-06-04
+
+Two fixes for v1.9.0/v1.9.1 lazy URL and drift-check behavior.
+
+### Fixed
+
+- The rendered `## Knowledge` preamble now explicitly explains the
+  `[url, lazy]` entry shape — that those URLs are NOT downloaded and
+  must be fetched at runtime via the tool listed under `fetch via:`.
+  The clause only appears when at least one lazy entry is present, so
+  bundles without lazy URLs are unchanged. Previously, agents had to
+  infer this from the `[url, lazy]` tag and the absence of an on-disk
+  path, which not all models did reliably.
+- The GUI drift-check service now reproduces the same render pipeline
+  the installer uses, including resolved model tiers, the agent's
+  knowledge directory and compiled knowledge index, and platform
+  conventions. Drift is no longer reported for agents whose installed
+  bytes are byte-identical to a fresh re-render. Two limitations
+  remain: bundles whose user consented to refresh hooks
+  (claude-code/kiro session/always sources) and bundles with lazy URL
+  sources targeting agents-md formats — install-time URL fetches
+  cannot be cheaply reproduced without a network roundtrip.
+
 ## [1.9.1] — 2026-06-04
 
 GUI improvements: a re-install button on the agent detail page, the
