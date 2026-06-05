@@ -5,7 +5,8 @@ import { importApmBundle } from "../../core/apm-import";
 import { CanonicalConfigSchema, parseConfig } from "../../core/config-schema";
 import { SmithError } from "../../core/smith-error";
 import { toMessage } from "../../core/to-message";
-import type { CanonicalConfig, PermissionConfig, SourceKind } from "../../core/types";
+import type { CanonicalConfig, PermissionConfig, SourceKind, Target } from "../../core/types";
+import { detectInstalledPlatforms, type PlatformId } from "../../io/platform-detect";
 import { CANONICAL_USER_MD_TEMPLATE } from "../../io/user-template";
 import { assertValidAgentName } from "../agent-name";
 
@@ -22,6 +23,13 @@ export interface InitAgentOpts {
   print?: (msg: string) => void;
   /** Stderr sink. Defaults to `console.warn` for the symlink-target advisory. */
   printErr?: (msg: string) => void;
+  /**
+   * Test override for platform detection. Production omits and reads
+   * from PATH via the default `detectInstalledPlatforms`. When the
+   * caller does not supply `--targets`, the resolved set drives the
+   * default `targets` written to the new bundle's `agent.config.json`.
+   */
+  detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
 }
 
 export interface InitAgentPaths {
@@ -242,11 +250,22 @@ export async function initAgent(
     copyFiles = [];
   }
 
+  // Default targets follow the user's actual environment: detect which
+  // platform CLIs are installed on PATH and seed the bundle with those,
+  // plus `agents-md` (always installed; it's a plain file write with no
+  // CLI dependency). Authors who want a different default override with
+  // `--targets`. When zero platforms are detected, the bundle still gets
+  // `agents-md` so the new bundle is installable somewhere by default.
+  const detect = opts.detectInstalledPlatforms ?? detectInstalledPlatforms;
+  const detectedTargets = [...(await detect())];
+  const defaultTargets: Target[] =
+    detectedTargets.length > 0 ? [...detectedTargets, "agents-md"] : ["agents-md"];
+
   const config: CanonicalConfig = {
     schemaVersion: 1,
     name,
     description: opts.description ?? baseConfig.description ?? "",
-    targets: opts.targets ?? baseConfig.targets ?? ["opencode", "claude-code", "codex"],
+    targets: opts.targets ?? baseConfig.targets ?? defaultTargets,
     modelTier: opts.modelTier ?? baseConfig.modelTier ?? "balanced",
     ...(opts.mode !== undefined
       ? { mode: opts.mode }
