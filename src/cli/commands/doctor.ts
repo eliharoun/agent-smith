@@ -27,6 +27,7 @@ import { defaultCacheRoot } from "../../io/cache-root";
 import { hashContent, loadInstalledAgents } from "../../io/installed-agents";
 import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
 import { compileManifestPath } from "../../core/knowledge/compile-manifest";
+import { buildCompileOptionsFromBundle } from "../../core/knowledge/compile-options";
 import { getOpenCodeModels } from "../../io/opencode-models";
 import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
 import { McpClient } from "../../io/mcp-client";
@@ -487,11 +488,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
           return {
             name: b.config.name,
             knowledgeDir,
-            compileOptions: {
-              progressive: true,
-              tocMaxLines: compileBlock?.tocMaxLines ?? 150,
-              emitAgentsMd: compileBlock?.emitAgentsMd ?? false,
-            },
+            compileOptions: buildCompileOptionsFromBundle(b.config.knowledge),
           };
         }),
     )
