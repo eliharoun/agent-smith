@@ -11,6 +11,7 @@ import { urlCacheKey } from "./acquire";
 import { acquireSource, chooseMaterializer, runMaterializer } from "./acquire-source";
 import { type CompiledKnowledge, compile } from "./compile";
 import { writeCompileManifest } from "./compile-manifest";
+import { buildCompileOptionsFromBundle } from "./compile-options";
 import { isLazyUrlSource, lazyDescriptionWarnings } from "./lazy-url";
 import {
   ensureRelativeSymlink,
@@ -19,7 +20,6 @@ import {
 } from "./repo-symlinks";
 import { estimateTokens } from "./tokens";
 import type {
-  CompileOptions,
   EffectiveDelivery,
   KnowledgeBlock,
   KnowledgeManifest,
@@ -614,17 +614,7 @@ async function compileFromManifest(
   knowledgeDir: string,
   opts: { writeManifest?: boolean } = {},
 ): Promise<CompiledKnowledge> {
-  // Build the sourceDeclarations map from the bundle's original sources so
-  // tocLineFor can read lazy + via from each declaration when rendering.
-  const sourceDeclarations: Record<string, KnowledgeSource> = {};
-  for (const s of block?.sources ?? []) sourceDeclarations[s.id] = s;
-
-  const compileOpts: CompileOptions = {
-    progressive: true,
-    tocMaxLines: block?.compile?.tocMaxLines ?? 150,
-    emitAgentsMd: block?.compile?.emitAgentsMd ?? false,
-    sourceDeclarations,
-  };
+  const compileOpts = buildCompileOptionsFromBundle(block);
   const matSources: MaterializedSource[] = manifest.sources.map((s) => ({
     id: s.id,
     scope: s.scope,
