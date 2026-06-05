@@ -8,7 +8,7 @@
 
 ## Why progressive disclosure
 
-The v1 default was: materialize every source, concatenate the bytes into the prompt body up to an 8000-token budget, silently drop anything that didn't fit. That works for short style guides and one-page rubrics; it fails badly for a Confluence space, a 50k-line repo, or a multi-page Jira query — what gets dropped is invisible at the prompt site, and the model has to grep blindly through what survives.
+Before progressive disclosure shipped, the default was: materialize every source, concatenate the bytes into the prompt body up to an 8000-token budget, silently drop anything that didn't fit. That works for short style guides and one-page rubrics; it fails badly for a Confluence space, a 50k-line repo, or a multi-page Jira query — what gets dropped is invisible at the prompt site, and the model has to grep blindly through what survives.
 
 The cross-tool consensus has moved on. The Linux Foundation's AGENTS.md spec (~28+ runtimes, ~60k repos as of 2026-05-31) and Anthropic's `code-execution-with-mcp` work converged on the same shape: a structured pointer index in the system prompt, plus on-demand fetch when the agent needs the bytes. Anthropic measured 150K → 2K token reductions; Augment's 2,500-repo study found AGENTS.md-listed files are read ~100% of the time vs. <10% for orphan files.
 
@@ -25,8 +25,8 @@ The cross-tool consensus has moved on. The Linux Foundation's AGENTS.md spec (~2
 | Override | Effect |
 |---|---|
 | `compile.progressive: true` | Force compile regardless of corpus size. Useful when you want the TOC pointer shape even for a small corpus, or to lock the rendering shape so a smaller corpus doesn't silently flip back to inline mode. |
-| `compile.progressive: false` | Pin v1-inline even for a large corpus. The validator's hard-limit warning still fires when an inline source overflows its share of the budget. |
-| any source with explicit `delivery: "inline"` | Pins the **whole bundle** to v1 mode (author intent wins; the validator's hard-limit check is the right place to surface overflow). |
+| `compile.progressive: false` | Pin inline mode even for a large corpus. The validator's hard-limit warning still fires when an inline source overflows its share of the budget. |
+| any source with explicit `delivery: "inline"` | Pins the **whole bundle** to inline mode (author intent wins; the validator's hard-limit check is the right place to surface overflow). |
 
 The `compile` block:
 
@@ -47,7 +47,7 @@ The `compile` block:
 
 | Field | Type | Default | Effect |
 |---|---|---|---|
-| `progressive` | boolean | smart-default (auto) | When omitted, the pipeline picks based on the threshold above. `true` forces compile; `false` pins v1-inline. |
+| `progressive` | boolean | smart-default (auto) | When omitted, the pipeline picks based on the threshold above. `true` forces compile; `false` pins inline mode. |
 | `tocMaxLines` | integer (1–400) | `150` | Hard cap on the TOC stanza. Sources beyond the cap are dropped from the rendered prompt with a warning naming the dropped ids. The cap of 150 is anchored on Augment's read-rate cliff. |
 | `emitAgentsMd` | boolean | `false` | Shorthand: when `true` and the `agents-md` target isn't already declared, the importer adds it. Most authors set this directly in `targets`; the flag exists for the APM importer (see below). |
 
@@ -59,7 +59,7 @@ Schema: `src/core/knowledge/schema.ts` (`KnowledgeBlockSchema`). Every field is 
 
 ## Per-source fields: `summary`, `toc`, `retrieval`
 
-Three optional fields layer on top of every source variant. They only affect rendering when the bundle compiles (smart default or explicit `compile.progressive: true`); they parse cleanly in v1 mode but are ignored. Edit them by hand in `agent.config.json` or via the GUI per-source editor (see [GUI](#gui-per-source-editor-and-mcp-toggle)).
+Three optional fields layer on top of every source variant. They only affect rendering when the bundle compiles (smart default or explicit `compile.progressive: true`); they parse cleanly in inline mode but are ignored. Edit them by hand in `agent.config.json` or via the GUI per-source editor (see [GUI](#gui-per-source-editor-and-mcp-toggle)).
 
 ```jsonc
 {
@@ -109,7 +109,7 @@ Sources are emitted in declared order. The truncation warning is `compile: TOC t
 
 **Idempotency.** AGENTS.md goes through the same `installed-agents.json` manifest, hash-mismatch refusal, and `--force` semantics as every other target. A hand-edited AGENTS.md is never overwritten without `--force`.
 
-**Runtimes that read AGENTS.md.** Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all consume the standard. Emitting AGENTS.md is the single-target way to reach all of them; per-runtime `.cursor/rules` / `.windsurfrules` translators are deliberately out of scope for v2 because AGENTS.md covers them.
+**Runtimes that read AGENTS.md.** Cursor, Windsurf, GitHub Copilot, Aider, Codex CLI, Devin, Junie, Roo, Zed, Warp, and Gemini CLI all consume the standard. Emitting AGENTS.md is the single-target way to reach all of them; per-runtime `.cursor/rules` / `.windsurfrules` translators are deliberately out of scope because AGENTS.md covers them.
 
 ---
 
@@ -124,8 +124,8 @@ Forces a compile regardless of opt-in or smart-default thresholds — the user e
 
 ```
 ~/.config/agent-smith/knowledge/<agent>/
-├── _manifest.json            # v1 materialization manifest (unchanged)
-├── compile-manifest.json     # v2 compile manifest (written)
+├── _manifest.json            # materialization manifest (unchanged)
+├── compile-manifest.json     # compile manifest (written)
 └── sources/<id>/...          # materialized files (unchanged)
 ```
 
@@ -145,7 +145,7 @@ The command exits `2` only when the named bundle has no `knowledge` block or no 
 smith knowledge serve <name> --stdio
 ```
 
-Spawns a stdio MCP server backed by an in-memory BM25 index over the agent's materialized knowledge dir. Two tools:
+Spawns a stdio MCP server backed by an in-memory BM25 index over the agent's materialized knowledge dir. The server indexes `.md`, `.txt`, and `.json` files under the agent's materialized knowledge directory. Files with other extensions (`.html`, `.pdf`, etc.) are not searchable via `knowledge.search` but remain readable via `knowledge.fetch <path>`. Two tools:
 
 - **`knowledge.search(query, k=5)`** — top-`k` `(path, score, snippet)` matches over the file tree. Pure lexical (no embeddings).
 - **`knowledge.fetch(path, start?, end?)`** — read a file under the agent's knowledge dir; range-bounded to 64KB per response to avoid blowing the context window on a single fetch. Path traversal is rejected.
@@ -169,7 +169,7 @@ args: [knowledge, serve, <agent>, --stdio]
 
 **Why BM25, not embeddings.** Cognition's SWE-grep, Anthropic's Tool Search Tool work, and Augment's read-rate study all converge on lexical retrieval being the right shape for coding agents — the bottleneck is *discoverability* (does the agent know the file exists?), not similarity matching. BM25 fits in <200 lines, has no model dependency, and re-indexes in milliseconds. The `retrieval.mode = "external-mcp"` escape hatch lets you point a source at any embedding-based MCP server (Recall, Captain, DeepWiki) without changes to the compile stage.
 
-**Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. There is no daemon-managed multi-agent serving in v2; cold-start latency is on the order of milliseconds because BM25 indexes the file tree at spawn time.
+**Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. There is no daemon-managed multi-agent serving today; cold-start latency is on the order of milliseconds because BM25 indexes the file tree at spawn time.
 
 ---
 
@@ -177,7 +177,7 @@ args: [knowledge, serve, <agent>, --stdio]
 
 The browser GUI's `/knowledge/:agent` route (Knowledge tab) is the pointing-and-clicking equivalent of editing `agent.config.json` by hand:
 
-- **Edit** button per source row — opens a modal exposing every v1+v2 field: `delivery` (auto / inline / file), `retrieval` (off / bm25 / external-mcp + `mcpUrl`), `summary`, `toc`, `materialize`, `extractor`, `refresh.mode` / `refresh.ttl` / `refresh.timeout`, `optional`, `inlineBudgetTokens`. Save writes the whole `knowledge` block back via `PUT /api/agents/:name/config` (server re-validates against the canonical schema). Confirm-on-cancel guards dirty state.
+- **Edit** button per source row — opens a modal exposing every field: `delivery` (auto / inline / file), `retrieval` (off / bm25 / external-mcp + `mcpUrl`), `summary`, `toc`, `materialize`, `extractor`, `refresh.mode` / `refresh.ttl` / `refresh.timeout`, `optional`, `inlineBudgetTokens`. Save writes the whole `knowledge` block back via `PUT /api/agents/:name/config` (server re-validates against the canonical schema). Confirm-on-cancel guards dirty state.
 - **MCP wiring toggle** at the top of the tab — adds or removes the per-agent key `<agent>-knowledge` (e.g. `agg-layer-expert-knowledge` for the `agg-layer-expert` bundle, `agent-smith-knowledge` for the `agent-smith` bundle) from the bundle's `mcpServers: string[]`. Per-agent keys mean two different bundles wired into the same AI client never collide. The toggle's banner explains the **two-step wiring** every author needs to do once: (1) `smith agent install <agent>` to rebuild the bundle so the rendered output advertises the dependency, (2) add the spawn config to the AI client's own MCP settings (per-platform paths in the banner). The CLI equivalents are `smith knowledge wire <agent>` and `smith knowledge unwire <agent>`. Smith's `mcpServers` field is documentation-only — agent-smith does **not** write spawn configs into platform MCP files.
 
 The same `PUT /api/agents/:name/config` endpoint accepts `knowledge` and `mcpServers` patches alongside the existing `targets` and `modelTier` arms. Source: `gui/web/src/panels/KnowledgeSources/`.
@@ -250,19 +250,19 @@ Re-run `smith agent install <agent>`; AGENTS.md lands at `~/AGENTS.md` (override
 
 The smart default already keeps small corpora out of compile mode. Use the **explicit inline** escape hatch — `delivery: "inline"` on the relevant sources, or `compile.progressive: false` on the block — only when:
 
-- **Short style guides.** A 50-line "we use 2-space indents and TS-strict" rubric belongs inline, in working memory, on every turn. Set `delivery: "inline"` explicitly. **Any source with explicit `delivery: "inline"` pins the whole bundle to v1 mode** (author intent wins; the smart default does not auto-flip the bundle to compile in this case — the validator's hard-limit check is the right place to surface overflow).
+- **Short style guides.** A 50-line "we use 2-space indents and TS-strict" rubric belongs inline, in working memory, on every turn. Set `delivery: "inline"` explicitly. **Any source with explicit `delivery: "inline"` pins the whole bundle to inline mode** (author intent wins; the smart default does not auto-flip the bundle to compile in this case — the validator's hard-limit check is the right place to surface overflow).
 - **Single-page glossaries.** Domain vocabulary the agent needs to disambiguate user input. Same as above: `delivery: "inline"`.
 - **One-shot rubrics.** A code-review rubric the agent applies on every PR. Inline. The cost of a tool-call round trip to fetch a 200-token file every turn is silly.
 
 The general rule: if a source is *consulted on every turn anyway*, inline beats compile. If a source is *occasionally relevant*, compile (TOC pointer + on-demand fetch) wins by an order of magnitude on tokens. The Augment / Anthropic / Cognition data is about what wins **by default** — not about banning inline.
 
-`auto` delivery is the v1 mode that silently truncates once the budget is hit. Under compile mode, `auto` resolves to `file` instead of inline, fixing the silent failure mode. Explicit `inline` still inlines, regardless of mode.
+`auto` delivery resolves to `inline` only when the source produces a single artifact that fits the budget; otherwise `file`. When the bundle is over the inline budget threshold (compile mode), `auto` resolves to `file` so nothing is silently truncated.
 
 ---
 
 ## Doctor: drift detection and auto-repair
 
-`smith doctor` includes a `knowledge-compile` section (v2) that audits any agent whose `compile-manifest.json` exists on disk OR whose bundle declares `compile.progressive: true`, and surfaces two finding kinds:
+`smith doctor` includes a `knowledge-compile` section that audits any agent whose `compile-manifest.json` exists on disk OR whose bundle declares `compile.progressive: true`, and surfaces two finding kinds:
 
 | Finding | Meaning |
 |---|---|
@@ -286,7 +286,7 @@ In the GUI, the `/system/doctor` page renders the section like every other docto
 
 ## See also
 
-- [Knowledge](./04-knowledge.md) — the v1 source-type taxonomy (file/dir/glob/url/git/confluence/jira), delivery semantics, refresh modes, and Atlassian credentials. Everything in spoke 04 still applies under v2; the compile stage runs *after* materialization.
+- [Knowledge](./04-knowledge.md) — the source-type taxonomy (file/dir/glob/url/git/confluence/jira), delivery semantics, refresh modes, and Atlassian credentials. Everything in spoke 04 still applies; the compile stage runs *after* materialization.
 - [Bundle anatomy](./02-bundle-anatomy.md#knowledge) — where the `compile` and `targetOptions` blocks fit in the schema overview.
 - [Installing and rendering](./03-installing-and-rendering.md) — what `smith agent install` does end-to-end; the compile stage is now part of step 4.
 - [Sharing and distribution](./15-sharing-and-distribution.md) — AGENTS.md as a publishing surface.

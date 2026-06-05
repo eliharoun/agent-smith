@@ -367,6 +367,58 @@ Behavior (`src/io/skill-installer.ts`):
 
 Exit codes: 0 on success; 1 if the skill isn't installed.
 
+### `smith skill sync [name]`
+
+Pulls updates for one or all remote-backed skill catalogs. Useful when a
+catalog was registered via `smith skill install --from <url>` and you want
+to fast-forward the local clone to the remote head.
+
+```bash
+smith skill sync                  # update every remote-backed catalog
+smith skill sync team             # update one catalog by label
+smith skill sync --check          # report drift without pulling
+smith skill sync --all            # explicit "every catalog"
+```
+
+Cross-link to [guide/14-cli-reference.md](./14-cli-reference.md) for full flags.
+
+### `smith skill validate <name>`
+
+Validates a skill's frontmatter against the canonical schema (kebab-case
+name, description bounds, permitted keys). Exits non-zero on validation
+failure.
+
+```bash
+smith skill validate the-architect
+```
+
+Cross-link to [guide/14-cli-reference.md](./14-cli-reference.md) for full flags.
+
+### `smith skill bootstrap`
+
+Installs the bundled `the-architect` and `the-keymaker` skills into every
+detected platform's skill directory. Also fired by the `bun install`
+postinstall hook.
+
+```bash
+smith skill bootstrap                          # all detected platforms
+smith skill bootstrap --targets opencode,kiro  # restrict scope
+smith skill bootstrap --dry-run                # preview without writing
+```
+
+Cross-link to [guide/14-cli-reference.md](./14-cli-reference.md) for full flags.
+
+### `smith skill catalog rename <old> <new>`
+
+Renames a registered skill catalog's label without re-registering. The
+on-disk path stays the same; only the registry's stored label updates.
+
+```bash
+smith skill catalog rename old-team-skills team-skills
+```
+
+Cross-link to [guide/14-cli-reference.md](./14-cli-reference.md) for full flags.
+
 ## Drift and doctor
 
 The hash recorded at install time enables `smith doctor` and `smith skill

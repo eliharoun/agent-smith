@@ -18,7 +18,8 @@ bundle (one canonical source)
         ├─► OpenCode      ~/.config/opencode/agents/<name>.md       (markdown + frontmatter)
         ├─► Claude Code   ~/.claude/agents/<name>.md                 (markdown + frontmatter)
         ├─► Codex         ~/.agents/skills/<name>/SKILL.md           (markdown + frontmatter)
-        └─► Kiro          ~/.kiro/agents/<name>.json                 (JSON document)
+        ├─► Kiro          ~/.kiro/agents/<name>.json                 (JSON document)
+        └─► AGENTS.md     ~/AGENTS.md                                (single-file markdown, no per-platform translation)
 ```
 
 Two side effects sit alongside the file writes:
@@ -56,20 +57,20 @@ You never invoke build separately. Every command surface that renders a persona 
 
 The four translators emit the same body but very different frontmatter (or, for kiro, a JSON document instead of frontmatter). The table below summarizes; the per-platform sections that follow give the source-of-truth detail.
 
-| Behavior | OpenCode | Claude Code | Codex | Kiro |
-|---|---|---|---|---|
-| Install path | `<opencodeAgents>/<name>.md` | `<claudeAgents>/<name>.md` | `<codexSkills>/<name>/SKILL.md` | `<kiroAgents>/<name>.json` |
-| Output format | markdown + YAML frontmatter | markdown + YAML frontmatter | markdown + YAML frontmatter | strict JSON document |
-| Frontmatter `name` | omitted (uses filename) | emitted | emitted | `name` field in JSON |
-| `description` | always | always | always | always (in JSON) |
-| `mode`, `temperature`, `color` | when set in config | dropped | dropped | dropped (no native field) |
-| `model` | when resolved | when resolved | never (no per-agent model) | resolved to static literal (claude-opus/sonnet/haiku) |
-| Permission representation | full `permission` object emitted verbatim | `allowed-tools` comma-string | `allowed_tools` array | two-tier `tools[]` + `allowedTools[]` |
-| `permission.<group>: ask` | honored | omits the tool + warns per tool | omits the tool + warns per tool | tool surfaced in `tools[]` but absent from `allowedTools[]` (native ask) |
-| `permission.<group>: deny` | honored | tool simply absent + 1 summary warning | tool simply absent + 1 summary warning | tool absent from `tools[]` |
-| `permission.skill` | honored (per-skill rules supported) | collapses pattern map + warns | warned + ignored (no skill-tool runtime) | emitted as `skill://` resource URIs (allow / ask / deny per skill) |
-| Pattern-based rules (e.g. `{"git *": "allow"}`) | honored | collapses + warns | collapses + warns | collapses + warns (kiro has no pattern-grade rules) |
-| Knowledge dir grant | `permission.read.<dir>/**: allow` | `additionalDirectories: [<dir>]` | `allowed_external_directories: [<dir>]` | added to `resources[]` as `file://<dir>/**` |
+| Behavior | OpenCode | Claude Code | Codex | Kiro | AGENTS.md |
+|---|---|---|---|---|---|
+| Install path | `<opencodeAgents>/<name>.md` | `<claudeAgents>/<name>.md` | `<codexSkills>/<name>/SKILL.md` | `<kiroAgents>/<name>.json` | `~/AGENTS.md` (single file) |
+| Output format | markdown + YAML frontmatter | markdown + YAML frontmatter | markdown + YAML frontmatter | strict JSON document | plain markdown (persona + knowledge sections only) |
+| Frontmatter `name` | omitted (uses filename) | emitted | emitted | `name` field in JSON | not applicable |
+| `description` | always | always | always | always (in JSON) | not applicable |
+| `mode`, `temperature`, `color` | when set in config | dropped | dropped | dropped (no native field) | dropped |
+| `model` | when resolved | when resolved | never (no per-agent model) | resolved to static literal (claude-opus/sonnet/haiku) | no model resolution |
+| Permission representation | full `permission` object emitted verbatim | `allowed-tools` comma-string | `allowed_tools` array | two-tier `tools[]` + `allowedTools[]` | none (no permission translation) |
+| `permission.<group>: ask` | honored | omits the tool + warns per tool | omits the tool + warns per tool | tool surfaced in `tools[]` but absent from `allowedTools[]` (native ask) | not represented |
+| `permission.<group>: deny` | honored | tool simply absent + 1 summary warning | tool simply absent + 1 summary warning | tool absent from `tools[]` | not represented |
+| `permission.skill` | honored (per-skill rules supported) | collapses pattern map + warns | warned + ignored (no skill-tool runtime) | emitted as `skill://` resource URIs (allow / ask / deny per skill) | not represented (no skills) |
+| Pattern-based rules (e.g. `{"git *": "allow"}`) | honored | collapses + warns | collapses + warns | collapses + warns (kiro has no pattern-grade rules) | not represented |
+| Knowledge dir grant | `permission.read.<dir>/**: allow` | `additionalDirectories: [<dir>]` | `allowed_external_directories: [<dir>]` | added to `resources[]` as `file://<dir>/**` | knowledge inlined as a section in the rendered markdown |
 
 YAML is serialized with sorted keys via `js-yaml` `dump` (`src/io/installer.ts`) so a re-render of an unchanged bundle produces a byte-identical file ordering.
 
@@ -188,7 +189,15 @@ What re-running install *is* safe for: the destination is fully replaced from th
 Build and install one agent.
 
 ```text
-smith agent install <name> [--yes] [--with-skills] [--no-skills]
+smith agent install <name> [--platforms <list>] [--targets <list>]
+                           [--with-skills | --no-skills]
+                           [--allow-missing-cli] [--allow-missing-mcp]
+                           [--platform-conventions <strategy>] [--no-platform-conventions]
+                           [--from <url>] [--ref <ref>]
+                           [--no-refresh-hooks] [--refresh-consent <yn>]
+                           [--force] [--force-unlock]
+                           [--yes] [--json] [--verbose]
+                           [--all] [--agents <list>]
 ```
 
 **Arguments:**
@@ -198,6 +207,14 @@ smith agent install <name> [--yes] [--with-skills] [--no-skills]
 - `--yes` — auto-accept all prompts. On install, the only prompt is the required-skills `[Y/n]`, so this is equivalent to `--with-skills`.
 - `--with-skills` — auto-install required skills without prompting.
 - `--no-skills` — skip required-skill installs and emit a warning. Wins over the others if combined.
+
+**Other notable flags:**
+- `--force-unlock` — drop a stuck per-agent install lock left by a killed run.
+- `--allow-missing-cli` — demote missing-CLI errors to warnings.
+- `--allow-missing-mcp` — demote missing-MCP errors to warnings.
+- `--from <url>`, `--ref <ref>` — install from a git URL at a specific ref.
+
+Cross-link to [guide/14-cli-reference.md](./14-cli-reference.md) for the full flag table.
 
 The flag-to-mode resolution is in `src/index.ts`:
 

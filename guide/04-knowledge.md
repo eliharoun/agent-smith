@@ -43,7 +43,7 @@ agent.config.json (+ knowledge.json sidecar)
    └─────────────────┘
 ```
 
-The materializer is inferred from filename extension and HTTP `Content-Type` when not specified — so most bundles only set `type` and `delivery` and let the rest fall through. The `html-to-md` materializer is wiki-aware: it dispatches to a wiki-direct path (no Readability) when the HTML matches a known wiki signature (XWiki, Confluence, MediaWiki, SharePoint), and to the Readability path otherwise. Both paths run turndown with GFM tables. Relative links resolve against the source URL.
+The materializer is inferred from filename extension and HTTP `Content-Type` when not specified — so most bundles only set `type` and `delivery` and let the rest fall through. The `html-to-md` materializer is wiki-aware: it dispatches to a wiki-direct path (no Readability) when the HTML matches a known wiki signature (XWiki, Confluence, MediaWiki, SharePoint), and to the Readability path otherwise. Wiki-mode uses per-platform CSS selectors to locate the content root before turndown runs (`.xwikicontent` for XWiki, `#confluence-content, #main-content` for Confluence, `.mw-parser-output` for MediaWiki, `.ms-rtestate-field` for SharePoint) and strips a small allowlist of platform-specific noise selectors (edit-section anchors, breadcrumbs, command bars). Both paths run turndown with GFM tables. Relative links resolve against the source URL.
 
 ---
 
@@ -377,7 +377,9 @@ The per-agent knowledge directory is **always** under agent-smith's own state ho
 
 See `src/io/knowledge-paths.ts` for path resolution. Earlier versions of smith materialized this directory under `~/.config/opencode/agents/<name>/knowledge/`, but OpenCode's agent picker globs that directory recursively and was treating every knowledge `.md` as a selectable agent — the migration rationale is documented on the `KnowledgePaths` interface (`src/io/knowledge-paths.ts`).
 
-**File extensions and frontmatter.** Materialized HTML lands as `.md` (Readability + turndown + GFM tables) for non-wiki pages. Wiki-shaped HTML (XWiki, Confluence, MediaWiki, SharePoint — detected by HTML signature) skips Readability and converts the wiki body directly via turndown + GFM. Materialized HTML files are prefixed with a YAML frontmatter block (`title`, `source_url`, `fetched_at`) so the agent has provenance metadata without paying tokens to re-derive it. JSON envelopes returned by MCP tools (shapes like `{content: {content}}`, `{html}`, `{body}`, `{markdown}`, etc.) are unwrapped before sniffing — the inner bytes are content-type-detected and written under an honest extension.
+**File extensions and frontmatter.** Materialized HTML lands as `.md` (Readability + turndown + GFM tables) for non-wiki pages. Wiki-shaped HTML (XWiki, Confluence, MediaWiki, SharePoint — detected by HTML signature) skips Readability and converts the wiki body directly via turndown + GFM. Materialized HTML files are prefixed with a YAML frontmatter block (`title`, `source_url`, `fetched_at`) so the agent has provenance metadata without paying tokens to re-derive it. JSON envelopes returned by MCP tools are unwrapped before sniffing — the inner bytes are content-type-detected and written under an honest extension. The sniffer recognizes 8 envelope shapes in priority order: `{content: {content}}`, `{content}`, `{html}`, `{body}`, `{text}`, `{markdown}`, `{result}`, `{data}`. Each path is checked top-to-bottom; first string match wins.
+
+For HTML pages that wrap their real content in a transport element (commonly a `<textarea class="wiki-source">` or `<pre>` carrying source HTML), smith's `tryUnwrapEmbeddedHtml` step extracts the inner content before materialization. Two-tier detection: class-signal first (`wiki-code`, `source-code`, `raw-content`, `embedded-content` in the element's class), then a shape fallback that swaps the element when its content dominates the outer body. Wiki-platform detection re-runs on the unwrapped HTML so the dispatcher routes the inner document to wiki-mode or article-mode based on its own shape.
 
 `_manifest.json` is a single file enumerating every source's id, scope, type, delivery, files (path/sha256/bytes/summary), `tokensInline`, description, and provenance. `smith knowledge list` reads it; the install pipeline writes it (`src/core/knowledge/pipeline.ts`). The install pipeline also *reads* the prior `_manifest.json` snapshot **before** overwriting it — `summarizeKnowledgeStage` (`src/io/knowledge-summary.ts`) diffs each source's `(relPath, sha256)` set against the prior to produce the per-source `→ knowledge` / `· knowledge (unchanged)` lines surfaced in install output. A missing or corrupt prior manifest is treated as "no prior" (every source reports changed); the read is defensive — install never aborts because of a manifest-read error.
 
@@ -500,7 +502,7 @@ The same token authenticates against both Confluence and Jira on the workspace y
 
 ### Verifying
 
-Run `smith doctor` to verify your credentials are detected. The atlassian-auth section reports which tier was used (`env-smith` / `file-smith`) or `not-configured`. See [Doctor](./10-doctor.md#the-eleven-sections) for the full output schema.
+Run `smith doctor` to verify your credentials are detected. The atlassian-auth section reports which tier was used (`env-smith` / `file-smith`) or `not-configured`. See [Doctor](./10-doctor.md) for the full output schema.
 
 > This is the canonical home for Atlassian credentials. [Paths and state](./13-paths-and-state.md) cross-links here rather than duplicating the resolution rules.
 
@@ -989,10 +991,12 @@ The state is determined by reading both `agent.config.json` (declared sources) a
 ### `smith knowledge fetch`
 
 ```bash
-smith knowledge fetch <agent> [--source <id>]
+smith knowledge fetch <agent> [--source <id>] [--force-unlock]
 ```
 
 Re-fetches cached content for URL and git sources and re-installs the agent. Use it when an upstream source has changed and you want to pick up the new content without going through a full `install` cycle.
+
+- `--force-unlock` — drops a stuck per-agent install lock (left by a killed earlier run) before fetching. ENOENT is silent. Same contract as `smith agent install --force-unlock`.
 
 ```bash
 smith knowledge fetch my-agent                       # refresh every URL/git source
@@ -1003,7 +1007,7 @@ smith knowledge fetch my-agent --source stripe-api   # surgically clear and re-f
 
 - `type: url` — removes `<knowledgeDir>/.cache/<sha256(url)>.bin` and the sibling `.json` headers.
 - `type: git` — removes `<knowledgeDir>/.cache/git/<sha256(url)>/` recursively.
-- `file`, `dir`, `glob`, `confluence`, `jira`, and `npm`-placeholder types: no on-disk acquirer cache to clear (or, for confluence/jira, per-source clearing is not yet wired — use the broad form below).
+- `file`, `dir`, `glob`, `confluence`, `jira`, and `npm`-placeholder types: no on-disk acquirer cache to clear. For `confluence`/`jira`, surgical refresh re-acquires through the API but does not pre-clear any on-disk cache; the broad form (no `--source`) goes through the same path.
 
 Other sources' caches are left untouched, so refreshing one URL no longer invalidates ETag/body data for unrelated URLs. After clearing, smith re-acquires the single source through the same three-layer URL resolver as install, materializes it, re-renders the agent's prompts, and prints a one-line summary on success:
 
@@ -1011,7 +1015,7 @@ Other sources' caches are left untouched, so refreshing one URL no longer invali
 refreshed <id>: <N> file(s), <B> byte(s) in <Xms>ms
 ```
 
-When the surgical refresh is skipped (another fetch holds the install lock for the agent, the source has `delivery: inline | auto` and nothing to materialize, or the source is filtered out), smith prints a corresponding `refresh ... skipped` line and exits `0`. A failed refresh leaves the prior on-disk state intact (`smith` prints `smith: refresh of <id> for <agent> failed: ...` and exits `1`).
+When the surgical refresh is skipped (another fetch holds the install lock for the agent, the source has `delivery: inline` and nothing to materialize on disk, or the source is filtered out), smith prints a corresponding `refresh ... skipped` line and exits `0`. Sources with `delivery: auto` proceed through the full acquire+materialize chain — the post-acquire size check decides inline-vs-file from the rendered bytes. A failed refresh leaves the prior on-disk state intact (`smith` prints `smith: refresh of <id> for <agent> failed: ...` and exits `1`).
 
 Without `--source`, the command re-runs `install`, which uses the existing HTTP cache (ETag/Last-Modified revalidation) and existing git clones (branch refs hard-reset to `origin/<ref>`, tags/SHAs reused unchanged). To force a full re-fetch of every source, delete `<knowledgeDir>/.cache/` directly and re-run `smith agent install <agent>` (or `smith knowledge fetch <agent>`) to re-materialize.
 
@@ -1380,6 +1384,6 @@ Refresh failures never block a session — see [Failure behavior](#failure-behav
 
 - [Bundle anatomy](./02-bundle-anatomy.md#knowledge) — where the `knowledge` block fits inside `agent.config.json`.
 - [Installing and rendering](./03-installing-and-rendering.md#per-platform-output) — how the cross-platform read-grants are injected into Claude Code's `additionalDirectories` and Codex's `allowed_external_directories`.
-- [Doctor](./10-doctor.md#the-ten-sections) — how `smith doctor` reports the resolved Atlassian credential tier.
+- [Doctor](./10-doctor.md) — how `smith doctor` reports the resolved Atlassian credential tier.
 - [Paths and state](./13-paths-and-state.md#per-agent-knowledge-directories) — every file knowledge writes, with absolute paths and writers.
 - [CLI reference](./14-cli-reference.md#knowledge) — `knowledge` subcommand reference (synopsis, flags, exit codes).

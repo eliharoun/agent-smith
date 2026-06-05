@@ -1,6 +1,6 @@
 # Doctor
 
-> `smith doctor` runs fifteen health checks against your agent-smith install — schema drift (per platform), model resolution, workspace freshness, credentials, installed-skill drift, installed-agent drift, registry hygiene. It's a read-only diagnostic. Run it after `smith agent install`, after `smith update`, when something feels off, and in CI to gate deployments.
+> `smith doctor` runs twenty health checks against your agent-smith install — schema drift (per platform), model resolution, workspace freshness, credentials, installed-skill drift, installed-agent drift, registry hygiene. It's a read-only diagnostic. Run it after `smith agent install`, after `smith update`, when something feels off, and in CI to gate deployments.
 >
 > As of v0.13, `smith doctor` defaults to a **compact summary** (one line per check; failing sections auto-expand). Use `--verbose` for the pre-v0.13 full per-section detail report, or `--quiet` to suppress all human output while preserving the exit code.
 
@@ -8,7 +8,7 @@
 
 ## Mental model
 
-Doctor walks fifteen sections sequentially, each producing a structured row in the report. Sections fall into two buckets:
+Doctor walks twenty sections sequentially, each producing a structured row in the report. Sections fall into two buckets:
 
 - **Exit-code-affecting** — the `opencode` schema check and the `model-resolution` check. These can bump the exit code to `1` (drift) or `2` (network error).
 - **Informational** — every other section (workspace, atlassian-auth, skill-drift, agent-required-skills, registry-hygiene, claude-code/codex tool maps). They report status, surface remediation hints, but never affect the exit code.
@@ -50,7 +50,7 @@ In `--json` mode the refusal emits a canonical envelope:
 
 The exact message string is exported from `src/cli/commands/doctor.ts` as `NO_PLATFORM_REFUSAL_MESSAGE` for downstream consumers and integration tests.
 
-## The fifteen sections
+## The twenty sections
 
 | # | Section id | What it checks | Exit-code contribution |
 |---|---|---|---|
@@ -64,12 +64,16 @@ The exact message string is exported from `src/cli/commands/doctor.ts` as `NO_PL
 | 8 | `skill-drift` | For each skill in `installed-skills.json`: hash the dest dir and compare to the recorded `contentHash`. Reports `ok` / `drift` / `missing` / `source-missing`. | Informational |
 | 9 | `agent-required-skills` | For each agent that declares `requires.skills`, diff against the installed-skills list; report unsatisfied entries with a `smith skill install <ref>` hint. | Informational |
 | 10 | `registry-hygiene` | For every registered agent or skill catalog, confirm `rootPath` exists, contains bundles, and (if `gitRemote` is set) a matching git remote is configured. The protected `atlassian-skills` skill catalog is exempt (lazy-cloned). | Informational |
-| 11 | `remote-catalogs` | For every remote-backed catalog (those with a `remote` block), compare `lastPulledSha` against `lastRemoteSha` and report `catalog-behind-remote` when they diverge or `catalog-stale-check` when `lastCheckedAt` is older than 7 days. Offline-safe — surfaces drift previously observed by `sync --check` runs without performing live `git ls-remote`. v1-task C3.14. | Informational |
-| 12 | `duplicate-catalogs` | Walks both registries, groups entries by `normalizeGitUrl(remote.url)` (scheme/case/`.git`-suffix insensitive), and warns on clusters of size ≥ 2. Surfaces back-catalog duplicates accumulated under rc.1 — RC2-4 closes the forward door (`install --from` hard-errors on duplicates) but pre-existing duplicates need this audit to discover. Pure check; no IO beyond reading registry files. v1-task RC2-10. | Informational |
+| 11 | `remote-catalogs` | For every remote-backed catalog (those with a `remote` block), compare `lastPulledSha` against `lastRemoteSha` and report `catalog-behind-remote` when they diverge or `catalog-stale-check` when `lastCheckedAt` is older than 7 days. Offline-safe — surfaces drift previously observed by `sync --check` runs without performing live `git ls-remote`. | Informational |
+| 12 | `duplicate-catalogs` | Walks both registries, groups entries by `normalizeGitUrl(remote.url)` (scheme/case/`.git`-suffix insensitive), and warns on clusters of size ≥ 2. Surfaces back-catalog duplicates accumulated under rc.1 — `install --from` hard-errors on duplicates as of rc.2, but pre-existing duplicates need this audit to discover. Pure check; no IO beyond reading registry files. | Informational |
 | 13 | `knowledge-refresh` | Knowledge-refresh hook integrity (per-platform): missing hook, orphaned consent record, corrupt cache. `--fix-knowledge-refresh` repairs. | Informational |
-| 14 | `knowledge-compile` | Audits any agent whose `compile-manifest.json` exists on disk OR whose bundle declares `compile.progressive: true`. Reads `compile-manifest.json` and compares its `contentHash` against a fresh `compile()` over the materialized `_manifest.json` sources. Reports `missing-manifest` (file absent or unparseable) and `drift` (hash mismatch). Manifest-presence detection covers v2.1 auto-compiled bundles (the dominant case under the smart default), drift-after-shrink (manifest left behind when sources were trimmed below the threshold), and stale manifests under explicit `progressive: false` opt-out. Bundles with no knowledge sources and no manifest on disk are silently skipped. `--fix-knowledge-compile` re-runs `smith knowledge compile <agent>` for each finding. v2. | Informational |
-| 15 | `knowledge-prompt-disk-consistency` | Cross-checks each agent's prompt frontmatter against the materialized knowledge dir on disk to catch out-of-sync state. | Informational |
-| 16 | `agent-drift` | For each agent in `installed-agents.json`: hash the installed file and compare to the recorded `contentHash`. Reports `ok` / `drift` / `missing`. | Informational |
+| 14 | `knowledge-compile` | Audits any agent whose `compile-manifest.json` exists on disk OR whose bundle declares `compile.progressive: true`. Reads `compile-manifest.json` and compares its `contentHash` against a fresh `compile()` over the materialized `_manifest.json` sources. Reports `missing-manifest` (file absent or unparseable) and `drift` (hash mismatch). Manifest-presence detection covers auto-compiled bundles (the dominant case under the smart default), drift-after-shrink (manifest left behind when sources were trimmed below the threshold), and stale manifests under explicit `progressive: false` opt-out. Bundles with no knowledge sources and no manifest on disk are silently skipped. `--fix-knowledge-compile` re-derives `compile-manifest.json` from already-materialized files for each finding. | Informational |
+| 15 | `mcp-spawn-commands` | For every MCP server registered on each detected platform, classify the `command` field for fragility: bare names that resolve via `PATH` (e.g. `smith`) won't be found by GUI launches from Spotlight or the dock because that environment lacks user shell PATH. Reports `fragile-command` per offender. `--fix-mcp-commands` rewrites bare names to absolute paths. | Informational |
+| 16 | `mcp-deps` | For every MCP server entry across detected platforms, audit declared command/runner availability (Python, Node, Bun, etc.) and surface missing dependencies that would fail at spawn time. | Informational |
+| 17 | `lazy-fetch` | Inspects per-source lazy-fetch state for every installed agent and reports inconsistencies between the recorded fetch metadata and the on-disk materialization. | Informational |
+| 18 | `url-routing` | Audits `url-routing.json` entries against the current MCP-server inventory and warns on routes that point at servers no longer registered on any platform. | Informational |
+| 19 | `knowledge-prompt-disk-consistency` | Cross-checks each agent's prompt frontmatter against the materialized knowledge dir on disk to catch out-of-sync state. | Informational |
+| 20 | `agent-drift` | For each agent in `installed-agents.json`: hash the installed file and compare to the recorded `contentHash`. Reports `ok` / `drift` / `missing`. | Informational |
 
 The section ids in this table match the values you'll see in `--json` output and in the `DoctorSectionId` union (`src/core/freshness/run-doctor.ts`).
 
@@ -152,7 +156,8 @@ Output to a pipe, or invocations with `--json`, never stream — they print the 
 | `-v`, `--verbose` | Full per-section detail report (pre-v0.13 default behavior). |
 | `-q`, `--quiet` | Suppress all human output; preserve exit code. JSON still emits when combined with `--json`. For CI scripts that only need pass/fail. |
 | `--fix-knowledge-refresh` | After running the `knowledge-refresh` detection section, auto-repair each finding: re-register missing hooks, delete corrupt cache entries, clear orphaned consent records. `unmanaged-codex-hooks` findings are not auto-fixed (requires `smith knowledge migrate-codex`). |
-| `--fix-knowledge-compile` | After running the `knowledge-compile` detection section, re-run `smith knowledge compile <agent>` for every `missing-manifest` or `drift` finding. Both kinds repair via the same path because a re-compile both re-materializes sources and overwrites a stale or corrupt `compile-manifest.json`. v2. |
+| `--fix-knowledge-compile` | Auto-repair `knowledge-compile` drift findings: re-derives `compile-manifest.json` from already-materialized files. Offline — does NOT refetch sources. Run `smith knowledge fetch <agent>` first if the underlying source bytes have changed. |
+| `--fix-mcp-commands` | Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. `smith`) to absolute paths so GUI launches from Spotlight/dock spawn correctly. Use after `mcp-spawn-commands` flags fragile-command findings. |
 
 ### Flag combinations
 
@@ -276,7 +281,7 @@ The atlassian-auth section also reads the credential env vars (`SMITH_ATLASSIAN_
 ## Caveats and gotchas
 
 - **`workspace: unknown:network-error` does NOT bump the exit code.** This is an explicit exception — the workspace section is informational even when the underlying `git ls-remote` fails. Documented at `src/core/freshness/run-doctor.ts`. Network failures from the workspace check appear in the report but never affect `$?`.
-- **Doctor is primarily read-only, with two repair flags.** Most drift requires the corresponding remediation command. The exceptions are `--fix-knowledge-refresh` (missing hooks, corrupt caches, orphaned consent) and `--fix-knowledge-compile` (re-runs `smith knowledge compile <agent>` for missing-manifest / drift findings on any bundle whose `compile-manifest.json` exists on disk or which explicitly opts in via `compile.progressive: true`). See [Flags](#flags).
+- **Doctor is primarily read-only, with three repair flags.** Most drift requires the corresponding remediation command. The exceptions are `--fix-knowledge-refresh` (missing hooks, corrupt caches, orphaned consent), `--fix-knowledge-compile` (re-derives `compile-manifest.json` from already-materialized files for missing-manifest / drift findings on any bundle whose `compile-manifest.json` exists on disk or which explicitly opts in via `compile.progressive: true` — offline only; does NOT refetch sources), and `--fix-mcp-commands` (rewrites fragile bare-name MCP `command` fields to absolute paths). See [Flags](#flags).
 - **The exit-code policy is asymmetric on purpose.** OpenCode schema (section 1) > model-resolution (section 5) > everything-else-is-informational. Skill drift, required-skills, registry-hygiene, atlassian-auth, and the Claude Code / Codex tool map sections cannot affect the exit code, no matter how many warnings they raise. If you want CI to fail on, say, missing required skills, parse the `--json` output and key on `agentRequiredSkills.status === "warn"`.
 - **The default view is actionable-only.** Non-actionable findings (curated-fallback drift, unused Atlassian auth) render as a one-line summary in the default output; only sections with `warn` or `error` status auto-expand with full detail. Pass `--verbose` to see the full per-section report regardless of status.
 - **The model-resolution section is auto-skipped when `opencode` is not on PATH.** The section is OpenCode-specific (it shells out to `opencode models` and inspects installed OpenCode agents). When OpenCode is absent, the section is omitted entirely and cannot affect the exit code. If you have OpenCode installed but still want to skip the section, pass `--skip-model-resolution`.

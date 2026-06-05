@@ -6,7 +6,7 @@ If you already know the system and just need a command-by-command reference, jum
 
 ## What agent-smith is
 
-`agent-smith` is an lifecycle manager for AI coding agents. It treats an agent as a portable bundle (one directory of markdown plus a JSON config) and installs that bundle into the platforms you actually use: OpenCode, Claude Code, Codex, and Kiro. Each platform gets a native, idiomatic agent file rendered from the same canonical source. The CLI also manages skills (the open Anthropic Agent Skills format), per-agent knowledge sources, and a background daemon that re-installs when bundles change and refreshes `ttl`-mode knowledge sources on a 5-minute tick.
+`agent-smith` is an lifecycle manager for AI coding agents. It treats an agent as a portable bundle (one directory of markdown plus a JSON config) and installs that bundle into the platforms you actually use: OpenCode, Claude Code, Codex, Kiro, and any AGENTS.md-aware tool (the fifth `agents-md` target requires no CLI). Each platform gets a native, idiomatic agent file rendered from the same canonical source. The CLI also manages skills (the open Anthropic Agent Skills format), per-agent knowledge sources, and a background daemon that re-installs when bundles change and refreshes `ttl`-mode knowledge sources on a 5-minute tick.
 
 The CLI binary is named `smith`. Throughout this guide every command starts with that name.
 
@@ -15,7 +15,7 @@ The CLI binary is named `smith`. Throughout this guide every command starts with
 You need:
 
 - **[Bun](https://bun.sh) >= 1.1.** Smith runs on the Bun runtime; it does not work under Node. Verify with `bun --version`. Source: `package.json:24-26`.
-- **At least one of the four target platforms installed.** Smith targets OpenCode (`~/.config/opencode/`), Claude Code (`~/.claude/`), Codex (`~/.codex/` and `~/.agents/`), and Kiro (`~/.kiro/`). You do not need all four — bundles can declare any subset of `opencode`, `claude-code`, `codex`, `kiro` in their `targets` field. Platforms whose install directories don't exist are skipped silently.
+- **At least one of the four runtime platform CLIs (the fifth target, `agents-md`, requires no CLI).** Smith targets OpenCode (`~/.config/opencode/`), Claude Code (`~/.claude/`), Codex (`~/.codex/` and `~/.agents/`), and Kiro (`~/.kiro/`). You do not need all four — bundles can declare any subset of `opencode`, `claude-code`, `codex`, `kiro` in their `targets` field. Platforms whose install directories don't exist are skipped silently.
 - **Write access to your home directory.** Smith owns `~/.config/agent-smith/` for its registry, source bundles, and USER.md. Daemon runtime files live under `~/.local/state/agent-smith/`. It writes per-platform agent files into the directories above and skill files into `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`, and `~/.kiro/skills/`.
 
 If you intend to use Atlassian-backed knowledge sources (Confluence, Jira) or the bundled atlassian-skills catalog (Jira/Confluence/Bitbucket runtime tools), see [04-knowledge.md#atlassian-authenticated-sources](./04-knowledge.md#atlassian-authenticated-sources) for credential setup. None of that is required to start.
@@ -162,7 +162,7 @@ Without other flags, the bundle defaults to all four targets, `balanced` model t
 | Flag | Format | Effect |
 |---|---|---|
 | `--description <text>` | string (10–200 chars, action phrase) | required |
-| `--targets <list>` | comma-separated `opencode,claude-code,codex,kiro` | defaults to all four |
+| `--targets <list>` | comma-separated `opencode,claude-code,codex,kiro,agents-md` | defaults to the four runtime platforms; add `agents-md` for a documentation-target rendering |
 | `--model-tier <tier>` | `balanced` \| `fast` \| `high` \| `inherit` (aliases: `opus`, `sonnet`, `haiku`) | default `balanced` |
 | `--mode <mode>` | `primary` \| `subagent` \| `all` | default `primary` |
 | `--permission <preset>` | `read-only` \| `read-edit` \| `full` | default `read-edit` |

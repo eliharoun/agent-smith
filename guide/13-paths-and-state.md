@@ -36,7 +36,7 @@ If you set `XDG_CONFIG_HOME=/somewhere/else`, smith writes the config root at `/
 
 > **Breaking change in v1.0.0-rc.2 — remote clone location moved.** Through rc.1, `agent install --from <url>` and `skill install --from <url>` placed managed clones under `$XDG_CONFIG_HOME/agent-smith/remote/<host>/<owner>/<repo>`. As of rc.2 they live under `$XDG_STATE_HOME/agent-smith/remote/<host>/<owner>/<repo>` (typically `~/.local/state/agent-smith/remote/...`) to comply with [XDG Base Directory](https://specifications.freedesktop.org/basedir-spec/latest/) semantics — config = user-edited declarative state; state = machine-generated working data.
 >
-> **rc.4 adds `smith migrate-clones`** — a one-shot helper that walks both registries, finds any `rootPath` still pointing at the rc.1 location, validates the clone (`.git/` exists, origin URL matches), moves the directory to the rc.2+ location, and updates the registry entry's `rootPath`. Per-entry safety guards skip entries whose target already exists, whose origin URL drifted, or whose `.git/` was deleted, leaving the registry untouched for those entries. `smith status` surfaces a one-line nudge when rc.1 clones are detected. See [`smith migrate-clones`](./14-cli-reference.md#smith-migrate-clones) for the full command reference. = user-edited declarative state; state = machine-generated working data. Existing rc.1 clones are **not** migrated automatically; their registry entries still point at the old `~/.config/agent-smith/remote/...` paths and remain functional in place. To consolidate: `smith {agent,skill} unregister <label> --purge-clone` (the rc.2 layered guard refuses cross-mount or off-root targets, so the purge is safe) and re-install via `--from <url>` to land in the new location.
+> **rc.4 adds `smith migrate-clones`** — a one-shot helper that walks both registries, finds any `rootPath` still pointing at the rc.1 location, validates the clone (`.git/` exists, origin URL matches), moves the directory to the rc.2+ location, and updates the registry entry's `rootPath`. Per-entry safety guards skip entries whose target already exists, whose origin URL drifted, or whose `.git/` was deleted, leaving the registry untouched for those entries. `smith status` surfaces a one-line nudge when rc.1 clones are detected. See [`smith migrate-clones`](./14-cli-reference.md#smith-migrate-clones) for the full command reference. Existing rc.1 clones are **not** migrated automatically; their registry entries still point at the old `~/.config/agent-smith/remote/...` paths and remain functional in place. To consolidate: `smith {agent,skill} unregister <label> --purge-clone` (the rc.2 layered guard refuses cross-mount or off-root targets, so the purge is safe) and re-install via `--from <url>` to land in the new location.
 
 The rest of this document writes paths in the `~/.config/agent-smith/...` form for readability. Read these as "the state root, resolved via `stateHome()`" — they become `${XDG_CONFIG_HOME}/agent-smith/...` when `XDG_CONFIG_HOME` is set. Paths under `remote/` are the sole exception: those resolve through `defaultRemoteRoot()` (`$XDG_STATE_HOME`-rooted as of rc.2).
 
@@ -53,7 +53,7 @@ The directory `smith init` creates and `smith jack-out` removes wholesale. Every
 | `registry.json` | `smith init` | always (eagerly) | JSON `{schemaVersion:2, sources:[...]}` | **yes** (`atomicWriteJson`: temp + rename) |
 | `USER.md` | `smith init` | only when missing | markdown | n/a (single-shot) |
 | `skill-catalogs.json` | first skill mutation | lazy | JSON `{schemaVersion:2, catalogs:[]}` | **yes** (temp + rename) |
-| `installed-skills.json` | first `smith skill install` | lazy | JSON `{schemaVersion:2, installed:[]}` | **yes** (temp + rename) |
+| `installed-skills.json` | first `smith skill install` | lazy | JSON `{schemaVersion:1, installed:[]}` | **yes** (temp + rename) |
 | `installed-agents.json` | first `smith agent install` | lazy | JSON `{schemaVersion:1, installed:[{name, target, path, sha256, ...}]}` | **yes** (temp + rename, under `withFileLock`) |
 | `conventions.json` | first GUI `/system/conventions` write or manual edit | lazy | JSON `{schemaVersion:1, platformConventions:{ <target>:{default?, explicit?[]} }}` | **yes** (temp + rename) |
 | `url-routing.json` | first confirmed routing-picker decision | lazy | JSON `{ entries: [...] }` mapping URL prefixes to MCP server/tool tuples | **yes** (temp + rename) |
@@ -134,7 +134,7 @@ Records every skill installed by `smith skill install` (and bootstrap's the-arch
 
 ```ts
 interface InstalledSkillsFile {
-  schemaVersion: 2;
+  schemaVersion: 1;
   installed: InstalledSkill[];
 }
 
@@ -152,7 +152,7 @@ interface InstalledSkill {
 }
 ```
 
-**Lazy creation:** absent after `smith init`. Created on first `smith skill install`. When absent, `loadInstalledSkills` returns `{schemaVersion:2, installed:[]}` (`src/io/installed-skills.ts`).
+**Lazy creation:** absent after `smith init`. Created on first `smith skill install`. When absent, `loadInstalledSkills` returns `{schemaVersion:1, installed:[]}` (`src/io/installed-skills.ts`).
 
 **Atomic writes:** same temp-file-plus-rename pattern as `skill-catalogs.json` (`src/io/installed-skills.ts`).
 
@@ -453,7 +453,7 @@ For exhaustive types, see the source file referenced in each row.
 |---|---|---|
 | `registry.json` | `{schemaVersion: 2, sources: Source[]}` | `src/io/registry.ts` |
 | `skill-catalogs.json` | `{schemaVersion: 2, catalogs: SkillCatalog[]}` | `src/io/skill-registry.ts` |
-| `installed-skills.json` | `{schemaVersion: 2, installed: InstalledSkill[]}` | `src/io/installed-skills.ts` |
+| `installed-skills.json` | `{schemaVersion: 1, installed: InstalledSkill[]}` | `src/io/installed-skills.ts` |
 | `daemon.pid` | plain text PID, no trailing newline guarantee | `src/cli/commands/daemon.ts` |
 | `daemon.log` | append-only stdio (mixed stdout + stderr) | `src/cli/commands/daemon.ts` |
 | `daemon.heartbeat.json` | `HeartbeatSnapshot` (`schemaVersion`, `pid`, `startedAt`, `lastBeatAt`, `status?`, `sources`) | `src/daemon/index.ts` |
