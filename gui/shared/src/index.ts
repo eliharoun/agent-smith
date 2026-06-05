@@ -15,6 +15,7 @@ export * from "./schemas/knowledge";
 export * from "./schemas/model-config";
 export * from "./schemas/onboarding";
 export * from "./schemas/persona";
+export * from "./schemas/platforms";
 export * from "./schemas/remote";
 export * from "./schemas/settings";
 export * from "./schemas/skills";
