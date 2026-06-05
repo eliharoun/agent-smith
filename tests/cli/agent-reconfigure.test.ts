@@ -20,7 +20,7 @@ import {
   type RefreshManifest,
 } from "../../src/core/knowledge/refresh-manifest";
 import { SmithError } from "../../src/core/smith-error";
-import type { InstallPaths } from "../../src/core/types";
+import type { InstallPaths, Target } from "../../src/core/types";
 import { readOpencodePluginSentinel } from "../../src/io/opencode-plugin";
 
 const AGENT = "my-agent";
@@ -297,6 +297,46 @@ describe("reconfigureAgent — validation", () => {
   });
   afterEach(async () => {
     await rmTree(t);
+  });
+
+  test("rejects grant when bundle has no session/always refresh sources", async () => {
+    // Setup: a bundle with only install-time (non-session) refresh sources.
+    await seedOpencodeAgent(t);
+    await writeRefreshManifest(t.home, AGENT, manifestFixture([]));
+    const bundle = {
+      config: {
+        schemaVersion: 1 as const,
+        name: AGENT,
+        targets: ["opencode" as const],
+        modelTier: "balanced" as const,
+        description: "Test agent",
+        knowledge: {
+          sources: [
+            {
+              id: "wiki",
+              type: "url" as const,
+              url: "https://example.com/wiki",
+              delivery: "file" as const,
+              // No refresh field means it defaults to install-time refresh, not session.
+            },
+          ],
+        },
+      },
+      bundlePath: join(t.home, ".."),
+      source: { kind: "user-global" as const, rootPath: join(t.home, ".."), label: "test" },
+      files: { identity: "", expertise: "", soul: "", user: "" },
+    };
+
+    await expect(
+      reconfigureAgent(AGENT, { grant: ["opencode"], revoke: [] }, {
+        ...t.deps,
+        bundle,
+      }),
+    ).rejects.toThrow(/no session\/always refresh sources/i);
+
+    // Manifest unchanged (no partial side effects).
+    const m = await readRefreshManifest(t.home, AGENT);
+    expect(m?.refresh_consent.platforms).toEqual([]);
   });
 
   test("rejects grant for a platform the agent isn't installed for, before side effects", async () => {

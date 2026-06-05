@@ -32,8 +32,9 @@ import {
   writeRefreshManifest,
   type RefreshManifest,
 } from "../../../core/knowledge/refresh-manifest";
+import { hasSessionRefreshSource } from "../../../core/freshness/check-refresh-hooks";
 import { SmithError } from "../../../core/smith-error";
-import type { InstallPaths } from "../../../core/types";
+import type { InstallPaths, AgentBundle } from "../../../core/types";
 import {
   registerClaudeCodeRefreshHook,
   unregisterClaudeCodeRefreshHook,
@@ -64,6 +65,9 @@ export interface ReconfigureDeps {
   paths?: InstallPaths;
   codexHome?: string;
   opencodeHome?: string;
+  /** Optional agent bundle for validation. When provided, grant will be
+   *  rejected if the bundle has no session/always refresh sources. */
+  bundle?: AgentBundle;
   /** Prompt DI seam (defaults to readToken). Used in interactive mode. */
   prompt?: (msg: string) => Promise<string>;
   /** TTY detector DI seam (defaults to process.stdin.isTTY). */
@@ -235,6 +239,19 @@ export async function reconfigureAgent(
   // recorded in the manifest.
   for (const p of workingGrant) {
     if (manifest.refresh_consent.platforms.includes(p)) continue;
+    // Guard against granting consent for a bundle with no session/always
+    // sources. Without this guard, the user can recreate the
+    // consent-without-need state. When the doctor's fixes remove invalid
+    // consents, this ensures reconfigure won't let them grant it back.
+    if (deps.bundle && !hasSessionRefreshSource(deps.bundle)) {
+      throw new SmithError({
+        code: "usage-error",
+        message:
+          `Cannot grant refresh consent for ${agent}/${p}: bundle has no session/always refresh sources. ` +
+          `Either add a knowledge source with refresh: "session" to agent.config.json, or skip this consent.`,
+        suggestedCommand: `smith agent reconfigure ${agent} --revoke ${p}`,
+      });
+    }
     if (p === "codex") {
       await registerAgentInCodexHooks(codexHome, agent);
     } else if (p === "opencode") {
