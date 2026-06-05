@@ -4,6 +4,32 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] — 2026-06-05
+
+Hotfix release that hardens long-running daemons against staleness after
+a smith upgrade. Three coordinated layers prevent users from seeing
+spurious "agent.config.json validation failed" warnings caused by a
+daemon process holding a frozen-in-memory schema.
+
+### Fixed
+
+- `bun install` now auto-restarts a running smith daemon, so an upgrade
+  always brings the daemon's in-memory schema back in sync with the
+  on-disk binary. A 60-second recency guard avoids killing a daemon the
+  user just started. Set `SMITH_NO_DAEMON_AUTO_RESTART=1` to opt out
+  (e.g. when the daemon is supervised by launchd or systemd).
+- The smith daemon now stats its own binary on each reinstall tick and
+  exits cleanly when the mtime moves past startup. This catches upgrade
+  paths that bypass the postinstall hook (manual `git pull && bun
+  install` with a silently-failing hook, or a binary swap by the OS
+  package manager). Set `SMITH_NO_DAEMON_SELF_RESTART=1` to opt out.
+- Bundle-load warnings now point at the daemon when the failure shape
+  matches a forward-incompatible config (Zod's `Unrecognized key` /
+  `Invalid input` patterns). Users no longer have to reason from "the
+  config field looks fine" to "the daemon's schema is out of date" on
+  their own — the warning suggests `smith daemon stop && smith daemon
+  start` directly.
+
 ## [1.10.1] — 2026-06-05
 
 Hotfix release for five `smith doctor` correctness bugs surfaced by
