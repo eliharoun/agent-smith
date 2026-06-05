@@ -281,3 +281,69 @@ describe("checkRefreshHooks", () => {
     expect(report.findings).toEqual([]);
   });
 });
+
+describe("checkRefreshHooks — installedPlatforms gating", () => {
+  test("reclassifies orphaned-consent to stale-consent-uninstalled when platform not installed", async () => {
+    // Manifest consents to opencode + claude-code; only claude-code is on PATH.
+    // The opencode entry should reclassify to stale-consent-uninstalled (info)
+    // rather than orphaned-consent (warn).
+    await writeRefreshManifest(ctx.agentSmithHome, "xena", {
+      schemaVersion: 1,
+      agent: "xena",
+      refresh_consent: {
+        granted_at: "2026-01-01T00:00:00.000Z",
+        platforms: ["opencode", "claude-code"],
+        sources: ["docs"],
+      },
+    });
+    const report = await checkRefreshHooks({
+      ...input(),
+      installedPlatforms: new Set(["claude-code"]),
+    });
+    const stale = report.findings.find((f) => f.kind === "stale-consent-uninstalled");
+    expect(stale).toBeDefined();
+    if (stale && stale.kind === "stale-consent-uninstalled") {
+      expect(stale.platform).toBe("opencode");
+      expect(stale.agent).toBe("xena");
+    }
+    // claude-code IS installed (in installedPlatforms) so its handling
+    // continues into the existing isAgentInstalled check — it should NOT
+    // be classified as stale-consent-uninstalled.
+    const stalecc = report.findings.find(
+      (f) => f.kind === "stale-consent-uninstalled" && f.platform === "claude-code",
+    );
+    expect(stalecc).toBeUndefined();
+    // Section status must NOT be bumped to warn solely by stale-consent-uninstalled.
+    const onlyStale = report.findings.every((f) => f.kind === "stale-consent-uninstalled");
+    if (onlyStale) {
+      expect(report.status).toBe("ok");
+    }
+  });
+
+  test("skips unmanaged-codex-hooks check when codex not installed", async () => {
+    // Write an unmanaged codex hooks.json. With codex NOT in installedPlatforms,
+    // the global check must not emit unmanaged-codex-hooks.
+    await mkdir(ctx.codexHome, { recursive: true });
+    const userOwned = {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "startup",
+            hooks: [{ type: "command", command: "echo hi" }],
+          },
+        ],
+      },
+    };
+    await writeFile(
+      join(ctx.codexHome, "hooks.json"),
+      JSON.stringify(userOwned, null, 2),
+      "utf8",
+    );
+    const report = await checkRefreshHooks({
+      ...input(),
+      installedPlatforms: new Set(["claude-code"]),
+    });
+    const unmanaged = report.findings.find((f) => f.kind === "unmanaged-codex-hooks");
+    expect(unmanaged).toBeUndefined();
+  });
+});

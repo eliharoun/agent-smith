@@ -591,7 +591,19 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   let knowledgeRefresh: RefreshHooksReport | undefined;
   if (input.knowledgeRefresh) {
     emitStart(input, "knowledge-refresh", "Knowledge refresh");
-    knowledgeRefresh = await checkRefreshHooks(input.knowledgeRefresh);
+    // Narrow the detected PlatformId set (4 values) to RefreshPlatformId
+    // (3 values — kiro has no refresh hooks). Inline filter keeps this
+    // pure; the underlying check skips kiro anyway via REFRESH_PLATFORMS.
+    const refreshInstalled = new Set(
+      [...installedPlatforms].filter(
+        (p): p is "claude-code" | "codex" | "opencode" =>
+          p === "claude-code" || p === "codex" || p === "opencode",
+      ),
+    );
+    knowledgeRefresh = await checkRefreshHooks({
+      ...input.knowledgeRefresh,
+      installedPlatforms: refreshInstalled,
+    });
     emitDone(
       input,
       "knowledge-refresh",
