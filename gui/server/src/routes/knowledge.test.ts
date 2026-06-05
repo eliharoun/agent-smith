@@ -95,6 +95,10 @@ async function setup() {
     registryPath: join(home, "registry.json"),
     agentSmithHome: smithHome,
     cacheRoot,
+    // Default to all platforms detected so PUT-consent tests don't depend
+    // on the host PATH. Tests covering the filter override this explicitly.
+    detectInstalledPlatforms: async () =>
+      new Set(["opencode", "claude-code", "codex", "kiro"]),
   });
   app.onError(errorHandler);
   return app;
@@ -257,4 +261,60 @@ it("PUT /api/knowledge/:agent/consent rejects malformed body", async () => {
     body: JSON.stringify({ platforms: "not-an-array" }),
   });
   expect(res.status).toBe(400);
+});
+
+it("defensive platform filter — drops platforms whose CLI isn't detected", async () => {
+  // Build the same fixture as setup() but inject a detectInstalledPlatforms
+  // that only reports two of the four platforms as installed. The route
+  // should drop the uninstalled ones before writing the manifest, even
+  // though the client sent all four.
+  home = await mkdtemp(join(tmpdir(), "knowledge-route-filter-"));
+  const agentRoot = join(home, "agents");
+  const bundle = join(agentRoot, "myagent");
+  await mkdir(bundle, { recursive: true });
+  await writeFile(
+    join(bundle, "agent.config.json"),
+    JSON.stringify({
+      name: "myagent",
+      knowledge: { sources: [{ id: "src-a", type: "file", path: "./a.md" }] },
+    }),
+  );
+  await writeFile(
+    join(home, "registry.json"),
+    JSON.stringify({
+      version: 1,
+      sources: [{ kind: "user-global", rootPath: agentRoot, label: "a" }],
+    }),
+  );
+  const smithHome = join(home, "smith-home");
+
+  const app = new Hono();
+  app.use("*", errorMiddleware);
+  app.use("/api/*", authMiddleware("t"));
+  registerKnowledgeRoute(app, {
+    registryPath: join(home, "registry.json"),
+    agentSmithHome: smithHome,
+    detectInstalledPlatforms: async () => new Set(["claude-code", "kiro"]),
+  });
+  app.onError(errorHandler);
+
+  const put = await app.request("/api/knowledge/myagent/consent", {
+    method: "PUT",
+    headers: { authorization: "Bearer t", "content-type": "application/json" },
+    body: JSON.stringify({
+      platforms: ["opencode", "claude-code", "codex", "kiro"],
+      sources: ["src-a"],
+    }),
+  });
+  expect(put.status).toBe(200);
+
+  // Read back via GET — the manifest must reflect only the detected platforms.
+  const after = await app.request("/api/knowledge/myagent", auth);
+  expect(after.status).toBe(200);
+  const j = (await after.json()) as {
+    consent?: { platforms: string[]; sources: string[] };
+  };
+  expect(j.consent).toBeDefined();
+  expect([...(j.consent?.platforms ?? [])].sort()).toEqual(["claude-code", "kiro"]);
+  expect(j.consent?.sources).toEqual(["src-a"]);
 });
