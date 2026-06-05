@@ -705,6 +705,42 @@ describe("cli/init-agent", () => {
     expect(cfg.targets).toEqual(["agents-md"]);
   });
 
+  test("cleans up the bundle dir when a post-mkdir step fails", async () => {
+    // Force a failure AFTER mkdir(dir) by making canonical USER.md
+    // seeding fail: point canonicalUserPath at a path whose parent dir
+    // cannot be created (a regular file occupies the parent slot, so
+    // mkdir(dirname(canonicalUserPath)) throws EEXIST/ENOTDIR). The dir
+    // for the bundle itself does not pre-exist (checked by initAgent's
+    // already-exists guard), so on failure the cleanup must rm it.
+    const blockingFile = join(tmp, "blocked-parent");
+    await writeFile(blockingFile, "not a directory");
+    const blockedUserPath = join(blockingFile, "USER.md");
+
+    const bundleDir = join(agentsDir, "alpha");
+    const err = await initAgent(
+      "alpha",
+      {
+        description: "Reviews code carefully for cleanup test",
+        targets: ["opencode"],
+        modelTier: "balanced",
+      },
+      { agentsDir, canonicalUserPath: blockedUserPath },
+    ).catch((e) => e);
+
+    expect(err).toBeInstanceOf(Error);
+
+    // The bundle dir must NOT exist after the failed init — atomic init
+    // rolls back any dir we created.
+    let exists = false;
+    try {
+      await stat(bundleDir);
+      exists = true;
+    } catch {
+      // expected: dir was cleaned up
+    }
+    expect(exists).toBe(false);
+  });
+
   test("self-bootstraps canonical USER.md when missing on fresh state", async () => {
     // rc.3 contract: smith agent init on truly-fresh state (no
     // canonical USER.md) must create the canonical file with the
