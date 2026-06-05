@@ -4,6 +4,42 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] — 2026-06-05
+
+Hotfix release for five `smith doctor` correctness bugs surfaced by
+real-user dogfooding.
+
+### Fixed
+
+- `smith doctor --fix-*` flags now re-render the affected section after
+  applying fixes, so the printed report reflects the post-fix state.
+  Previously the report cached the pre-fix state, making the user think
+  the fix didn't work even when it had. Affects
+  `--fix-knowledge-refresh`, `--fix-knowledge-compile`, and
+  `--fix-mcp-commands`.
+- `smith doctor --fix-knowledge-compile` now converges on the first run
+  for bundles with lazy URL knowledge sources. The doctor's drift
+  detector and the CLI compile path now share a single
+  `buildCompileOptionsFromBundle` helper so they produce identical
+  `contentHash` values for the same bundle.
+- `smith doctor` now distinguishes "consent recorded but no
+  session-refresh sources today" (info-level `consent-without-need`)
+  from "consent recorded and hook missing" (warn-level `missing-hook`).
+  The new finding kind is suppressed in default output. The
+  corresponding `--fix-knowledge-refresh` revokes the stale consent
+  rather than re-registering an orphan hook.
+- `smith agent reconfigure <agent> --grant <platform>` now refuses
+  when the bundle has zero `refresh: session/always` sources, so the
+  consent-without-need state can't be (re-)created.
+- `smith agent init <name>` is now atomic: if any post-mkdir step
+  fails (validation, file copy, symlink), the bundle directory is
+  cleaned up before the error propagates. No more orphan empty dirs
+  from aborted inits.
+- The registry-hygiene warning for a stale catalog (rootPath no longer
+  exists on disk) now suggests `smith agent unregister <label>` (or
+  `smith skill unregister`) so users don't have to know the cleanup
+  command by heart.
+
 ## [1.10.0] — 2026-06-04
 
 Major UX consistency pass for multi-platform behavior. Every command
