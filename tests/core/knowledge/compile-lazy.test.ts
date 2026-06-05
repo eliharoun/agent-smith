@@ -61,6 +61,41 @@ describe("compile: lazy URL sources", () => {
     expect(result.tocStanza).not.toMatch(/fetch via: WebFetch/);
   });
 
+  it("preamble explains [url, lazy] semantics when at least one lazy entry exists", () => {
+    const result = compile(
+      [lazyMaterialized],
+      { ...compileOpts, sourceDeclarations: { wiki: lazyDeclaration } },
+      { rootDir: "/tmp/agent/knowledge" },
+    );
+    expect(result.tocStanza).toMatch(/\[url, lazy\][^\n]*entries/i);
+    expect(result.tocStanza).toMatch(/fetch via:/);
+    expect(result.tocStanza).toMatch(/at runtime/i);
+  });
+
+  it("preamble omits the lazy explanation when no lazy entries exist", () => {
+    const eagerMat: MaterializedSource = {
+      id: "doc",
+      scope: "agent",
+      type: "url",
+      delivery: "file",
+      files: [{ relPath: "sources/doc/x.md", bytes: 100, sha256: "a" }],
+      tokensInline: 0,
+      description: "Eager doc.",
+    };
+    const eagerDecl: KnowledgeSource = {
+      id: "doc",
+      type: "url",
+      url: "https://example.com/doc",
+      delivery: "file",
+    };
+    const result = compile(
+      [eagerMat],
+      { ...compileOpts, sourceDeclarations: { doc: eagerDecl } },
+      { rootDir: "/tmp/agent/knowledge" },
+    );
+    expect(result.tocStanza).not.toMatch(/\[url, lazy\][^\n]*entries/i);
+  });
+
   it("includes both lazy and non-lazy entries in the same stanza", () => {
     const eagerMat: MaterializedSource = {
       id: "doc",
