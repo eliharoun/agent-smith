@@ -282,6 +282,127 @@ describe("checkRefreshHooks", () => {
   });
 });
 
+describe("checkRefreshHooks — consent-without-need reclassification", () => {
+  test("reclassifies missing-hook to consent-without-need when bundle has zero session/always sources", async () => {
+    // Manifest consents to claude-code; agent IS installed for claude-code;
+    // hook is absent. But the bundle has no session/always sources today —
+    // so this is "consent-without-need" (info-level), not "missing-hook" (warn).
+    await writeRefreshManifest(ctx.agentSmithHome, "alpha", {
+      schemaVersion: 1,
+      agent: "alpha",
+      refresh_consent: {
+        granted_at: "2026-06-02T00:00:00.000Z",
+        platforms: ["claude-code"],
+        sources: [],
+      },
+    });
+    // Agent is installed (file exists) but the hooks block is absent.
+    await writeClaudeAgent("alpha", {});
+
+    // Bundle has only a non-session source (no refresh field at all).
+    const bundles = new Map<string, import("../../../src/core/types").AgentBundle>([
+      [
+        "alpha",
+        {
+          config: {
+            schemaVersion: 1,
+            name: "alpha",
+            targets: ["claude-code"],
+            modelTier: "balanced",
+            description: "stub",
+            knowledge: {
+              sources: [
+                {
+                  id: "wiki",
+                  type: "url",
+                  url: "https://x",
+                  delivery: "file",
+                },
+              ],
+            },
+          },
+          bundlePath: ctx.root,
+          source: { kind: "user-global", rootPath: ctx.root, label: "test" },
+          files: { identity: "", expertise: "", soul: "", user: "" },
+        },
+      ],
+    ]);
+
+    const report = await checkRefreshHooks({
+      ...input(),
+      installedPlatforms: new Set(["claude-code"]),
+      bundles,
+    });
+
+    const cwn = report.findings.find((f) => f.kind === "consent-without-need");
+    expect(cwn).toBeDefined();
+    if (cwn && cwn.kind === "consent-without-need") {
+      expect(cwn.platform).toBe("claude-code");
+      expect(cwn.agent).toBe("alpha");
+    }
+    const missingHook = report.findings.find((f) => f.kind === "missing-hook");
+    expect(missingHook).toBeUndefined();
+    // consent-without-need is info-level — status should remain "ok".
+    expect(report.status).toBe("ok");
+  });
+
+  test("does NOT reclassify when bundle has at least one session/always source", async () => {
+    // Bundle has a session-refresh source; missing hook should remain
+    // a real "missing-hook" finding.
+    await writeRefreshManifest(ctx.agentSmithHome, "beta", {
+      schemaVersion: 1,
+      agent: "beta",
+      refresh_consent: {
+        granted_at: "2026-06-02T00:00:00.000Z",
+        platforms: ["claude-code"],
+        sources: ["wiki"],
+      },
+    });
+    await writeClaudeAgent("beta", {});
+
+    const bundles = new Map<string, import("../../../src/core/types").AgentBundle>([
+      [
+        "beta",
+        {
+          config: {
+            schemaVersion: 1,
+            name: "beta",
+            targets: ["claude-code"],
+            modelTier: "balanced",
+            description: "stub",
+            knowledge: {
+              sources: [
+                {
+                  id: "wiki",
+                  type: "url",
+                  url: "https://x",
+                  delivery: "file",
+                  refresh: { mode: "session" },
+                },
+              ],
+            },
+          },
+          bundlePath: ctx.root,
+          source: { kind: "user-global", rootPath: ctx.root, label: "test" },
+          files: { identity: "", expertise: "", soul: "", user: "" },
+        },
+      ],
+    ]);
+
+    const report = await checkRefreshHooks({
+      ...input(),
+      installedPlatforms: new Set(["claude-code"]),
+      bundles,
+    });
+
+    const missingHook = report.findings.find((f) => f.kind === "missing-hook");
+    expect(missingHook).toBeDefined();
+    const cwn = report.findings.find((f) => f.kind === "consent-without-need");
+    expect(cwn).toBeUndefined();
+    expect(report.status).toBe("warn");
+  });
+});
+
 describe("checkRefreshHooks — installedPlatforms gating", () => {
   test("reclassifies orphaned-consent to stale-consent-uninstalled when platform not installed", async () => {
     // Manifest consents to opencode + claude-code; only claude-code is on PATH.

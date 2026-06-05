@@ -741,6 +741,12 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
             print(`  ✓ cleared stale consent: ${f.agent}/${f.platform} (CLI not installed)`);
             break;
+          case "consent-without-need":
+            // Bundle has zero session/always sources today; the consent
+            // record is stale. Revoke to align the manifest with reality.
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
+            print(`  ✓ cleared unneeded consent: ${f.agent}/${f.platform} (no session/always sources)`);
+            break;
           case "unmanaged-codex-hooks":
             print(`  ! ${f.path} requires manual migration: run 'smith knowledge migrate-codex'`);
             break;

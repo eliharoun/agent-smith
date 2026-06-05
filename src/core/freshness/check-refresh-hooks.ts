@@ -43,6 +43,7 @@ export type Finding =
   | { kind: "missing-hook"; agent: string; platform: RefreshPlatformId }
   | { kind: "orphaned-consent"; agent: string; platform: RefreshPlatformId }
   | { kind: "stale-consent-uninstalled"; agent: string; platform: RefreshPlatformId }
+  | { kind: "consent-without-need"; agent: string; platform: RefreshPlatformId }
   | { kind: "corrupt-cache"; agent: string; sourceId: string }
   | { kind: "unmanaged-codex-hooks"; path: string };
 
@@ -70,6 +71,12 @@ export interface CheckRefreshHooksInput {
    *  preserves the legacy "treat all platforms as installed"
    *  behaviour for callers that haven't been updated yet. */
   installedPlatforms?: Set<RefreshPlatformId>;
+  /** All loaded bundles, keyed by agent name. Used to determine whether
+   *  a bundle has session/always refresh sources today (drives the
+   *  `consent-without-need` reclassification of `missing-hook`). When
+   *  omitted, the detector preserves the legacy behaviour of always
+   *  emitting `missing-hook` for absent hooks. */
+  bundles?: Map<string, import("../../core/types").AgentBundle>;
 }
 
 // Kiro support: Task 2.5 adds the kiro-hooks module. Until then,
@@ -124,6 +131,16 @@ export async function checkRefreshHooks(
         input.opencodeConfigHome,
       );
       if (!hookPresent) {
+        // Reclassify when the bundle has no session/always sources today.
+        // The user previously consented when the bundle had refresh-eligible
+        // sources, but those have since been removed. The hook's absence is
+        // correct; only the consent record is stale. This is info-level
+        // cleanup, not drift.
+        const bundle = input.bundles?.get(agent);
+        if (bundle && !hasSessionRefreshSource(bundle)) {
+          findings.push({ kind: "consent-without-need", agent, platform });
+          continue;
+        }
         findings.push({ kind: "missing-hook", agent, platform });
       }
     }
@@ -152,16 +169,43 @@ export async function checkRefreshHooks(
     if (unmanaged) findings.push(unmanaged);
   }
 
-  // `stale-consent-uninstalled` is info-level: it documents healthy
-  // stale-state without bumping the section to warn. Only the other
-  // (drift-bearing) finding kinds count toward warn.
-  const warnFindings = findings.filter((f) => f.kind !== "stale-consent-uninstalled");
+  // `stale-consent-uninstalled` and `consent-without-need` are info-level:
+  // they document healthy stale-state and recommend cleanup without bumping
+  // the section to warn. Only drift-bearing finding kinds count toward warn.
+  const warnFindings = findings.filter(
+    (f) => f.kind !== "stale-consent-uninstalled" && f.kind !== "consent-without-need",
+  );
   return { status: warnFindings.length === 0 ? "ok" : "warn", findings };
 }
 
 // ---------------------------------------------------------------------------
 // Helpers — each treats absence as "no" and never throws on missing fs.
 // ---------------------------------------------------------------------------
+
+/** True if any source in the bundle declares a session-time refresh policy
+ *  — either the structured object form `{ mode: "session" | "always", ... }`
+ *  (the type-validated form) or, defensively, the bare string forms
+ *  `"session"`/`"always"` for non-normalized inputs. Drives the
+ *  `consent-without-need` reclassification in the doctor and is also
+ *  reused by reconfigure to gate consent prompts. */
+export function hasSessionRefreshSource(
+  bundle: import("../../core/types").AgentBundle,
+): boolean {
+  const sources = bundle.config.knowledge?.sources ?? [];
+  return sources.some((s) => {
+    // The type system narrows `refresh` to the validated shape (either
+    // `RefreshTtl` strings or `NormalizedRefresh` objects). We widen via
+    // `unknown` so this helper is robust to non-normalized inputs from
+    // partially-parsed configs.
+    const r = s.refresh as unknown;
+    if (typeof r === "string") return r === "session" || r === "always";
+    if (typeof r === "object" && r !== null) {
+      const mode = (r as { mode?: string }).mode;
+      return mode === "session" || mode === "always";
+    }
+    return false;
+  });
+}
 
 function isRefreshPlatform(p: PlatformId): p is RefreshPlatformId {
   return p === "claude-code" || p === "codex" || p === "opencode";
