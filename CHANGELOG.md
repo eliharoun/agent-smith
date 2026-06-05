@@ -4,6 +4,57 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-06-04
+
+Major UX consistency pass for multi-platform behavior. Every command
+now treats `targets[]` as aspirational and the user's installed CLIs
+as the execution set, with one canonical primitive driving the
+decision. Doctor stops warning about healthy "platform not installed"
+state.
+
+### Changed
+
+- `smith agent install` writes only to detected platform CLIs.
+  Declared targets whose CLI isn't on PATH are skipped with a single
+  `~ <platform>: not detected — skipped` line instead of being
+  silently dropped or speculatively written.
+- `smith agent init` defaults `targets` to your detected platforms
+  plus `agents-md`. Authors creating bundles for sharing can still
+  override with `--targets`.
+- `smith agent uninstall` now distinguishes "platform not installed"
+  from "file missing" — clearer output when you uninstall an agent
+  on a system that never had a target's CLI.
+- The GUI's "Authorize and refresh" banner grants consent only for
+  detected platforms, eliminating the orphaned-consent state that
+  caused doctor warnings on healthy systems.
+
+### Added
+
+- New `--platform <list>` flag is consistent across commands. Forces
+  writes to a named platform regardless of detection (with a printed
+  advisory). Replaces ad-hoc per-command behavior.
+- New `<stateHome>/pending/` directory records skipped operations.
+  When a previously-missing platform later appears, future smith
+  commands have the breadcrumbs to replay (full sync command lands
+  in a follow-up release).
+- `GET /api/platforms/detected` GUI server endpoint exposes the
+  detected set so the consent banner and other UI panels can filter.
+
+### Fixed
+
+- `smith doctor` no longer warns about consent records or hooks files
+  for platforms whose CLI isn't installed. Findings on undetected
+  platforms reclassify to info-level and are suppressed in the
+  default report (visible under `--verbose`).
+- The unmanaged-codex-hooks check no longer fires when codex isn't
+  installed (the file isn't smith's to manage in that case).
+
+### Migration
+
+No bundle config or manifest changes needed. Existing manifests with
+consent for now-uninstalled platforms get reclassified as info on
+next `smith doctor` run; `--fix-knowledge-refresh` cleans them up.
+
 ## [1.9.2] — 2026-06-04
 
 Two fixes for v1.9.0/v1.9.1 lazy URL and drift-check behavior.
