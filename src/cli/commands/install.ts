@@ -6,6 +6,7 @@ import pc from "picocolors";
 import { probeRoute } from "../../core/knowledge/probe-route";
 import { installLockPath } from "../../core/knowledge/refresh-lock";
 import { type PlatformId, writeRefreshManifest } from "../../core/knowledge/refresh-manifest";
+import { detectInstalledPlatforms as defaultDetectInstalledPlatforms } from "../../io/platform-detect";
 import { parseRefresh } from "../../core/knowledge/refresh-spec";
 import {
   loadRouteCache as defaultLoadRouteCache,
@@ -218,6 +219,16 @@ export interface InstallCliOptions {
    * `~/.config/agent-smith/url-routing.json`.
    */
   saveRouteCache?: (cache: RouteCache) => Promise<void>;
+  /**
+   * DI seam for platform detection. Production omits and gets
+   * `detectInstalledPlatforms()` from `io/platform-detect`. Tests inject a
+   * fixed set so resolver gating + future install-side gates run with a
+   * known platform topology without touching the test runner's PATH. The
+   * detected set is threaded into the orchestrator's `installedPlatforms`
+   * option so per-platform model resolvers refuse to render speculative
+   * files for an undetected platform's `inherit` tier or curated fallback.
+   */
+  detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
   /**
    * Forcibly release a stale per-agent install lock before acquiring it.
    * When set, the install reads `<agentSmithHome>/agents/<agent>/.install.lock`
@@ -602,6 +613,14 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     await persistRoute(mutableRouteCache);
   };
 
+  // Platforms detected on the user's PATH. Threaded into the orchestrator
+  // so the per-platform model resolvers can gate their `modelTier:
+  // "inherit"` short-circuit (and the opencode curated fallback) on
+  // detection — preventing speculative writes to a platform the user
+  // doesn't have. Detected once per install so subsequent gates downstream
+  // share the same view of the world.
+  const installedPlatforms = await (o.detectInstalledPlatforms ?? defaultDetectInstalledPlatforms)();
+
   try {
     // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
     // the translator gates emission of the SessionStart hook block on an
@@ -721,6 +740,7 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     // failure.
     const result = await build(bundles, paths, {
       withRefreshHooksFor,
+      installedPlatforms,
       ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
       ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
       ...(o.force === true ? { force: true } : {}),

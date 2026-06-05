@@ -181,6 +181,17 @@ export interface BuildAndInstallOptions {
    */
   allowMissingCli?: boolean;
   /**
+   * Optional set of platform IDs detected on the user's PATH at install time.
+   * When provided, threaded into each per-bundle `ModelResolutionEnv` so the
+   * resolvers gate their `modelTier: "inherit"` short-circuit (and the
+   * opencode curated fallback) on detection: an undetected platform throws
+   * PlatformUnavailableError instead of silently returning a model literal,
+   * preventing speculative file writes for platforms the user doesn't have.
+   * The CLI install path populates this; programmatic / test callers may
+   * omit (resolvers behave exactly as before).
+   */
+  installedPlatforms?: Set<import("./platform-detect").PlatformId>;
+  /**
    * Process-wide MCP client pool, used by `acquireSource` to fetch knowledge
    * sources that declare an explicit `via:` MCP route. The install CLI
    * creates one pool per command invocation and shuts it down in a
@@ -275,6 +286,7 @@ export async function buildAndInstall(
       detectAuthenticatedProviders: async () => detectAuthenticatedProviders(),
       env: process.env,
       allowMissingCli: options.allowMissingCli ?? false,
+      ...(options.installedPlatforms ? { installed: options.installedPlatforms } : {}),
     };
     const skillResult = await checkSkillAvailability(bundle.config, resolvedSkillPaths);
     warnings.push(...skillResult.warnings.map((w) => `[${bundle.config.name}] ${w}`));

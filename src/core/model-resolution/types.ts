@@ -1,6 +1,7 @@
 // src/core/model-resolution/types.ts
 
 import type { PlatformAuth } from "../../io/auth/types";
+import type { PlatformId } from "../../io/platform-detect";
 import type { CanonicalModelTier } from "../types";
 
 /** Sink for warnings emitted during resolution. Matches existing translator/orchestrator warning style. */
@@ -58,6 +59,16 @@ export interface ModelResolutionEnv {
    * Wired from `smith agent install --allow-missing-cli`. Default: throw.
    */
   allowMissingCli?: boolean;
+  /**
+   * When set, the platform IDs detected on the user's PATH at install time.
+   * The resolvers gate their `modelTier: "inherit"` short-circuit (and the
+   * opencode curated fallback) on whether the resolver's platform is in
+   * this set: an undetected platform throws PlatformUnavailableError so the
+   * caller can drop the target without writing speculative files. When
+   * undefined (most tests + non-install callers), the gate is bypassed and
+   * resolvers behave exactly as before. Wired from `smith agent install`.
+   */
+  installed?: Set<PlatformId>;
   /** Optional: read process env. Test seam. Defaults to process.env. */
   env?: NodeJS.ProcessEnv;
 }
