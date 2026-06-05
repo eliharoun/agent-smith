@@ -653,6 +653,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       ),
       opencodeConfigHome:
         opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
+      bundles: new Map(bundleResult.bundles.map((b) => [b.config.name, b])),
     },
     knowledgeCompile: { candidates: knowledgeCompileCandidates },
     mcpDeps: {
