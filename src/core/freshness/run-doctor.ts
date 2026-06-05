@@ -1506,7 +1506,7 @@ function remoteCatalogsSummary(r: RemoteCatalogsReport): string {
   return `Remote catalogs: ${parts.join(", ")}`;
 }
 
-function knowledgeRefreshEventStatus(r: RefreshHooksReport): DoctorSectionDoneEvent["status"] {
+export function knowledgeRefreshEventStatus(r: RefreshHooksReport): DoctorSectionDoneEvent["status"] {
   // Detection layer never returns "error" today, but keep the mapping
   // exhaustive so future hard-failure findings propagate correctly.
   if (r.status === "error") return "error";
@@ -1514,12 +1514,12 @@ function knowledgeRefreshEventStatus(r: RefreshHooksReport): DoctorSectionDoneEv
   return "ok";
 }
 
-function knowledgeRefreshSummary(r: RefreshHooksReport): string {
+export function knowledgeRefreshSummary(r: RefreshHooksReport): string {
   if (r.findings.length === 0) return "Knowledge refresh: ok";
   return `Knowledge refresh: ${r.findings.length} finding${r.findings.length === 1 ? "" : "s"}`;
 }
 
-function knowledgeCompileEventStatus(
+export function knowledgeCompileEventStatus(
   r: KnowledgeCompileReport,
 ): DoctorSectionDoneEvent["status"] {
   // The detector never returns "error" today — every finding is a
@@ -1528,7 +1528,7 @@ function knowledgeCompileEventStatus(
   return r.status === "warn" ? "warn" : "ok";
 }
 
-function knowledgeCompileSummary(r: KnowledgeCompileReport): string {
+export function knowledgeCompileSummary(r: KnowledgeCompileReport): string {
   if (r.findings.length === 0) return "Knowledge compile: ok";
   const missing = r.findings.filter((f) => f.kind === "missing-manifest").length;
   const drift = r.findings.filter((f) => f.kind === "drift").length;
@@ -1554,11 +1554,11 @@ function duplicateCatalogsSummary(r: DuplicateCatalogsReport): string {
   return `Duplicate catalogs: ${r.clusters.length} cluster${r.clusters.length === 1 ? "" : "s"} (${totalDupes} entries)`;
 }
 
-function mcpSpawnEventStatus(r: McpSpawnSection): DoctorSectionDoneEvent["status"] {
+export function mcpSpawnEventStatus(r: McpSpawnSection): DoctorSectionDoneEvent["status"] {
   return r.status === "fragile-spawn" ? "warn" : "ok";
 }
 
-function mcpSpawnSummary(r: McpSpawnSection): string {
+export function mcpSpawnSummary(r: McpSpawnSection): string {
   if (r.findings.length === 0) return "MCP spawn commands: ok";
   const n = r.findings.length;
   return `MCP spawn commands: ${n} fragile entr${n === 1 ? "y" : "ies"}`;

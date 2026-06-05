@@ -321,9 +321,11 @@ describe("smith doctor knowledge-compile section", () => {
     expect(await fileExists(manifestPath)).toBe(false);
 
     const { report } = await runDoctor({ bundles: [bundle], fix: true });
-    // Detection still fires before repair, so the JSON report still shows the
-    // pre-repair finding. The on-disk repair is what we assert against.
-    expect(report.knowledgeCompile.findings.length).toBeGreaterThan(0);
+    // Post-fix: the report reflects the post-fix state — the section is
+    // re-checked after the repair loop runs, so findings drop to 0 and the
+    // user sees a clean section instead of the stale pre-fix warning.
+    expect(report.knowledgeCompile.findings).toHaveLength(0);
+    expect(report.knowledgeCompile.status).toBe("ok");
     expect(await fileExists(manifestPath)).toBe(true);
     const persisted = await readCompileManifest(knowledgeDir);
     expect(persisted).toBeDefined();

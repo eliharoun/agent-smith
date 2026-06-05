@@ -201,6 +201,56 @@ describe("runDoctorCli --fix-mcp-commands", () => {
     expect(sink.value).toMatch(/can't auto-fix.*definitely-not-installed-xyz/);
   });
 
+  test("post-fix render: section re-runs and reports clean", async () => {
+    // Bug 5 regression: prior to the post-fix re-run, the printed report
+    // cached the pre-fix state, so users saw the fix succeed but still saw
+    // the same fragile-spawn warning text. After the fix, the section is
+    // re-checked and the human-mode summary shows ok.
+    await writeJson(ctx.kiroMcpConfig, {
+      mcpServers: {
+        "agent-smith-knowledge": { command: "smith", args: ["knowledge", "serve", "alpha"] },
+      },
+    });
+
+    const sink = { value: "" };
+    const code = await runDoctorCli({
+      ...commonOpts(sink),
+      json: false,
+      fixMcpCommands: true,
+    });
+
+    expect(sink.value).toMatch(/✓ rewrote.*kiro\/agent-smith-knowledge/);
+    // Post-fix the section is clean — no "fragile" warning text in the report.
+    expect(sink.value).not.toMatch(/fragile entr/);
+    // The compact summary line for the section says ok.
+    expect(sink.value).toMatch(/MCP spawn commands: ok/);
+    // mcp-spawn-commands does not contribute to exit code (informational).
+    expect(code).toBe(0);
+  });
+
+  test("post-fix re-run: report.mcpSpawnCommands reflects clean state in JSON output", async () => {
+    // Bug 5 regression for --json mode. Before the post-fix re-run, the
+    // emitted JSON contained the pre-fix findings; downstream consumers
+    // (CI scripts, GUIs) saw stale state.
+    await writeJson(ctx.kiroMcpConfig, {
+      mcpServers: {
+        "agent-smith-knowledge": { command: "smith", args: ["knowledge", "serve", "alpha"] },
+      },
+    });
+
+    const sink = { value: "" };
+    await runDoctorCli({ ...commonOpts(sink), fixMcpCommands: true });
+
+    // Slice past the repair-pass progress lines to find the JSON document.
+    const trimmed = sink.value.trim();
+    const lastBraceIdx = trimmed.lastIndexOf("\n{");
+    const jsonText = lastBraceIdx >= 0 ? trimmed.slice(lastBraceIdx + 1) : trimmed;
+    const report = JSON.parse(jsonText);
+    expect(report.mcpSpawnCommands).toBeDefined();
+    expect(report.mcpSpawnCommands.findings).toHaveLength(0);
+    expect(report.mcpSpawnCommands.status).toBe("clean");
+  });
+
   test("detection-only (no --fix): findings reported, configs unchanged", async () => {
     await writeJson(ctx.kiroMcpConfig, {
       mcpServers: {
