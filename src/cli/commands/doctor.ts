@@ -742,11 +742,23 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     const installPaths: InstallPaths = krPaths?.installPaths
       ? { ...krPaths.installPaths, "agents-md": defaultInstallPaths()["agents-md"] }
       : defaultInstallPaths();
-    const reconfigureDeps = {
+    const reconfigureDepsBase = {
       agentSmithHome: krPaths?.agentSmithHome ?? defaultAgentSmithHome(),
       paths: installPaths,
       codexHome: krPaths?.codexHome ?? defaultCodexHome(),
       opencodeHome: krPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
+    };
+    // Per-finding bundle lookup so the reconfigure session-source guard
+    // can fire on grant attempts. Doctor's --fix-* paths typically
+    // revoke (which doesn't trigger the guard), but passing the bundle
+    // is harmless and keeps behavior consistent if a future fix branch
+    // adds a grant.
+    const refreshBundlesByName = new Map(
+      bundleResult.bundles.map((b) => [b.config.name, b]),
+    );
+    const reconfigureDepsFor = (agent: string) => {
+      const bundle = refreshBundlesByName.get(agent);
+      return bundle ? { ...reconfigureDepsBase, bundle } : reconfigureDepsBase;
     };
 
     for (const f of report.knowledgeRefresh.findings) {
@@ -761,8 +773,8 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             // on the absent hook primitive), then grant (re-runs the
             // register primitive, adds the entry back). End state: the
             // hook is registered on disk and the manifest is unchanged.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
-            await reconfigureAgent(f.agent, { grant: [f.platform], revoke: [] }, reconfigureDeps);
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
+            await reconfigureAgent(f.agent, { grant: [f.platform], revoke: [] }, reconfigureDepsFor(f.agent));
             print(`  ✓ re-registered ${f.platform} hook for ${f.agent}`);
             break;
           case "corrupt-cache": {
@@ -772,7 +784,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             break;
           }
           case "orphaned-consent":
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
             print(`  ✓ cleared orphan consent: ${f.agent}/${f.platform}`);
             break;
           case "stale-consent-uninstalled":
@@ -780,13 +792,13 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             // entry is the same as orphaned-consent — strip the dead
             // consent record so the manifest reflects current reality.
             // The hook primitive on the missing platform is a no-op.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
             print(`  ✓ cleared stale consent: ${f.agent}/${f.platform} (CLI not installed)`);
             break;
           case "consent-without-need":
             // Bundle has zero session/always sources today; the consent
             // record is stale. Revoke to align the manifest with reality.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDeps);
+            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
             print(`  ✓ cleared unneeded consent: ${f.agent}/${f.platform} (no session/always sources)`);
             break;
           case "unmanaged-codex-hooks":

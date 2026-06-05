@@ -541,6 +541,17 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
           const { reconfigureAgent } = await import("./reconfigure");
           const { PLATFORM_IDS } = await import("../../../io/platform-detect");
 
+          // Load the bundle so reconfigureAgent's session-source guard
+          // (refuses grant when the bundle has no refresh: session/always
+          // sources) can fire. Without this lookup the guard is dormant
+          // and the consent-without-need state can be re-created from
+          // the CLI.
+          const { loadAllBundles } = await import("../../load-all");
+          const all = await loadAllBundles(
+            await loadRegistry(canonicalRegistryPath()),
+          );
+          const bundle = all.bundles.find((b) => b.config.name === name);
+
           // --yes: grant every platform the agent is installed for.
           // Resolved entirely in the action handler (kept out of
           // reconfigureAgent's signature) by enumerating installed
@@ -569,7 +580,11 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
                 suggestedCommand: `smith agent install ${name}`,
               });
             }
-            await reconfigureAgent(name, { grant: installed, revoke: [] });
+            await reconfigureAgent(
+              name,
+              { grant: installed, revoke: [] },
+              bundle ? { bundle } : {},
+            );
             return 0;
           }
 
@@ -591,13 +606,21 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
                 suggestedCommand: `smith agent reconfigure ${name} --grant opencode`,
               });
             }
-            await reconfigureAgent(name, { grant: [], revoke: [], interactive: true });
+            await reconfigureAgent(
+              name,
+              { grant: [], revoke: [], interactive: true },
+              bundle ? { bundle } : {},
+            );
             return 0;
           }
-          await reconfigureAgent(name, {
-            grant: parsePlatformList(opts.grant),
-            revoke: parsePlatformList(opts.revoke),
-          });
+          await reconfigureAgent(
+            name,
+            {
+              grant: parsePlatformList(opts.grant),
+              revoke: parsePlatformList(opts.revoke),
+            },
+            bundle ? { bundle } : {},
+          );
           return 0;
         },
         wrapDeps,
