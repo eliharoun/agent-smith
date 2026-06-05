@@ -120,6 +120,18 @@ export interface DaemonDeps {
    * (XDG_CACHE_HOME/agent-smith or ~/.cache/agent-smith).
    */
   refreshCacheRoot?: () => string;
+  /**
+   * Resolve the absolute path to the smith binary the daemon was launched
+   * with. Defaults to `process.argv[1]`. Tests inject a synthetic path so
+   * the staleness check can be exercised without filesystem mutation.
+   */
+  binPath?: () => string;
+  /**
+   * Stat the binary at `binPath()` and return mtimeMs. Returns null if the
+   * file does not exist or cannot be statted. Defaults to a wrapper around
+   * `node:fs/promises.stat`.
+   */
+  statBin?: () => Promise<{ mtimeMs: number } | null>;
 }
 
 export interface DaemonHandle {
@@ -202,6 +214,22 @@ export async function runDaemon(deps: DaemonDeps = {}): Promise<DaemonHandle> {
   const ttlIntervalMs = deps.ttlIntervalMs ?? 5 * 60 * 1000;
   const refreshSource = deps.refreshSource ?? defaultRefreshOneSource;
   const refreshCacheRoot = deps.refreshCacheRoot ?? defaultRefreshCacheRoot;
+  const binPath = deps.binPath ?? (() => process.argv[1] ?? "");
+  const statBin =
+    deps.statBin ??
+    (async () => {
+      try {
+        const { stat } = await import("node:fs/promises");
+        const path = binPath();
+        if (!path) return null;
+        const s = await stat(path);
+        return { mtimeMs: s.mtimeMs };
+      } catch {
+        return null;
+      }
+    });
+  const selfRestartDisabled = process.env.SMITH_NO_DAEMON_SELF_RESTART === "1";
+  const startupBinSnapshot = await statBin();
   const enumerateTtlAgents =
     deps.enumerateTtlAgents ??
     (async (): Promise<TtlAgent[]> => {
@@ -255,8 +283,32 @@ export async function runDaemon(deps: DaemonDeps = {}): Promise<DaemonHandle> {
   // determine the heartbeat status field.
   let lastInstallOk = true;
 
+  // Layer 2 self-staleness check (followup #20). On each reinstall tick we
+  // re-stat the smith binary; if its mtime moved past startup, an upgrade
+  // happened underneath us and our in-memory schema is potentially behind
+  // the on-disk binary. We schedule a clean shutdown + exit(0) on the next
+  // microtask so the current reinstall path can return cleanly first. The
+  // microtask defer also lets us reference `shutdown` (declared later in
+  // this function) — by the time the microtask runs, the `const shutdown`
+  // binding is initialized.
+  const checkBinaryStalenessAndScheduleExit = async (): Promise<boolean> => {
+    if (selfRestartDisabled || startupBinSnapshot === null) return false;
+    const current = await statBin();
+    if (current === null) return false;
+    if (current.mtimeMs <= startupBinSnapshot.mtimeMs) return false;
+    log(
+      "smith binary updated since daemon start; exiting cleanly so a fresh process can take over",
+    );
+    // Defer the shutdown+exit so the caller can return cleanly first.
+    queueMicrotask(() => {
+      void shutdown().finally(() => exit(0));
+    });
+    return true;
+  };
+
   const doReinstall = async (): Promise<void> => {
     try {
+      if (await checkBinaryStalenessAndScheduleExit()) return;
       const result = await loadAllBundles(await loadRegistry());
       warnAllLoadFailures(result.failures, errLog);
       // Repopulate the per-bundle refresh-hooks opt-in map from each
