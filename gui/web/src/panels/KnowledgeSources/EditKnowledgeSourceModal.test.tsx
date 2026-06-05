@@ -1,14 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { KnowledgeSource, McpServerAndToolsView } from "gui-shared";
-import { beforeEach, describe, expect, it } from "vitest";
+import type { KnowledgeSource, McpServerAndToolsView, Platform } from "gui-shared";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { EditKnowledgeSourceModal } from "./EditKnowledgeSourceModal";
 
 type Call = { url: string; init?: RequestInit | undefined };
 
 function mockFetch(
   calls: Call[],
-  opts: { putStatus?: number; picker?: McpServerAndToolsView } = {},
+  opts: {
+    putStatus?: number;
+    picker?: McpServerAndToolsView;
+    /** When set, GET cache-status returns this body. Default false. */
+    cacheStatus?: { hasCachedFiles: boolean };
+    /** When set, DELETE cache returns this status. Default 204. */
+    deleteCacheStatus?: number;
+    /** When set, GET drift-check returns this body. Default empty drift. */
+    drift?: { drifted: Platform[] };
+  } = {},
 ) {
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -17,6 +27,17 @@ function mockFetch(
       const empty: McpServerAndToolsView = { servers: [], toolsByServer: {} };
       return new Response(JSON.stringify(opts.picker ?? empty), { status: 200 });
     }
+    if (url.includes("/drift-check")) {
+      return new Response(JSON.stringify(opts.drift ?? { drifted: [] }), { status: 200 });
+    }
+    if (url.includes("/cache-status")) {
+      return new Response(JSON.stringify(opts.cacheStatus ?? { hasCachedFiles: false }), {
+        status: 200,
+      });
+    }
+    if (url.endsWith("/cache") && init?.method === "DELETE") {
+      return new Response(null, { status: opts.deleteCacheStatus ?? 204 });
+    }
     if (url.includes("/api/agents/") && init?.method === "PUT") {
       return new Response(JSON.stringify({ ok: true }), { status: opts.putStatus ?? 200 });
     }
@@ -24,9 +45,18 @@ function mockFetch(
   };
 }
 
+function noopReinstall(_targets: Platform[]): void {
+  // default no-op for tests that don't care about the action
+  void _targets;
+}
+
 function wrap(node: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <NotificationCenter>{node}</NotificationCenter>
+    </QueryClientProvider>,
+  );
 }
 
 describe("EditKnowledgeSourceModal", () => {
@@ -668,6 +698,448 @@ describe("EditKnowledgeSourceModal", () => {
     expect(screen.getByRole("button", { name: /help: url/i })).toBeInTheDocument();
   });
 
+  // ─── Lazy fetch toggle ─────────────────────────────────────────────
+
+  it("loading a source with lazy:true shows the toggle ON", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      lazy: true,
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const toggle = screen.getByRole("switch", { name: /lazy fetch/i });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("loading a non-lazy URL source shows the toggle OFF", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const toggle = screen.getByRole("switch", { name: /lazy fetch/i });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("does not render the lazy toggle for non-URL types", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "notes",
+      type: "file",
+      path: "/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("switch", { name: /lazy fetch/i })).not.toBeInTheDocument();
+  });
+
+  it("flipping lazy ON disables delivery, materialize, and inline-budget inputs", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const toggle = screen.getByRole("switch", { name: /lazy fetch/i });
+    fireEvent.click(toggle);
+    expect((screen.getByLabelText(/^\/\/ delivery$/i) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/^\/\/ materialize$/i) as HTMLSelectElement).disabled).toBe(true);
+    expect(
+      (screen.getByLabelText(/^\/\/ inline budget tokens/i) as HTMLInputElement).disabled,
+    ).toBe(true);
+  });
+
+  it("flipping lazy ON shows the green hint paragraph", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/agent reads this description at runtime/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    expect(screen.getByText(/agent reads this description at runtime/i)).toBeInTheDocument();
+  });
+
+  it("flipping lazy ON with short description surfaces a warning", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      description: "tiny",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    expect(screen.getByText(/shorter than 30 chars/i)).toBeInTheDocument();
+  });
+
+  it("flipping lazy ON then OFF restores the typed-but-now-disabled values on save", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // Before toggling, set a non-default delivery and a non-default materialize.
+    fireEvent.change(screen.getByLabelText(/^\/\/ delivery$/i), { target: { value: "file" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ materialize$/i), {
+      target: { value: "markdown" },
+    });
+    // Flip lazy ON, then OFF.
+    const toggle = screen.getByRole("switch", { name: /lazy fetch/i });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    // Save and assert the typed values made it through.
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    )!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    expect(written.delivery).toBe("file");
+    expect(written.materialize).toBe("markdown");
+    expect(written.lazy).toBeUndefined();
+  });
+
+  it("save with lazy:true writes lazy and DROPS delivery/materialize/extractor/inlineBudgetTokens", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // Fill in fields that should be dropped.
+    fireEvent.change(screen.getByLabelText(/^\/\/ delivery$/i), { target: { value: "file" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ materialize$/i), {
+      target: { value: "markdown" },
+    });
+    fireEvent.change(screen.getByLabelText(/^\/\/ inline budget tokens/i), {
+      target: { value: "8000" },
+    });
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    )!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    expect(written.lazy).toBe(true);
+    expect("delivery" in written).toBe(false);
+    expect("materialize" in written).toBe(false);
+    expect("extractor" in written).toBe(false);
+    expect("inlineBudgetTokens" in written).toBe(false);
+  });
+
+  it("save with lazy:false omits the lazy key entirely", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/y" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    )!;
+    const body = JSON.parse(put.init!.body as string);
+    expect("lazy" in body.knowledge.sources[0]).toBe(false);
+  });
+
+  it("stale-artifacts confirm appears on non-lazy → lazy save when cache exists", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: true },
+    }) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    // Cache-status check is fired.
+    await waitFor(() => {
+      expect(calls.find((c) => c.url.includes("/cache-status"))).toBeDefined();
+    });
+    // Confirm modal appears.
+    await screen.findByText(/switch to lazy fetch/i);
+  });
+
+  it("stale-artifacts confirm does NOT appear when flipping lazy → non-lazy", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: true },
+    }) as unknown as typeof fetch;
+    const src = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      lazy: true,
+    } as unknown as KnowledgeSource;
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // Flip lazy off.
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    expect(screen.queryByText(/switch to lazy fetch/i)).not.toBeInTheDocument();
+  });
+
+  it("stale-artifacts confirm does NOT appear when cache is empty", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: false },
+    }) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    expect(screen.queryByText(/switch to lazy fetch/i)).not.toBeInTheDocument();
+  });
+
+  it("stale-artifacts confirm: 'Cancel' keeps modal open and does not save", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: true },
+    }) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await screen.findByText(/switch to lazy fetch/i);
+    // Click Cancel inside the confirm.
+    const cancelButtons = screen.getAllByRole("button", { name: /^cancel$/i });
+    // The confirm modal renders its own Cancel button (the one inside the dialog).
+    const confirmCancel = cancelButtons[cancelButtons.length - 1]!;
+    fireEvent.click(confirmCancel);
+    // Confirm dismissed, no PUT fired.
+    expect(screen.queryByText(/switch to lazy fetch/i)).not.toBeInTheDocument();
+    expect(
+      calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+    ).toBeUndefined();
+  });
+
+  it("stale-artifacts confirm: 'Save and keep' saves without DELETE", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: true },
+    }) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const keepButton = await screen.findByRole("button", {
+      name: /save and keep cached files/i,
+    });
+    fireEvent.click(keepButton);
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    // No DELETE call.
+    expect(
+      calls.find((c) => c.url.endsWith("/cache") && c.init?.method === "DELETE"),
+    ).toBeUndefined();
+  });
+
+  it("stale-artifacts confirm: 'Save and delete' calls DELETE then save", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      cacheStatus: { hasCachedFiles: true },
+    }) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const deleteButton = await screen.findByRole("button", {
+      name: /save and delete cached files/i,
+    });
+    fireEvent.click(deleteButton);
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.endsWith("/cache") && c.init?.method === "DELETE"),
+      ).toBeDefined();
+    });
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    // Order: DELETE before PUT.
+    const deleteIdx = calls.findIndex(
+      (c) => c.url.endsWith("/cache") && c.init?.method === "DELETE",
+    );
+    const putIdx = calls.findIndex(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    );
+    expect(deleteIdx).toBeLessThan(putIdx);
+  });
+
   it("shows server error inline when PUT fails", async () => {
     globalThis.fetch = mockFetch(calls, { putStatus: 400 }) as unknown as typeof fetch;
     const src: KnowledgeSource = {
@@ -689,5 +1161,256 @@ describe("EditKnowledgeSourceModal", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  });
+
+  // ─── Save-success notification ─────────────────────────────────────
+
+  describe("save-success notification", () => {
+    it("fires a success toast (Saved.) when drift is empty after save", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      // PUT must complete before the toast fires.
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      // Success toast appears (the modal has unmounted, but the toast lives
+      // in the surrounding NotificationCenter).
+      await screen.findByText(/^saved\.$/i);
+    });
+
+    it("fires an info toast with body + action when drift is non-empty", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        drift: { drifted: ["claude-code", "kiro"] },
+      }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      // The drift list is included verbatim in the toast body.
+      await screen.findByText(/re-install required to apply on claude-code, kiro/i);
+      // The action button is present.
+      expect(screen.getByRole("button", { name: /re-install now/i })).toBeInTheDocument();
+    });
+
+    it("clicking 'Re-install now' invokes reinstall with the drifted platforms", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        drift: { drifted: ["claude-code"] },
+      }) as unknown as typeof fetch;
+      const reinstall = vi.fn();
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={reinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      const action = await screen.findByRole("button", { name: /re-install now/i });
+      fireEvent.click(action);
+      expect(reinstall).toHaveBeenCalledTimes(1);
+      expect(reinstall).toHaveBeenCalledWith(["claude-code"]);
+    });
+
+    it("clicking the action button also dismisses the info toast", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        drift: { drifted: ["claude-code"] },
+      }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={() => {
+            /* don't open a fresh notification — keep the test focused */
+          }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      const action = await screen.findByRole("button", { name: /re-install now/i });
+      fireEvent.click(action);
+      // After click, the toast body text should disappear.
+      await waitFor(() => {
+        expect(screen.queryByText(/re-install required to apply/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it("two saves against the same agent dedup to a single toast (replace in place)", async () => {
+      // Saving twice in succession — modal closes after each save, but the
+      // toast lives in the surrounding NotificationCenter. Both notify
+      // calls share the same dedupKey (`agent-saved:a1`) so the second
+      // toast must replace the first rather than stack.
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      // Use a wrapper that mounts/unmounts the modal between saves to mimic
+      // the real UX: open → save → close → reopen → save.
+      function Harness({ visible, urlValue }: { visible: boolean; urlValue: string }) {
+        const next: KnowledgeSource = {
+          id: "docs",
+          type: "url",
+          url: urlValue,
+          delivery: "auto",
+        };
+        return visible ? (
+          <EditKnowledgeSourceModal
+            agent="a1"
+            existingSource={next}
+            knowledgeBlock={{ sources: [next] }}
+            reinstall={noopReinstall}
+            onClose={() => {}}
+          />
+        ) : null;
+      }
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerender } = render(
+        <QueryClientProvider client={qc}>
+          <NotificationCenter>
+            <Harness visible urlValue="https://example.com/x" />
+          </NotificationCenter>
+        </QueryClientProvider>,
+      );
+      // First save.
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y1" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await screen.findByText(/^saved\.$/i);
+      // Close the modal, then re-open and save again. The
+      // NotificationCenter is preserved across the re-render.
+      rerender(
+        <QueryClientProvider client={qc}>
+          <NotificationCenter>
+            <Harness visible={false} urlValue="https://example.com/x" />
+          </NotificationCenter>
+        </QueryClientProvider>,
+      );
+      rerender(
+        <QueryClientProvider client={qc}>
+          <NotificationCenter>
+            <Harness visible urlValue="https://example.com/x" />
+          </NotificationCenter>
+        </QueryClientProvider>,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y2" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      // The dedupKey replacement keeps the visible toast count at 1.
+      await waitFor(() => {
+        expect(screen.queryAllByText(/^saved\.$/i).length).toBe(1);
+      });
+    });
+
+    it("Save and keep (lazy confirm) also fires the post-save toast", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        cacheStatus: { hasCachedFiles: true },
+        drift: { drifted: [] },
+      }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      const keepBtn = await screen.findByRole("button", {
+        name: /save and keep cached files/i,
+      });
+      fireEvent.click(keepBtn);
+      await screen.findByText(/^saved\.$/i);
+    });
+
+    it("Save and delete (lazy confirm) also fires the post-save toast", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        cacheStatus: { hasCachedFiles: true },
+        drift: { drifted: [] },
+      }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      const deleteBtn = await screen.findByRole("button", {
+        name: /save and delete cached files/i,
+      });
+      fireEvent.click(deleteBtn);
+      await screen.findByText(/^saved\.$/i);
+    });
   });
 });

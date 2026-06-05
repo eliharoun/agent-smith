@@ -10,6 +10,8 @@ export * from "./FormField";
 export * from "./Gauge";
 export * from "./Lamp";
 export * from "./MatrixRain";
+export * from "./Notification";
+export * from "./NotificationCenter";
 export * from "./ScanlineBackground";
 export * from "./Sparkline";
 export * from "./TerminalLog";

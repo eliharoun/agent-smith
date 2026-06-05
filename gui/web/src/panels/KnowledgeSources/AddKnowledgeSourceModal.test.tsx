@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { McpServerAndToolsView } from "gui-shared";
+import type { McpServerAndToolsView, Platform } from "gui-shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { AddKnowledgeSourceModal } from "./AddKnowledgeSourceModal";
 
 type Call = { url: string; init?: RequestInit | undefined };
@@ -9,6 +10,8 @@ type Call = { url: string; init?: RequestInit | undefined };
 interface FixtureOpts {
   picker: McpServerAndToolsView;
   agentConfig?: Record<string, unknown>;
+  /** When set, GET drift-check returns this body. Default empty drift. */
+  drift?: { drifted: Platform[] };
 }
 
 function mockFetch(calls: Call[], opts: FixtureOpts) {
@@ -17,6 +20,9 @@ function mockFetch(calls: Call[], opts: FixtureOpts) {
     calls.push({ url, init });
     if (url.endsWith("/mcp-servers-and-tools")) {
       return new Response(JSON.stringify(opts.picker), { status: 200 });
+    }
+    if (url.includes("/drift-check")) {
+      return new Response(JSON.stringify(opts.drift ?? { drifted: [] }), { status: 200 });
     }
     if (url.match(/\/api\/agents\/[^/]+$/) && (!init?.method || init.method === "GET")) {
       return new Response(
@@ -47,7 +53,11 @@ function mockFetch(calls: Call[], opts: FixtureOpts) {
 
 function wrap(node: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      <NotificationCenter>{node}</NotificationCenter>
+    </QueryClientProvider>,
+  );
 }
 
 async function chooseUrlType() {
@@ -259,5 +269,99 @@ describe("AddKnowledgeSourceModal — routing dropdown", () => {
     // No /config PUT in the direct-HTTP path.
     const put = calls.find((c) => c.url.endsWith("/api/agents/a1/config"));
     expect(put).toBeUndefined();
+  });
+});
+
+describe("AddKnowledgeSourceModal — save-success notification", () => {
+  let calls: Call[];
+  beforeEach(() => {
+    calls = [];
+  });
+
+  it("non-via knowledge.add path fires a 'Knowledge source added.' toast", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: { servers: [], toolsByServer: {} },
+      drift: { drifted: [] },
+    }) as unknown as typeof fetch;
+    wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/p" },
+    });
+    fireEvent.submit(document.getElementById("knowledge-add-form") as HTMLFormElement);
+    // The modal closes and a success toast appears.
+    await screen.findByText(/^knowledge source added\.$/i);
+  });
+
+  it("via:-tagged path fires a 'Knowledge source added.' toast on empty drift", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [{ name: "alpha-mcp", source: "available" }],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+      agentConfig: { knowledge: { sources: [] } },
+      drift: { drifted: [] },
+    }) as unknown as typeof fetch;
+    wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/p" },
+    });
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect(select).not.toBeDisabled());
+    fireEvent.change(select, { target: { value: "alpha-mcp" } });
+    await screen.findByText(/routing through alpha-mcp\.fetch/);
+    fireEvent.submit(document.getElementById("knowledge-add-form") as HTMLFormElement);
+    // PUT must complete then toast fires.
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.endsWith("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    await screen.findByText(/^knowledge source added\.$/i);
+  });
+
+  it("via:-tagged path with non-empty drift fires an info toast with action", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [{ name: "alpha-mcp", source: "available" }],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+      agentConfig: { knowledge: { sources: [] } },
+      drift: { drifted: ["claude-code"] },
+    }) as unknown as typeof fetch;
+    const reinstall = vi.fn();
+    wrap(
+      <AddKnowledgeSourceModal
+        agent="a1"
+        existingIds={[]}
+        reinstall={reinstall}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/p" },
+    });
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect(select).not.toBeDisabled());
+    fireEvent.change(select, { target: { value: "alpha-mcp" } });
+    await screen.findByText(/routing through alpha-mcp\.fetch/);
+    fireEvent.submit(document.getElementById("knowledge-add-form") as HTMLFormElement);
+    // Info toast with the drift list + action button.
+    await screen.findByText(/re-install required to apply on claude-code/i);
+    const action = await screen.findByRole("button", { name: /re-install now/i });
+    fireEvent.click(action);
+    expect(reinstall).toHaveBeenCalledWith(["claude-code"]);
   });
 });

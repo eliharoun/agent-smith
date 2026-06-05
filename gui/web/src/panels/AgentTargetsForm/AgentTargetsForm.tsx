@@ -1,6 +1,7 @@
 import type { AgentDetail, ModelTier, Platform, Target } from "gui-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useSaveAgentConfig } from "@/hooks/useAgents";
+import { useDriftCheck } from "@/hooks/useDriftCheck";
 import { useInstalledStatuses } from "@/hooks/useInstalledStatuses";
 import { useKnowledge } from "@/hooks/useKnowledge";
 import { useRefreshManifest } from "@/hooks/useRefreshManifest";
@@ -8,6 +9,7 @@ import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
+import { Tooltip } from "@/ui/Tooltip";
 
 const ALL_TARGETS: Target[] = ["opencode", "claude-code", "codex", "kiro", "agents-md"];
 
@@ -51,6 +53,11 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
   const save = useSaveAgentConfig(agent.name);
   const statuses = useInstalledStatuses();
   const installed = statuses.data?.[agent.name]?.installed ?? {};
+  const driftCheck = useDriftCheck(agent.name);
+  const driftSet = useMemo(
+    () => new Set<Platform>(driftCheck.drifted ?? []),
+    [driftCheck.drifted],
+  );
 
   const draftTargets = useMemo(() => [...targets].sort(), [targets]);
   const targetsDirty = draftTargets.join(",") !== savedTargets.join(",");
@@ -91,24 +98,37 @@ export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
         <FieldHelp fieldId="agent.targets">targets</FieldHelp>
       </div>
       <div className="space-y-1 mb-4">
-        {ALL_TARGETS.map((p) => (
-          <label key={p} className="flex items-center gap-2 font-mono text-sm text-matrix-body">
-            <input
-              type="checkbox"
-              checked={targets.has(p)}
-              onChange={(e) => toggleTarget(p, e.target.checked)}
-              aria-label={p}
-            />
-            <span>{p}</span>
-            <span className="text-[10px] text-matrix-green-muted">
-              {!isPlatform(p)
-                ? "• emit-only"
-                : installed[p]
-                  ? "• installed"
-                  : "• not installed"}
-            </span>
-          </label>
-        ))}
+        {ALL_TARGETS.map((p) => {
+          const drifted = isPlatform(p) && installed[p] && driftSet.has(p);
+          return (
+            <label key={p} className="flex items-center gap-2 font-mono text-sm text-matrix-body">
+              <input
+                type="checkbox"
+                checked={targets.has(p)}
+                onChange={(e) => toggleTarget(p, e.target.checked)}
+                aria-label={p}
+              />
+              <span>{p}</span>
+              <span className="text-[10px] text-matrix-green-muted">
+                {!isPlatform(p)
+                  ? "• emit-only"
+                  : installed[p]
+                    ? "• installed"
+                    : "• not installed"}
+              </span>
+              {drifted && (
+                <Tooltip content="out of date — re-install needed">
+                  <span
+                    data-testid={`drift-dot-${p}`}
+                    aria-label={`${p} is out of date — re-install needed`}
+                    tabIndex={0}
+                    className="inline-block w-2 h-2 rounded-full bg-matrix-green shadow-[0_0_6px_rgba(26,255,140,0.7)] cursor-help"
+                  />
+                </Tooltip>
+              )}
+            </label>
+          );
+        })}
       </div>
 
       <div className="mb-2">

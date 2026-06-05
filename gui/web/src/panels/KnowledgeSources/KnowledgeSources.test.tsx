@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { KnowledgeSources } from "./KnowledgeSources";
 
 type Call = { url: string; init?: RequestInit | undefined };
@@ -115,7 +116,9 @@ function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <KnowledgeSources agent="testing-agent" />
+      <NotificationCenter>
+        <KnowledgeSources agent="testing-agent" />
+      </NotificationCenter>
     </QueryClientProvider>,
   );
 }
@@ -597,7 +600,9 @@ describe("KnowledgeSources", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <KnowledgeSources agent="foo-bar" />
+        <NotificationCenter>
+          <KnowledgeSources agent="foo-bar" />
+        </NotificationCenter>
       </QueryClientProvider>,
     );
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());

@@ -35,6 +35,7 @@ const server = setupServer(
       foo: { agent: "foo", installed: { opencode: true, "claude-code": true } },
     }),
   ),
+  http.get("*/api/agents/foo/drift-check", () => HttpResponse.json({ drifted: [] })),
   http.put("*/api/agents/foo/config", () => HttpResponse.json({ ok: true })),
   http.post("*/api/jobs", () => HttpResponse.json({ jobId: "j1", preview: "" })),
 );
@@ -123,6 +124,31 @@ describe("AgentTargetsForm", () => {
     fireEvent.change(screen.getByLabelText("model tier"), { target: { value: "high" } });
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
     expect(await screen.findByText(/re-install now/i)).toBeInTheDocument();
+  });
+
+  it("shows a drift dot next to an installed platform that is out of date", async () => {
+    server.use(
+      http.get("*/api/agents/foo/drift-check", () =>
+        HttpResponse.json({ drifted: ["claude-code"] }),
+      ),
+    );
+    renderForm();
+    expect(await screen.findByTestId("drift-dot-claude-code")).toBeInTheDocument();
+    expect(screen.queryByTestId("drift-dot-opencode")).not.toBeInTheDocument();
+  });
+
+  it("does not show a drift dot for a platform that is not installed", async () => {
+    server.use(
+      // kiro is not in installed (opencode + claude-code only) so even if
+      // the server reports it drifted (it shouldn't), the dot stays hidden.
+      http.get("*/api/agents/foo/drift-check", () =>
+        HttpResponse.json({ drifted: ["kiro"] }),
+      ),
+    );
+    renderForm();
+    // Wait for the data to settle so we can assert absence reliably.
+    await screen.findByLabelText("kiro");
+    expect(screen.queryByTestId("drift-dot-kiro")).not.toBeInTheDocument();
   });
 
   // Field-help adoption smoke test (Task 31). Exhaustive per-id coverage

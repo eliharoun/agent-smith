@@ -1,11 +1,16 @@
-import type { KnowledgeSource } from "gui-shared";
+import type { KnowledgeSource, Platform } from "gui-shared";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/api/client";
 import { useSaveAgentConfig } from "@/hooks/useAgents";
 import { Button } from "@/ui/Button";
 import { ConfirmModal } from "@/ui/ConfirmModal";
 import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
+import { Toggle } from "@/ui/Toggle";
+import { Tooltip } from "@/ui/Tooltip";
 import { RoutingPicker, type ViaPick } from "./sourceForms/RoutingPicker";
+import { StaleArtifactsConfirmModal } from "./StaleArtifactsConfirmModal";
+import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 
 /**
  * Per-source editor for ALL v1+v2 knowledge source fields. The Add flow
@@ -42,6 +47,51 @@ function isStaticType(type: string): boolean {
   return (STATIC_TYPES as readonly string[]).includes(type);
 }
 
+// Mirror of `lazyDescriptionWarnings()` in src/core/knowledge/lazy-url.ts —
+// inlined because the GUI cannot cross-import CLI code (rootDir boundary).
+// Constants kept in lockstep with that file. Returns user-facing strings, one
+// per detected issue, suitable for inline rendering near the description
+// field. An empty list means the description is fine.
+const LAZY_DESC_MIN = 30;
+const LAZY_DESC_MAX = 1024;
+const LAZY_FIRST_OR_SECOND_PERSON =
+  /^(I |I'|you |you'|this skill|this source|this knowledge)/i;
+
+function lazyDescriptionWarnings(description: string): string[] {
+  const warnings: string[] = [];
+  const desc = description ?? "";
+  if (desc.trim().length === 0) {
+    warnings.push(
+      "lazy URL sources should have a description — it's the agent's only signal until it fetches the URL",
+    );
+    return warnings;
+  }
+  if (desc.trim().length < LAZY_DESC_MIN) {
+    warnings.push(
+      `description is shorter than ${LAZY_DESC_MIN} chars — write what the source contains and when to use it`,
+    );
+  }
+  if (LAZY_FIRST_OR_SECOND_PERSON.test(desc.trim())) {
+    warnings.push(
+      'description should be written in third person (e.g. "Documents X. Use when Y.") — first/second person reduces tool-discovery accuracy',
+    );
+  }
+  if (desc.length > LAZY_DESC_MAX) {
+    warnings.push(
+      `description is longer than ${LAZY_DESC_MAX} chars — agent runtimes may truncate; trim trigger keywords up front`,
+    );
+  }
+  return warnings;
+}
+
+// Default reinstall used when no callback is provided. Real callers wire
+// this through from the parent panel's `useReinstall` so the post-save
+// toast's "Re-install now" action drives the same flow as the agent
+// page's Re-install button.
+function noopReinstall(_targets: Platform[]): void {
+  void _targets;
+}
+
 interface KnowledgeBlock {
   packs?: string[];
   inlineBudget?: { totalTokens: number };
@@ -62,6 +112,15 @@ interface Props {
    * available servers]` instead of `[not configured]`).
    */
   mcpServers?: ReadonlyArray<string>;
+  /**
+   * Re-install dispatcher used by the save-success notification's
+   * "Re-install now" action when the just-saved change leaves at least one
+   * installed platform with drifted on-disk render. Lifted into the parent
+   * so the hook instance owning the progress→success notification lifecycle
+   * survives this modal's unmount on save. Optional in tests that don't
+   * exercise the post-save toast path; the parent always wires it.
+   */
+  reinstall?: (targets: Platform[]) => void;
   onClose: () => void;
 }
 
@@ -106,6 +165,14 @@ interface DraftState {
    * rejects `via: null`).
    */
   via: ViaPick | null;
+  /**
+   * Lazy URL fetch (URL sources only). When true, smith does not fetch at
+   * install time — the bundle ships only the URL + description and the agent
+   * fetches at runtime. The four conflict fields (delivery, materialize,
+   * extractor, inlineBudgetTokens) are dropped on save; their typed values
+   * stay in the draft so toggle-back recovers them.
+   */
+  lazy: boolean;
 }
 
 interface InitialDraft {
@@ -198,6 +265,7 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
       }
       return null;
     })(),
+    lazy: anySrc.lazy === true,
   };
   return invalidRefreshMode ? { draft, invalidRefreshMode } : { draft };
 }
@@ -358,10 +426,16 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
     base.via = { server: draft.via.server, tool: draft.via.tool };
   }
 
-  // Round-trip forward-compat fields that aren't surfaced as form inputs
-  // but must survive a GUI edit (e.g., `lazy`).
-  const originalAny = original as unknown as Record<string, unknown>;
-  if (originalAny.lazy !== undefined) base.lazy = originalAny.lazy;
+  // Lazy URL: write `lazy: true` and DROP the four schema-forbidden fields
+  // regardless of the typed-but-now-disabled draft values. Omit `lazy: false`
+  // (clean JSON convention — the schema treats absent and false identically).
+  if (original.type === "url" && draft.lazy) {
+    base.lazy = true;
+    delete base.delivery;
+    delete base.materialize;
+    delete base.extractor;
+    delete base.inlineBudgetTokens;
+  }
 
   return base as unknown as KnowledgeSource;
 }
@@ -371,13 +445,17 @@ export function EditKnowledgeSourceModal({
   existingSource,
   knowledgeBlock,
   mcpServers,
+  reinstall,
   onClose,
 }: Props) {
   const initial = useMemo(() => initialDraft(existingSource), [existingSource]);
   const [draft, setDraft] = useState<DraftState>(initial.draft);
   const [advancedOpen, setAdvancedOpen] = useState(true);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmStale, setConfirmStale] = useState(false);
   const save = useSaveAgentConfig(agent);
+  const reinstallFn = reinstall ?? noopReinstall;
+  const notifyAfterSave = useSaveSuccessNotification(agent, reinstallFn);
   const formId = "knowledge-edit-form";
   // When the loaded source has an invalid refresh.mode for its type, the
   // initial draft is auto-reset — the editor should treat that as dirty so
@@ -411,8 +489,13 @@ export function EditKnowledgeSourceModal({
     setDraft((d) => ({ ...d, [k]: v }));
   }
 
-  function handleSubmit() {
-    if (!valid || !dirty || save.isPending) return;
+  // True when the user is flipping non-lazy → lazy on this save. The save
+  // path consults this to decide whether to cache-status-check + show the
+  // 3-button confirm dialog.
+  const flippingNonLazyToLazy =
+    existingSource.type === "url" && draft.lazy && !initial.draft.lazy;
+
+  function performSave() {
     const built = buildSource(existingSource, draft);
     const sources = (knowledgeBlock.sources ?? []).map((s) =>
       s.id === existingSource.id ? built : s,
@@ -434,7 +517,62 @@ export function EditKnowledgeSourceModal({
     ) {
       patch.mcpServers = [...mcpServers, draft.via.server];
     }
-    save.mutate(patch as Parameters<typeof save.mutate>[0], { onSuccess: () => onClose() });
+    save.mutate(patch as Parameters<typeof save.mutate>[0], {
+      onSuccess: () => {
+        // Fire the post-save notification BEFORE closing — the notify call
+        // returns immediately after enqueueing into the
+        // <NotificationCenter> context, but the drift-check apiFetch it
+        // awaits internally must outlive this component, so the void here
+        // is intentional. The notification (and its action closure) live in
+        // the persistent NotificationCenter, not this modal.
+        void notifyAfterSave("Saved");
+        onClose();
+      },
+    });
+  }
+
+  async function deleteCacheThenSave() {
+    try {
+      await apiFetch(
+        `/api/agents/${encodeURIComponent(agent)}/knowledge/sources/${encodeURIComponent(
+          existingSource.id,
+        )}/cache`,
+        { method: "DELETE" },
+      );
+    } catch {
+      // Cache deletion failure is non-fatal — the user's intent was to lazy-
+      // ify the source, and the schema-side strip already happened in the
+      // payload. Surface as a toast in a future task; for now, save anyway.
+    }
+    performSave();
+  }
+
+  function handleSubmit() {
+    if (!valid || !dirty || save.isPending) return;
+    if (!flippingNonLazyToLazy) {
+      performSave();
+      return;
+    }
+    // Flipping non-lazy → lazy: ask the server if there are cached
+    // install-time artifacts, then either save directly (no cache) or open
+    // the 3-button stale-artifacts confirm.
+    void apiFetch<{ hasCachedFiles: boolean }>(
+      `/api/agents/${encodeURIComponent(agent)}/knowledge/sources/${encodeURIComponent(
+        existingSource.id,
+      )}/cache-status`,
+    )
+      .then((r) => {
+        if (r.hasCachedFiles) {
+          setConfirmStale(true);
+        } else {
+          performSave();
+        }
+      })
+      .catch(() => {
+        // If the cache-status probe fails, save anyway — the schema-side
+        // strip is what matters for correctness.
+        performSave();
+      });
   }
 
   function requestClose() {
@@ -527,6 +665,34 @@ export function EditKnowledgeSourceModal({
                   { v: "atlassian", l: "atlassian" },
                 ]}
               />
+            )}
+            {t === "url" && (
+              <div className="flex flex-col gap-1">
+                <Toggle
+                  aria-label="Lazy fetch"
+                  label="lazy fetch"
+                  checked={draft.lazy}
+                  onChange={(v) => update("lazy", v)}
+                />
+                {draft.lazy && (
+                  <>
+                    <p className="font-mono text-[10px] text-matrix-green-muted">
+                      // when lazy is on, the agent reads this description at runtime to
+                      decide whether to fetch the URL — write what the source contains
+                      and when to use it.
+                    </p>
+                    {lazyDescriptionWarnings(draft.description).map((w) => (
+                      <p
+                        key={w}
+                        className="font-mono text-[10px] text-matrix-amber"
+                        role="status"
+                      >
+                        // {w}
+                      </p>
+                    ))}
+                  </>
+                )}
+              </div>
             )}
             {t === "git" && (
               <>
@@ -665,6 +831,8 @@ export function EditKnowledgeSourceModal({
                     { v: "inline", l: "inline" },
                     { v: "file", l: "file" },
                   ]}
+                  disabled={draft.lazy}
+                  disabledTooltip="not used when lazy fetch is on"
                 />
                 <FormField
                   label="summary (compile TOC, max 280 chars)"
@@ -718,6 +886,8 @@ export function EditKnowledgeSourceModal({
                     { v: "json", l: "json" },
                     { v: "passthrough", l: "passthrough" },
                   ]}
+                  disabled={draft.lazy}
+                  disabledTooltip="not used when lazy fetch is on"
                 />
                 {initial.invalidRefreshMode && (
                   <div
@@ -776,17 +946,36 @@ export function EditKnowledgeSourceModal({
                   checked={draft.optional}
                   onChange={(v) => update("optional", v)}
                 />
-                <FormField
-                  label="inline budget tokens (1–16000)"
-                  fieldId="knowledge.inlineBudgetTokens"
-                  type="number"
-                  min={1}
-                  max={16000}
-                  value={draft.inlineBudgetTokens}
-                  onChange={(e) => update("inlineBudgetTokens", e.target.value)}
-                  hint="Per-source inline cap; falls back to bundle inlineBudget."
-                  error={errors.inlineBudgetTokens}
-                />
+                {draft.lazy ? (
+                  <Tooltip content="not used when lazy fetch is on">
+                    <span tabIndex={0} className="block text-matrix-green-muted line-through">
+                      <FormField
+                        label="inline budget tokens (1–16000)"
+                        fieldId="knowledge.inlineBudgetTokens"
+                        type="number"
+                        min={1}
+                        max={16000}
+                        value={draft.inlineBudgetTokens}
+                        onChange={(e) => update("inlineBudgetTokens", e.target.value)}
+                        hint="Per-source inline cap; falls back to bundle inlineBudget."
+                        error={errors.inlineBudgetTokens}
+                        disabled
+                      />
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <FormField
+                    label="inline budget tokens (1–16000)"
+                    fieldId="knowledge.inlineBudgetTokens"
+                    type="number"
+                    min={1}
+                    max={16000}
+                    value={draft.inlineBudgetTokens}
+                    onChange={(e) => update("inlineBudgetTokens", e.target.value)}
+                    hint="Per-source inline cap; falls back to bundle inlineBudget."
+                    error={errors.inlineBudgetTokens}
+                  />
+                )}
               </div>
             )}
           </form>
@@ -817,6 +1006,19 @@ export function EditKnowledgeSourceModal({
           onConfirm={() => {
             setConfirmDiscard(false);
             onClose();
+          }}
+        />
+      )}
+      {confirmStale && (
+        <StaleArtifactsConfirmModal
+          onCancel={() => setConfirmStale(false)}
+          onSaveKeep={() => {
+            setConfirmStale(false);
+            performSave();
+          }}
+          onSaveDelete={() => {
+            setConfirmStale(false);
+            void deleteCacheThenSave();
           }}
         />
       )}
@@ -884,31 +1086,52 @@ function Select({
   value,
   onChange,
   options,
+  disabled,
+  disabledTooltip,
 }: {
   label: string;
   fieldId?: string | undefined;
   value: string;
   onChange: (v: string) => void;
   options: { v: string; l: string }[];
+  disabled?: boolean;
+  /** When set together with `disabled`, wrap the field in a Tooltip
+   *  showing this text on hover/focus. Also applies the visual disabled
+   *  treatment (greyed + strikethrough on the label). */
+  disabledTooltip?: string;
 }) {
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
-  return (
-    <div className="flex flex-col gap-1">
+  const wrapperClass = disabled
+    ? "flex flex-col gap-1 text-matrix-green-muted line-through"
+    : "flex flex-col gap-1";
+  const select = (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green disabled:opacity-50"
+    >
+      {options.map((o) => (
+        <option key={o.v} value={o.v}>
+          {o.l}
+        </option>
+      ))}
+    </select>
+  );
+  const body = (
+    <div className={wrapperClass}>
       <HelpLabel label={label} htmlFor={id} fieldId={fieldId} />
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green"
-      >
-        {options.map((o) => (
-          <option key={o.v} value={o.v}>
-            {o.l}
-          </option>
-        ))}
-      </select>
+      {disabled && disabledTooltip ? (
+        <Tooltip content={disabledTooltip}>
+          <span tabIndex={0}>{select}</span>
+        </Tooltip>
+      ) : (
+        select
+      )}
     </div>
   );
+  return body;
 }
 
 function Checkbox({

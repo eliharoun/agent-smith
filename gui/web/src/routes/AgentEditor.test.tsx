@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { AgentEditor } from "./AgentEditor";
 
 interface FetchMap {
@@ -57,11 +58,13 @@ function renderRoute() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={["/agents/foo"]}>
-        <Routes>
-          <Route path="/agents/:name" element={<AgentEditor />} />
-        </Routes>
-      </MemoryRouter>
+      <NotificationCenter>
+        <MemoryRouter initialEntries={["/agents/foo"]}>
+          <Routes>
+            <Route path="/agents/:name" element={<AgentEditor />} />
+          </Routes>
+        </MemoryRouter>
+      </NotificationCenter>
     </QueryClientProvider>,
   );
 }
