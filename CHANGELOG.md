@@ -4,6 +4,41 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] — 2026-06-04
+
+GUI improvements: a re-install button on the agent detail page, the
+ability to flip existing URL knowledge sources between non-lazy and
+lazy fetch from the Edit modal, and a generic notification system that
+surfaces save outcomes and re-install progress.
+
+### Added
+
+- **Re-install button** on the agent detail page. Re-renders and
+  re-installs only on the platforms where the agent is currently
+  installed. A green drift indicator appears when the on-disk render
+  no longer matches the current config, with per-platform dots showing
+  exactly which targets are out of date. Drift detection re-runs the
+  same render+serialize+hash chain the installer uses, so a positive
+  signal genuinely means re-install would change bytes on disk.
+- **Lazy fetch toggle in the Edit knowledge source modal.** Existing
+  URL sources can now switch between non-lazy and lazy fetch from the
+  GUI. Switching to lazy on a source with cached install-time
+  artifacts triggers a confirm dialog asking whether to keep or delete
+  those files. The four fields the schema forbids alongside lazy
+  fetch (delivery, materialize, extractor, inlineBudgetTokens) are
+  visually disabled and dropped from the saved config.
+- **Notification system** (success / info / warning / error /
+  progress) with WAI-ARIA live regions, hover-pause, dedup by key,
+  and mutation by id for progress-to-result transitions. Used by the
+  re-install flow and by the knowledge-source save flow.
+- After saving a knowledge source change, the GUI now confirms the
+  save and, when applicable, prompts the user to re-install with an
+  inline "Re-install now" action.
+- New endpoints: `GET /api/agents/:name/install-state`,
+  `GET /api/agents/:name/drift-check`,
+  `DELETE /api/agents/:name/knowledge/sources/:id/cache`,
+  `GET /api/agents/:name/knowledge/sources/:id/cache-status`.
+
 ## [1.9.0] — 2026-06-04
 
 URL knowledge sources can now opt out of install-time fetching. With
