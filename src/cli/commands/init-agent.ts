@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import pc from "picocolors";
 import { importApmBundle } from "../../core/apm-import";
@@ -316,43 +316,59 @@ export async function initAgent(
     });
   }
 
+  // Track whether we created the dir vs. it pre-existed. Only clean up
+  // dirs we created — never delete a user's pre-existing state. The
+  // already-exists guard above means the common path here is "not
+  // existed", but we capture explicitly to be defensive.
+  const dirExisted = await pathExists(dir);
   await mkdir(dir, { recursive: true });
 
-  if (copyFiles.length > 0) {
-    for (const f of copyFiles) {
-      await copyFile(f.sourcePath, join(dir, f.name));
+  try {
+    if (copyFiles.length > 0) {
+      for (const f of copyFiles) {
+        await copyFile(f.sourcePath, join(dir, f.name));
+      }
+    } else if (writeFiles.length > 0) {
+      for (const f of writeFiles) {
+        await writeFile(join(dir, f.name), f.content);
+      }
+    } else {
+      for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md"]) {
+        await writeFile(join(dir, f), STUB_PERSONA(f));
+      }
     }
-  } else if (writeFiles.length > 0) {
-    for (const f of writeFiles) {
-      await writeFile(join(dir, f.name), f.content);
+
+    // Self-bootstrap: if the canonical USER.md doesn't exist, seed it
+    // with the same template `smith init` writes (init.ts:69) before
+    // creating the bundle's symlink. This eliminates the rc.2
+    // broken-symlink edge case where `smith agent init my-bot` on a
+    // never-initialized state created a symlink pointing at a
+    // non-existent target. Skip for registered catalogs (the stub path
+    // writes a literal USER.md instead — no symlink to seed for).
+    if (paths.catalogKind !== "registered" && !(await pathExists(paths.canonicalUserPath))) {
+      await mkdir(dirname(paths.canonicalUserPath), { recursive: true });
+      await writeFile(paths.canonicalUserPath, CANONICAL_USER_MD_TEMPLATE);
+      print(pc.cyan(`Seeded canonical USER.md at ${paths.canonicalUserPath}`));
     }
-  } else {
-    for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md"]) {
-      await writeFile(join(dir, f), STUB_PERSONA(f));
+
+    // Registered catalogs are committed to git; symlinks to ~/ paths would break for teammates. See BUNDLE_USER_STUB.
+    if (paths.catalogKind === "registered") {
+      await writeFile(join(dir, "USER.md"), BUNDLE_USER_STUB);
+    } else {
+      await symlink(paths.canonicalUserPath, join(dir, "USER.md"));
     }
-  }
 
-  // Self-bootstrap: if the canonical USER.md doesn't exist, seed it
-  // with the same template `smith init` writes (init.ts:69) before
-  // creating the bundle's symlink. This eliminates the rc.2
-  // broken-symlink edge case where `smith agent init my-bot` on a
-  // never-initialized state created a symlink pointing at a
-  // non-existent target. Skip for registered catalogs (the stub path
-  // writes a literal USER.md instead — no symlink to seed for).
-  if (paths.catalogKind !== "registered" && !(await pathExists(paths.canonicalUserPath))) {
-    await mkdir(dirname(paths.canonicalUserPath), { recursive: true });
-    await writeFile(paths.canonicalUserPath, CANONICAL_USER_MD_TEMPLATE);
-    print(pc.cyan(`Seeded canonical USER.md at ${paths.canonicalUserPath}`));
+    await writeFile(join(dir, "agent.config.json"), `${JSON.stringify(config, null, 2)}\n`);
+  } catch (err) {
+    // Init is atomic: roll back any dir we created if any subsequent
+    // operation failed. Best-effort cleanup; if rm fails (e.g. EPERM),
+    // the original error is still propagated so the user sees the real
+    // cause rather than a misleading cleanup error.
+    if (!dirExisted) {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+    throw err;
   }
-
-  // Registered catalogs are committed to git; symlinks to ~/ paths would break for teammates. See BUNDLE_USER_STUB.
-  if (paths.catalogKind === "registered") {
-    await writeFile(join(dir, "USER.md"), BUNDLE_USER_STUB);
-  } else {
-    await symlink(paths.canonicalUserPath, join(dir, "USER.md"));
-  }
-
-  await writeFile(join(dir, "agent.config.json"), `${JSON.stringify(config, null, 2)}\n`);
 
   print(`${pc.green("Created")} ${dir}`);
   if (copyFiles.length === 0 && writeFiles.length === 0) {
