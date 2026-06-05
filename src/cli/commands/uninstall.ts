@@ -2,6 +2,7 @@ import pc from "picocolors";
 import { SmithError } from "../../core/smith-error";
 import type { AgentBundle, InstallPaths, Target } from "../../core/types";
 import type { KnowledgePaths } from "../../io/knowledge-paths";
+import { detectInstalledPlatforms } from "../../io/platform-detect";
 import type { PlatformId } from "../../io/platform-detect";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import type { Registry } from "../../io/registry";
@@ -44,6 +45,13 @@ export interface UninstallCliOptions {
    * through to `removeBundle`. Production omits.
    */
   homeDir?: string;
+  /**
+   * DI seam for platform detection. Production calls
+   * `detectInstalledPlatforms()` which probes PATH for each platform's
+   * CLI binary; tests inject a deterministic set. Used to distinguish
+   * "platform not installed" from "file just missing" in the print loop.
+   */
+  detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
 }
 
 export async function runUninstallCli(opts: UninstallCliOptions): Promise<number> {
@@ -53,6 +61,8 @@ export async function runUninstallCli(opts: UninstallCliOptions): Promise<number
   const loadBundles = opts.loadAllBundles ?? loadAllBundles;
   const print = opts.print ?? ((m: string) => console.log(m));
   const printErr = opts.printErr ?? ((m: string) => console.error(m));
+  const detectPlatforms = opts.detectInstalledPlatforms ?? detectInstalledPlatforms;
+  const installedPlatforms = await detectPlatforms();
 
   const registry = await loadReg(canonicalRegistryPath());
   const result = await loadBundles(registry);
@@ -126,8 +136,44 @@ export async function runUninstallCli(opts: UninstallCliOptions): Promise<number
   // Errors go to stderr to match install.ts (CLI-18) — both commands
   // use the same red "✗" + exit 3 contract for filesystem failures, so
   // the stream choice should match. removed/notFound stay on stdout.
+  //
+  // Classify each notFound path by which platform's install dir it lives
+  // under: when that platform's CLI isn't on PATH, render the friendlier
+  // "not installed — skipped" line instead of the misleading "not
+  // found:". Match by directory prefix (with a trailing separator) so
+  // both the main file and any sidecars rooted under `paths[target]`
+  // resolve to the same target. `agents-md` is treated as always
+  // installed (file-only target, no CLI dependency).
+  //
+  // Each platform's "skipped" line is emitted at most once per run, even
+  // if multiple notFound paths share the platform.
+  const targetDirEntries = (Object.entries(paths) as [Target, string][]).map(
+    ([target, dir]) => [target, dir.endsWith("/") ? dir : `${dir}/`] as const,
+  );
+  function classifyNotFoundPath(p: string): Target | undefined {
+    for (const [target, prefix] of targetDirEntries) {
+      if (p === prefix.slice(0, -1) || p.startsWith(prefix)) return target;
+    }
+    return undefined;
+  }
   for (const p of removeResult.removed) print(pc.green(`✓ removed: ${p}`));
-  for (const p of removeResult.notFound) print(pc.dim(`- not found: ${p}`));
+  const skippedPlatformsPrinted = new Set<PlatformId>();
+  for (const p of removeResult.notFound) {
+    const target = classifyNotFoundPath(p);
+    if (
+      target !== undefined &&
+      target !== "agents-md" &&
+      !installedPlatforms.has(target as PlatformId)
+    ) {
+      const platformId = target as PlatformId;
+      if (!skippedPlatformsPrinted.has(platformId)) {
+        skippedPlatformsPrinted.add(platformId);
+        print(pc.dim(`~ ${platformId}: not installed — skipped`));
+      }
+    } else {
+      print(pc.dim(`- not found: ${p}`));
+    }
+  }
   if (removeResult.knowledgeRemoved) {
     print(pc.green(`✓ removed: ${plan.knowledge.knowledgeDir}`));
   } else if (removeResult.knowledgeNotFound) {
