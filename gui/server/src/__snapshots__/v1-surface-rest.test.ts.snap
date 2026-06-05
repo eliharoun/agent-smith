@@ -34,6 +34,7 @@ exports[`v1 surface — REST inventory of registered routes is stable 1`] = `
   "GET     /api/knowledge/refresh-summary",
   "GET     /api/model-config",
   "GET     /api/onboarding-status",
+  "GET     /api/platforms/detected",
   "GET     /api/registry",
   "GET     /api/settings",
   "GET     /api/skill-catalogs",
