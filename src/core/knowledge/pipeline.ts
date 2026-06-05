@@ -96,7 +96,16 @@ const DEFAULT_INLINE_BUDGET = 8000;
  * as 0 tokens and never auto-compile. Bytes/4 is the cheapest unbiased proxy
  * for the full corpus and avoids re-reading source content here.
  */
-function shouldAutoCompile(
+/**
+ * Decision used by both the live install path (`runKnowledgeStage`) and
+ * the GUI's drift-check dry-run: should we compile (v2.1) the materialized
+ * corpus, or fall back to the v1 inline+discipline+index path?
+ *
+ * Exported so the dry-run service can replicate the same compile-or-not
+ * decision the orchestrator made, ensuring the bytes in the rendered body
+ * match the bytes the installer wrote.
+ */
+export function shouldAutoCompile(
   manifest: KnowledgeManifest,
   block: KnowledgeBlock | undefined,
 ): boolean {
@@ -603,6 +612,7 @@ async function compileFromManifest(
   manifest: KnowledgeManifest,
   block: KnowledgeBlock | undefined,
   knowledgeDir: string,
+  opts: { writeManifest?: boolean } = {},
 ): Promise<CompiledKnowledge> {
   // Build the sourceDeclarations map from the bundle's original sources so
   // tocLineFor can read lazy + via from each declaration when rendering.
@@ -635,7 +645,9 @@ async function compileFromManifest(
     ...(s.retrieval !== undefined ? { retrieval: s.retrieval } : {}),
   }));
   const compiled = compile(matSources, compileOpts, { rootDir: knowledgeDir });
-  await writeCompileManifest(knowledgeDir, compiled.manifest);
+  if (opts.writeManifest !== false) {
+    await writeCompileManifest(knowledgeDir, compiled.manifest);
+  }
   return compiled;
 }
 
@@ -651,6 +663,14 @@ export interface RunCompileFromMaterializedOpts {
   bundleDir: string;
   knowledgeDir: string;
   cacheDir: string;
+  /**
+   * When false, skip persisting `compile-manifest.json` to disk. Used by the
+   * GUI's drift-check dry-run path, which reads materialized state but must
+   * not touch the filesystem (the contract is "read what install would
+   * produce, hash it, compare"). Default: true (current behaviour, the CLI
+   * compile command always wants the persisted side effect).
+   */
+  writeManifest?: boolean;
 }
 
 /**
@@ -889,7 +909,9 @@ export async function runCompileFromMaterialized(
   // Compile is forced for this offline path: callers (CLI compile command)
   // explicitly asked for it. Honor that the same way the live path does when
   // `compile.progressive: true` is set.
-  const compiled = await compileFromManifest(manifest, block, liveDir);
+  const compiled = await compileFromManifest(manifest, block, liveDir, {
+    ...(opts.writeManifest !== undefined ? { writeManifest: opts.writeManifest } : {}),
+  });
   for (const w of compiled.warnings) warnings.push(w);
 
   return {
