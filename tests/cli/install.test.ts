@@ -10,6 +10,7 @@ import { SmithError } from "../../src/core/smith-error";
 import type { AgentBundle, InstallPaths } from "../../src/core/types";
 import type { Registry } from "../../src/io/registry";
 import type { OrchestratorResult } from "../../src/io/orchestrator";
+import { listPendingOps } from "../../src/io/pending-ops";
 import { fakeBundle } from "../_helpers/fakeBundle";
 
 const paths: InstallPaths = {
@@ -751,6 +752,51 @@ describe("cli/install", () => {
       const allErr = errs.join("\n");
       expect(allErr).toMatch(/opencode.*not detected/);
       expect(allErr).toMatch(/codex.*not detected/);
+    });
+
+    test("records pending ops for skipped platforms", async () => {
+      const tmpStateHome = await mkdtemp(join(tmpdir(), "smith-state-"));
+      try {
+        const code = await install({
+          name: "foo",
+          paths,
+          loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+          loadAllBundles: async () => ({
+            bundles: [
+              fakeBundle("foo", {
+                targets: ["opencode", "claude-code", "codex"],
+              }),
+            ],
+            failures: [],
+          }),
+          buildAndInstall: async () => emptyResult,
+          readAvailableMcpServers: async () => ({}),
+          loadRouteCache: async () => ({ schemaVersion: 1, entries: [] }),
+          detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
+          stateHome: () => tmpStateHome,
+          print: () => {},
+          printErr: () => {},
+        });
+        expect(code).toBe(0);
+        const ops = await listPendingOps(tmpStateHome);
+        expect(ops.map((o) => o.platform).sort()).toEqual(["codex", "opencode"]);
+        // Every PendingOp carries the canonical fields: schemaVersion 1,
+        // command tag, agent name, and a snapshot of the declared CLI
+        // targets at queue time so the replay can sanity-check drift.
+        for (const op of ops) {
+          expect(op.schemaVersion).toBe(1);
+          expect(op.command).toBe("agent.install");
+          expect(op.agent).toBe("foo");
+          expect(op.manifestTargetAtQueue.sort()).toEqual([
+            "claude-code",
+            "codex",
+            "opencode",
+          ]);
+          expect(typeof op.queuedAt).toBe("string");
+        }
+      } finally {
+        await rm(tmpStateHome, { recursive: true, force: true });
+      }
     });
   });
 });

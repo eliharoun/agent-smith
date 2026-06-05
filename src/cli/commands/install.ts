@@ -31,6 +31,7 @@ import {
 } from "../../io/mcp-config-readers";
 import { createSpawnOptsResolver } from "../../io/mcp-spawn-resolver";
 import { registerAgentInOpencodePlugin } from "../../io/opencode-plugin";
+import { recordPendingOp } from "../../io/pending-ops";
 import {
   type BuildAndInstallOptions,
   buildAndInstall,
@@ -230,6 +231,14 @@ export interface InstallCliOptions {
    * files for an undetected platform's `inherit` tier or curated fallback.
    */
   detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
+  /**
+   * DI seam for the on-disk state root used to record pending ops for
+   * skipped platforms. Production omits and gets `stateHome()` from
+   * `io/state-home`. Tests inject a temp dir so `recordPendingOp` writes
+   * land under `mkdtemp` rather than the user's real
+   * `~/.config/agent-smith/pending/`.
+   */
+  stateHome?: () => string;
   /**
    * Forcibly release a stale per-agent install lock before acquiring it.
    * When set, the install reads `<agentSmithHome>/agents/<agent>/.install.lock`
@@ -629,7 +638,13 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // is a Target with no CLI dependency and is preserved as-is.
   const isPlatformId = (t: Target): t is PlatformId =>
     t === "opencode" || t === "claude-code" || t === "codex" || t === "kiro";
-  bundles = bundles.map((b) => {
+  // Resolve the state root once (with DI). Used below to record a
+  // PendingOp per (agent, skipped platform) so a future `smith sync` can
+  // replay the install when the missing CLI shows up on PATH.
+  const stateHomeFn = o.stateHome ?? stateHome;
+  const stateRoot = stateHomeFn();
+  const nextBundles: AgentBundle[] = [];
+  for (const b of bundles) {
     const plan = resolveExecutionPlatforms({
       manifestTargets: b.config.targets.filter(isPlatformId),
       installed: installedPlatforms,
@@ -643,13 +658,37 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
     });
     const skipped = renderSkippedPlatforms(plan);
     if (skipped.length > 0) printErr(skipped);
+    // Record a PendingOp for each platform the manifest declared but the
+    // user's PATH doesn't currently expose. The breadcrumb lets a later
+    // `smith sync` (or the startup hint reader) replay this install on
+    // the missing platform without the user re-typing the command.
+    // `manifestTargetAtQueue` snapshots the bundle's declared CLI targets
+    // at queue time so the replay can validate the manifest hasn't drifted.
+    if (plan.skipped.length > 0) {
+      const manifestTargetAtQueue = b.config.targets.filter(isPlatformId);
+      const queuedAt = new Date().toISOString();
+      for (const platform of plan.skipped) {
+        await recordPendingOp(stateRoot, {
+          schemaVersion: 1,
+          agent: b.config.name,
+          command: "agent.install",
+          platform,
+          queuedAt,
+          manifestTargetAtQueue,
+        });
+      }
+    }
     const targetsForRender: Target[] = [
       ...plan.execution,
       ...b.config.targets.filter((t) => t === "agents-md"),
     ];
-    if (targetsForRender.length === b.config.targets.length) return b;
-    return { ...b, config: { ...b.config, targets: targetsForRender } };
-  });
+    if (targetsForRender.length === b.config.targets.length) {
+      nextBundles.push(b);
+    } else {
+      nextBundles.push({ ...b, config: { ...b.config, targets: targetsForRender } });
+    }
+  }
+  bundles = nextBundles;
 
   try {
     // Refresh-hook consent (spec §5.2 + §5.4). MUST run BEFORE buildAndInstall:
