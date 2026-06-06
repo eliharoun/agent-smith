@@ -62,6 +62,12 @@ export async function exportAgent(
 
     const smithVersion = await readSmithVersion();
 
+    // Dry-run is a manifest-only preview — no need to write files. Force
+    // archive mode so directory-mode output-path validation doesn't fire on
+    // a path the caller never intended to write to (e.g. the GUI's plan
+    // endpoint, which doesn't pass --to).
+    const effectiveFormat = opts.dryRun ? "archive" : format;
+
     const result = await exportBundle({
       bundlePath: bundle.bundlePath,
       bundleName: bundle.config.name,
@@ -69,8 +75,8 @@ export async function exportAgent(
       userMdPolicy: opts.userMd,
       now: () => new Date(),
       smithVersion,
-      format,
-      ...(format === "directory"
+      format: effectiveFormat,
+      ...(effectiveFormat === "directory"
         ? {
             outputPath: opts.to,
             includeManifest: !opts.noManifest,
