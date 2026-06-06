@@ -1,8 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { NotificationCenter } from "@/ui/NotificationCenter";
 import { KnowledgeSources } from "./KnowledgeSources";
+
+// useJobStream opens an EventSource which jsdom doesn't support. Since
+// KnowledgeSources tests only verify that the correct job request is POSTed
+// (not the SSE toast lifecycle), stub the stream to return an empty events array.
+vi.mock("@/hooks/useJobStream", () => ({ useJobStream: () => [] }));
 
 type Call = { url: string; init?: RequestInit | undefined };
 
@@ -128,11 +134,13 @@ function mockFetch(
 function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <QueryClientProvider client={qc}>
-      <NotificationCenter>
-        <KnowledgeSources agent="testing-agent" />
-      </NotificationCenter>
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <NotificationCenter>
+          <KnowledgeSources agent="testing-agent" />
+        </NotificationCenter>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -625,11 +633,13 @@ describe("KnowledgeSources", () => {
     ) as unknown as typeof fetch;
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <QueryClientProvider client={qc}>
-        <NotificationCenter>
-          <KnowledgeSources agent="foo-bar" />
-        </NotificationCenter>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <NotificationCenter>
+            <KnowledgeSources agent="foo-bar" />
+          </NotificationCenter>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     await waitFor(() => expect(screen.getByText("docs")).toBeInTheDocument());
     const toggle = screen.getByRole("switch", { name: /knowledge mcp server wiring/i });

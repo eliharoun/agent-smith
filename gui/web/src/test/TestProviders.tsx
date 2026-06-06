@@ -13,6 +13,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 
 interface Props {
   children: ReactNode;
@@ -27,7 +28,9 @@ export function TestProviders({ children, routerEntries }: Props) {
   return (
     <QueryClientProvider client={qc}>
       <MemoryRouter {...(routerEntries ? { initialEntries: routerEntries } : {})}>
-        {children}
+        <NotificationCenter>
+          {children}
+        </NotificationCenter>
       </MemoryRouter>
     </QueryClientProvider>
   );

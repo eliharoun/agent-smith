@@ -6,6 +6,7 @@ import {
   InstallJobWatcher,
   useInstallCompletionWatcher,
 } from "@/hooks/useInstallCompletionWatcher";
+import { useJobToast } from "@/hooks/useJobToast";
 import { Button } from "@/ui/Button";
 import { Chrome } from "@/ui/Chrome";
 import { ScreenShell } from "@/ui/ScreenShell";
@@ -31,6 +32,15 @@ function InstallFromUrlButton({ onClick }: { onClick: () => void }) {
 export function AgentsList() {
   const [installOpen, setInstallOpen] = useState(false);
   const { installJobIds, maybeFire } = useInstallCompletionWatcher();
+  const installAgentToast = useJobToast({
+    command: "agent.install",
+    label: {
+      progress: () => "Installing agent\u2026",
+      success: () => "Agent installed",
+      error: () => "Install failed",
+    },
+    dedupKey: "job-toast:agent.install",
+  });
 
   return (
     <ScreenShell
@@ -53,7 +63,12 @@ export function AgentsList() {
       }
     >
       <AgentList />
-      <InstallFromUrlModal kind="agent" open={installOpen} onClose={() => setInstallOpen(false)} />
+      <InstallFromUrlModal
+        kind="agent"
+        open={installOpen}
+        onClose={() => setInstallOpen(false)}
+        onDispatch={installAgentToast.dispatch}
+      />
       {/* One watcher per active agent.install job — fires sync-hint toast when
           the job exits 0 and its stdout contained a dir-install envelope. */}
       {installJobIds.map((id) => (

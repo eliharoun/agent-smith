@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useJobToast } from "@/hooks/useJobToast";
 import { deriveRemotePathWeb } from "@/lib/remote-path";
 import { REMOTE_ROOT_DISPLAY } from "@/lib/remote-root-display";
 import { AsciiGlyph } from "@/ui/AsciiGlyph";
@@ -29,6 +30,19 @@ export function AgentList() {
   const [activeCatalog, setActiveCatalog] = useState<string | null>(null);
   // C4.7.2: sync confirm dialog target (null when closed).
   const [syncTarget, setSyncTarget] = useState<AgentListRow | null>(null);
+
+  // Label closures capture syncTarget?.name at dispatch time, so the toast
+  // always references the name that was confirmed even if the user clicks
+  // another row before the job completes.
+  const syncToast = useJobToast({
+    command: "agent.sync",
+    label: {
+      progress: () => `Syncing ${syncTarget?.name ?? "agent"}…`,
+      success: () => `Synced ${syncTarget?.name ?? "agent"}`,
+      error: () => "Sync failed",
+    },
+    dedupKey: `job-toast:agent.sync:${syncTarget?.name ?? ""}`,
+  });
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -164,6 +178,7 @@ export function AgentList() {
           cloneDir={safeDerivePath(syncTarget.remote.url)}
           open
           onClose={() => setSyncTarget(null)}
+          onDispatch={syncToast.dispatch}
         />
       )}
     </Card>

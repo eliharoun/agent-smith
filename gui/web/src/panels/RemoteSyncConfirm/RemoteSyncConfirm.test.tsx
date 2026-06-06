@@ -1,6 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { jobsApi } from "@/api/jobs";
 import { TestProviders } from "@/test/TestProviders";
 import { RemoteSyncConfirm } from "./RemoteSyncConfirm";
 
@@ -12,6 +11,7 @@ const baseProps = {
   cloneDir: "~/.local/state/agent-smith/remote/github.com/o/r",
   open: true,
   onClose: () => {},
+  onDispatch: () => {},
 };
 
 describe("RemoteSyncConfirm (C4.6.1)", () => {
@@ -64,51 +64,38 @@ describe("RemoteSyncConfirm (C4.6.1)", () => {
 
   it("Cancel closes without dispatch", () => {
     const onClose = vi.fn();
-    const spy = vi.spyOn(jobsApi, "start").mockResolvedValue({ jobId: "x", preview: "" });
+    const onDispatch = vi.fn();
     render(
       <TestProviders>
-        <RemoteSyncConfirm {...baseProps} onClose={onClose} />
+        <RemoteSyncConfirm {...baseProps} onClose={onClose} onDispatch={onDispatch} />
       </TestProviders>,
     );
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onClose).toHaveBeenCalled();
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    expect(onDispatch).not.toHaveBeenCalled();
   });
 
-  it("Sync dispatches agent.sync for kind=agent and closes", async () => {
-    const calls: unknown[] = [];
-    const spy = vi.spyOn(jobsApi, "start").mockImplementation((req) => {
-      calls.push(req);
-      return Promise.resolve({ jobId: "j-sync-a", preview: "" });
-    });
+  it("Sync dispatches agent.sync for kind=agent and closes", () => {
+    const onDispatch = vi.fn();
     const onClose = vi.fn();
     render(
       <TestProviders>
-        <RemoteSyncConfirm {...baseProps} onClose={onClose} />
+        <RemoteSyncConfirm {...baseProps} onDispatch={onDispatch} onClose={onClose} />
       </TestProviders>,
     );
     fireEvent.click(screen.getByRole("button", { name: /^sync$/i }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]).toMatchObject({ command: "agent.sync", name: "alpha" });
+    expect(onDispatch).toHaveBeenCalledWith({ command: "agent.sync", name: "alpha" });
     expect(onClose).toHaveBeenCalled();
-    spy.mockRestore();
   });
 
-  it("Sync dispatches skill.sync for kind=skill", async () => {
-    const calls: unknown[] = [];
-    const spy = vi.spyOn(jobsApi, "start").mockImplementation((req) => {
-      calls.push(req);
-      return Promise.resolve({ jobId: "j-sync-s", preview: "" });
-    });
+  it("Sync dispatches skill.sync for kind=skill", () => {
+    const onDispatch = vi.fn();
     render(
       <TestProviders>
-        <RemoteSyncConfirm {...baseProps} kind="skill" name="arch" />
+        <RemoteSyncConfirm {...baseProps} kind="skill" name="arch" onDispatch={onDispatch} />
       </TestProviders>,
     );
     fireEvent.click(screen.getByRole("button", { name: /^sync$/i }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]).toMatchObject({ command: "skill.sync", name: "arch" });
-    spy.mockRestore();
+    expect(onDispatch).toHaveBeenCalledWith({ command: "skill.sync", name: "arch" });
   });
 });

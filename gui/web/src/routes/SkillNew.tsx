@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitVerify } from "@/hooks/useGitVerify";
-import { useStartJob } from "@/hooks/useStartJob";
+import { useJobToast } from "@/hooks/useJobToast";
 import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
@@ -51,8 +51,29 @@ export function SkillNew() {
   const [urlModalOpen, setUrlModalOpen] = useState(false);
   const [urlModalInitial, setUrlModalInitial] = useState("");
 
-  const start = useStartJob();
   const verify = useGitVerify();
+
+  const registerToast = useJobToast({
+    command: "skill.register",
+    label: {
+      progress: () => "Registering catalog…",
+      success: () => "Catalog registered",
+      error: () => "Register failed",
+    },
+    dedupKey: `job-toast:skill.register:${path}`,
+    onSuccess: () => nav("/skills"),
+  });
+
+  const installToast = useJobToast({
+    command: "skill.install",
+    label: {
+      progress: () => `Installing ${installRef || "skill"}…`,
+      success: () => `Installed ${installRef || "skill"}`,
+      error: () => "Install failed",
+    },
+    dedupKey: `job-toast:skill.install:${installRef}`,
+    onSuccess: () => nav("/skills"),
+  });
 
   const preview = useMemo(() => {
     if (mode === "register") {
@@ -75,18 +96,15 @@ export function SkillNew() {
 
   function submitRegister() {
     if (!path) return;
-    start.mutate(
-      {
-        command: "skill.register",
-        path,
-        kind,
-        ...(label ? { label } : {}),
-        ...(gitRemote ? { gitRemote } : {}),
-        allowEmpty,
-        skipGitCheck,
-      },
-      { onSuccess: () => nav("/skills") },
-    );
+    registerToast.dispatch({
+      command: "skill.register",
+      path,
+      kind,
+      ...(label ? { label } : {}),
+      ...(gitRemote ? { gitRemote } : {}),
+      allowEmpty,
+      skipGitCheck,
+    });
   }
 
   function submitInstall() {
@@ -98,7 +116,7 @@ export function SkillNew() {
     }
     const looksLikePath =
       installRef.startsWith("/") || installRef.startsWith("./") || installRef.startsWith("../");
-    start.mutate(
+    installToast.dispatch(
       looksLikePath
         ? {
             command: "skill.install",
@@ -112,7 +130,6 @@ export function SkillNew() {
             ...(installAs ? { as: installAs } : {}),
             targets: [],
           },
-      { onSuccess: () => nav("/skills") },
     );
   }
 
@@ -200,7 +217,7 @@ export function SkillNew() {
             )}
             <CliPreview command={preview} />
             <div className="flex justify-end">
-              <Button disabled={!path || start.isPending} onClick={submitRegister}>
+              <Button disabled={!path || registerToast.isPending} onClick={submitRegister}>
                 Register
               </Button>
             </div>
@@ -220,7 +237,7 @@ export function SkillNew() {
             />
             <CliPreview command={preview} />
             <div className="flex justify-end">
-              <Button disabled={!installRef || start.isPending} onClick={submitInstall}>
+              <Button disabled={!installRef || installToast.isPending} onClick={submitInstall}>
                 Install
               </Button>
             </div>
@@ -231,6 +248,7 @@ export function SkillNew() {
         kind="skill"
         open={urlModalOpen}
         onClose={() => setUrlModalOpen(false)}
+        onDispatch={installToast.dispatch}
         initialUrl={urlModalInitial}
       />
     </ScreenShell>

@@ -2,11 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InstallFromUrlModal } from "./InstallFromUrlModal";
 
-const mutate = vi.fn();
-vi.mock("@/hooks/useStartJob", () => ({ useStartJob: () => ({ mutate, isPending: false }) }));
+const onDispatch = vi.fn();
 
 beforeEach(() => {
-  mutate.mockReset();
+  onDispatch.mockReset();
   global.fetch = vi.fn(async () => ({
     ok: true,
     json: async () => ({
@@ -21,24 +20,24 @@ beforeEach(() => {
 
 describe("InstallFromUrlModal", () => {
   it("renders title with kind", () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     expect(screen.getByText(/install agent from url/i)).toBeInTheDocument();
   });
 
   it("renders URL and ref fields and disabled Discover button initially", () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     expect(screen.getByLabelText(/git url/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/git ref/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /discover/i })).toBeDisabled();
   });
 
   it("does not render when open=false", () => {
-    render(<InstallFromUrlModal kind="agent" open={false} onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open={false} onClose={() => {}} onDispatch={onDispatch} />);
     expect(screen.queryByLabelText(/git url/i)).toBeNull();
   });
 
   it("enables Discover when URL is non-empty", () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -46,12 +45,12 @@ describe("InstallFromUrlModal", () => {
   });
 
   it("renders skill-kind title for kind=skill", () => {
-    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
     expect(screen.getByText(/install skill from url/i)).toBeInTheDocument();
   });
 
   it("shows auto-install-skills checkbox in select step for kind=agent", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -71,7 +70,7 @@ describe("InstallFromUrlModal", () => {
         existingCatalog: null,
       }),
     }));
-    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -81,7 +80,7 @@ describe("InstallFromUrlModal", () => {
   });
 
   it("dispatches agent.install with agents + platforms after discover", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -90,8 +89,8 @@ describe("InstallFromUrlModal", () => {
     await waitFor(() => screen.getByText("my-agent"));
     fireEvent.click(screen.getByLabelText("my-agent"));
     fireEvent.click(screen.getByRole("button", { name: /install selected/i }));
-    expect(mutate).toHaveBeenCalledTimes(1);
-    const req = mutate.mock.calls[0]![0];
+    expect(onDispatch).toHaveBeenCalledTimes(1);
+    const req = onDispatch.mock.calls[0]![0];
     expect(req.command).toBe("agent.install");
     expect(req.from).toBe("https://github.com/o/r.git");
     expect(req.agents).toEqual(["my-agent"]);
@@ -101,7 +100,7 @@ describe("InstallFromUrlModal", () => {
   });
 
   it("omits ref when ref input is empty", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -109,11 +108,11 @@ describe("InstallFromUrlModal", () => {
     await waitFor(() => screen.getByText("my-agent"));
     fireEvent.click(screen.getByLabelText("my-agent"));
     fireEvent.click(screen.getByRole("button", { name: /install selected/i }));
-    expect(mutate.mock.calls[0]![0].ref).toBeUndefined();
+    expect(onDispatch.mock.calls[0]![0].ref).toBeUndefined();
   });
 
   it("drop zone rejects a non-.smith-bundle.tgz file with a visible error", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     const dropZone = screen.getByText(/drop a/i).closest("div")!;
     const badFile = new File(["content"], "agent.tar.gz", { type: "application/gzip" });
     fireEvent.drop(dropZone, {
@@ -129,7 +128,7 @@ describe("InstallFromUrlModal", () => {
       }
       return { ok: true, json: async () => ({}) };
     });
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     const dropZone = screen.getByText(/drop a/i).closest("div")!;
     const goodFile = new File(["archive bytes"], "my-agent.smith-bundle.tgz", { type: "application/gzip" });
     fireEvent.drop(dropZone, {
@@ -145,12 +144,12 @@ describe("InstallFromUrlModal", () => {
   });
 
   it("seeds url from initialUrl prop", () => {
-    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} initialUrl="https://github.com/x/y" />);
+    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} initialUrl="https://github.com/x/y" />);
     expect(screen.getByLabelText(/git url/i)).toHaveValue("https://github.com/x/y");
   });
 
   it("includes allowMissingCli in agent.install request when checkbox is checked", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -159,7 +158,7 @@ describe("InstallFromUrlModal", () => {
     fireEvent.click(screen.getByLabelText(/render even if the target platform cli isn't installed/i));
     fireEvent.click(screen.getByLabelText("my-agent"));
     fireEvent.click(screen.getByRole("button", { name: /install selected/i }));
-    expect(mutate.mock.calls[0]![0].allowMissingCli).toBe(true);
+    expect(onDispatch.mock.calls[0]![0].allowMissingCli).toBe(true);
   });
 
   it("shows error when discovery fails", async () => {
@@ -168,7 +167,7 @@ describe("InstallFromUrlModal", () => {
       status: 502,
       json: async () => ({ error: "repo not found", code: "git-clone-failed" }),
     }));
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     fireEvent.change(screen.getByLabelText(/git url/i), {
       target: { value: "https://github.com/o/r.git" },
     });
@@ -177,21 +176,21 @@ describe("InstallFromUrlModal", () => {
   });
 
   it("badges the source as archive when URL ends in .smith-bundle.tgz", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     const input = screen.getByLabelText(/git url/i);
     fireEvent.change(input, { target: { value: "/tmp/foo.smith-bundle.tgz" } });
     expect(screen.getByText(/\[archive\]/)).toBeInTheDocument();
   });
 
   it("badges the source as local directory for an absolute path", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     const input = screen.getByLabelText(/git url/i);
     fireEvent.change(input, { target: { value: "/Users/me/work/team-agents" } });
     expect(screen.getByText(/\[local directory\]/)).toBeInTheDocument();
   });
 
   it("badges the source as git url for a git@ URL", async () => {
-    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} onDispatch={onDispatch} />);
     const input = screen.getByLabelText(/git url/i);
     fireEvent.change(input, { target: { value: "git@github.com:acme/team-agents.git" } });
     expect(screen.getByText(/\[git url\]/)).toBeInTheDocument();

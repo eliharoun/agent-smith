@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 import { JobCompletionListener } from "@/panels/JobCompletionListener/JobCompletionListener";
+import { useDetectPlatformCli } from "@/hooks/useDetectPlatformCli";
+import { useDaemonRestartToast } from "@/hooks/useDaemonRestartToast";
+import { useDaemonStalenessToast } from "@/hooks/useDaemonStalenessToast";
 import { JobStreamModal } from "@/panels/JobStreamModal/JobStreamModal";
 import { captureToken } from "./api/client";
 import { AgentEditor } from "./routes/AgentEditor";
@@ -30,6 +33,21 @@ import { Update } from "./routes/Update";
 import { AppNav } from "./ui/AppNav";
 import { TopBar } from "./ui/TopBar";
 
+function DaemonStatusWatcher() {
+  useDaemonStalenessToast();
+  return null;
+}
+
+function DaemonRestartWatcher() {
+  useDaemonRestartToast();
+  return null;
+}
+
+function PlatformCliWatcher() {
+  useDetectPlatformCli();
+  return null;
+}
+
 export function App() {
   useEffect(() => {
     captureToken();
@@ -38,6 +56,9 @@ export function App() {
     <div className="min-h-screen bg-matrix-black text-matrix-body flex flex-col">
       <OnboardingGate>
         <JobCompletionListener />
+        <DaemonStatusWatcher />
+        <DaemonRestartWatcher />
+        <PlatformCliWatcher />
         <JobStreamModal />
         <TopBar />
         <div className="flex flex-1">

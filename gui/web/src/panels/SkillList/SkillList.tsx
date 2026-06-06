@@ -1,6 +1,7 @@
 import type { SkillSummary } from "gui-shared";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useJobToast } from "@/hooks/useJobToast";
 import { deriveRemotePathWeb } from "@/lib/remote-path";
 import { REMOTE_ROOT_DISPLAY } from "@/lib/remote-root-display";
 import { AsciiGlyph } from "@/ui/AsciiGlyph";
@@ -35,6 +36,19 @@ export function SkillList() {
   const [q, setQ] = useState("");
   // C4.7.3: sync confirm dialog target (null when closed).
   const [syncTarget, setSyncTarget] = useState<SkillSummary | null>(null);
+
+  // Label closures capture syncTarget?.name at dispatch time, so the toast
+  // always references the name that was confirmed even if the user clicks
+  // another row before the job completes.
+  const syncToast = useJobToast({
+    command: "skill.sync",
+    label: {
+      progress: () => `Syncing ${syncTarget?.name ?? "skill"}…`,
+      success: () => `Synced ${syncTarget?.name ?? "skill"}`,
+      error: () => "Sync failed",
+    },
+    dedupKey: `job-toast:skill.sync:${syncTarget?.name ?? ""}`,
+  });
 
   const filteredByCatalog = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -148,6 +162,7 @@ export function SkillList() {
           cloneDir={safeDerivePath(syncTarget.remote.url)}
           open
           onClose={() => setSyncTarget(null)}
+          onDispatch={syncToast.dispatch}
         />
       )}
     </Card>
