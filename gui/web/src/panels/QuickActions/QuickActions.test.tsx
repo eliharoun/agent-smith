@@ -19,10 +19,39 @@ describe("QuickActions", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/agents?add=true");
   });
 
-  it("renders Browse agents, Install matrix, and Run doctor actions", () => {
+  it("'+ Add skill' is a button and navigates to /skills/new on click", () => {
+    render(<MemoryRouter><QuickActions /></MemoryRouter>);
+    const btn = screen.getByRole("button", { name: /\+ add skill/i });
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(mockNavigate).toHaveBeenCalledWith("/skills/new");
+  });
+
+  it("renders the agents group: Browse agents + Manage installs", () => {
     render(<MemoryRouter><QuickActions /></MemoryRouter>);
     expect(screen.getByRole("link", { name: /browse agents/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /install matrix/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /manage installs/i })).toBeInTheDocument();
+  });
+
+  it("renders the skills group: Browse skills", () => {
+    render(<MemoryRouter><QuickActions /></MemoryRouter>);
+    expect(screen.getByRole("link", { name: /browse skills/i })).toBeInTheDocument();
+  });
+
+  it("renders the system group: Run doctor", () => {
+    render(<MemoryRouter><QuickActions /></MemoryRouter>);
     expect(screen.getByRole("link", { name: /run doctor/i })).toBeInTheDocument();
+  });
+
+  it("shows use-case group labels (agents / skills / system)", () => {
+    render(<MemoryRouter><QuickActions /></MemoryRouter>);
+    expect(screen.getByText("agents")).toBeInTheDocument();
+    expect(screen.getByText("skills")).toBeInTheDocument();
+    expect(screen.getByText("system")).toBeInTheDocument();
+  });
+
+  it("no longer shows the old 'Install matrix' label", () => {
+    render(<MemoryRouter><QuickActions /></MemoryRouter>);
+    expect(screen.queryByRole("link", { name: /install matrix/i })).toBeNull();
   });
 });

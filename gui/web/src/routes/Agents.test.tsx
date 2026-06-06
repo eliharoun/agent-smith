@@ -31,9 +31,14 @@ describe("Agents route — + Add agent button (v1.13.0)", () => {
     expect(screen.queryByRole("link", { name: /\+ new agent/i })).toBeNull();
   });
 
-  it("renders 'Install across platforms' secondary link", () => {
+  it("renders a 'Manage installs' button next to '+ Add agent' linking to the install matrix", () => {
     render(<TestProviders><AgentsList /></TestProviders>);
-    expect(screen.getByRole("link", { name: /install across platforms/i })).toBeInTheDocument();
+    const manage = screen.getByRole("button", { name: /manage installs/i });
+    expect(manage).toBeInTheDocument();
+    // It's wrapped in a Link to the install-matrix route.
+    expect(manage.closest("a")).toHaveAttribute("href", "/agents/install-matrix");
+    // The old tiny secondary text link is gone.
+    expect(screen.queryByRole("link", { name: /install across platforms/i })).toBeNull();
   });
 
   it("opens AddAgentModal when '+ Add agent' is clicked", () => {
