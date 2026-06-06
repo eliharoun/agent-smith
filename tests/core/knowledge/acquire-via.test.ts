@@ -10,15 +10,23 @@ import type { McpClient } from "../../../src/io/mcp-client";
 const FIXTURE = join(import.meta.dir, "..", "..", "_fixtures", "echo-mcp-server.ts");
 const HEAVY_TIMEOUT = 30_000;
 let tmpDir: string;
+let tmpStateHome: string;
+let origXdgStateHome: string | undefined;
 let pool: McpClientPool | null = null;
 
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "av-"));
+  tmpStateHome = await mkdtemp(join(tmpdir(), "av-state-"));
+  origXdgStateHome = process.env.XDG_STATE_HOME;
+  process.env.XDG_STATE_HOME = tmpStateHome;
   pool = null;
 });
 afterEach(async () => {
   if (pool) await pool.shutdown();
+  if (origXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+  else process.env.XDG_STATE_HOME = origXdgStateHome;
   await rm(tmpDir, { recursive: true, force: true });
+  await rm(tmpStateHome, { recursive: true, force: true });
 });
 
 describe("acquireViaMcp", () => {

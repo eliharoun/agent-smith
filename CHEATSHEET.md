@@ -1323,6 +1323,7 @@ All smith state lives under one root resolved by `stateHome()` (`src/io/state-ho
 | `SMITH_DOCTOR_PROBE_META` | `smith doctor` | `=1` enables URL-routing `_meta` probe in `smith doctor`'s `url-routing` section. Experimental. Default off. |
 | `SMITH_HINT_PENDING` | post-install hint banner | `=1` triggers a one-shot post-install hint banner about pending platform-detection sync operations. Default off. |
 | `SMITH_PROBE_META` | `smith agent install`, `smith knowledge fetch` | `=1` enables Layer 2 `_meta` self-claim collection during `smith agent install` and `smith knowledge fetch`. Experimental; spawns every declared MCP server up front. Default off. |
+| `SMITH_MCP_VERBOSE` | every smith command that spawns child MCP servers | `=1` restores the old behavior of inheriting child MCP server stderr to the terminal. Default off (stderr piped to per-server log files under `<runtimeStateHome>/mcp-logs/`). |
 | `AGENT_SMITH_DEBUG` | every command (via `isDebug()`) | **deprecated alias for `SMITH_DEBUG`**; setting it triggers a one-shot deprecation warning on stderr. Use `SMITH_DEBUG` instead. |
 | `EDITOR` | `init-user` | editor for `USER.md` (default `vi`) |
 | `XDG_CONFIG_HOME` | every smith command (via `stateHome()`) | base dir for smith's state root; resolves to `${XDG_CONFIG_HOME}/agent-smith/...` when set, `~/.config/agent-smith/...` when unset/empty |

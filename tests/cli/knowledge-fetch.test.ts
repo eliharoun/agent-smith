@@ -65,13 +65,21 @@ function fakeBundle(
 
 describe("knowledgeFetch", () => {
   let dir: string;
+  let tmpStateHome: string;
+  let origXdgStateHome: string | undefined;
   const spies: Array<ReturnType<typeof spyOn>> = [];
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "smith-kf-"));
+    tmpStateHome = await mkdtemp(join(tmpdir(), "smith-kf-state-"));
+    origXdgStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = tmpStateHome;
   });
   afterEach(async () => {
     for (const s of spies.splice(0)) s.mockRestore();
+    if (origXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = origXdgStateHome;
     await rm(dir, { recursive: true, force: true });
+    await rm(tmpStateHome, { recursive: true, force: true });
   });
 
   it("re-runs install for the named agent", async () => {

@@ -209,14 +209,22 @@ const ECHO_FIXTURE = join(import.meta.dir, "..", "..", "_fixtures", "echo-mcp-se
 describe("acquire-source: via routing", () => {
   let pool: McpClientPool | null = null;
   let dir: string;
+  let tmpStateHome: string;
+  let origXdgStateHome: string | undefined;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "as-via-"));
+    tmpStateHome = await mkdtemp(join(tmpdir(), "as-state-"));
+    origXdgStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = tmpStateHome;
     pool = null;
   });
   afterEach(async () => {
     if (pool) await pool.shutdown();
+    if (origXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = origXdgStateHome;
     await rm(dir, { recursive: true, force: true });
+    await rm(tmpStateHome, { recursive: true, force: true });
   });
 
   it("routes through MCP when via is set and pool injected", async () => {
@@ -289,14 +297,22 @@ describe("acquire-source: via routing", () => {
 describe("acquire-source: Phase 3 resolver", () => {
   let pool: McpClientPool | null = null;
   let dir: string;
+  let tmpStateHome: string;
+  let origXdgStateHome: string | undefined;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "as-phase3-"));
+    tmpStateHome = await mkdtemp(join(tmpdir(), "as-p3-state-"));
+    origXdgStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = tmpStateHome;
     pool = null;
   });
   afterEach(async () => {
     if (pool) await pool.shutdown();
+    if (origXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = origXdgStateHome;
     await rm(dir, { recursive: true, force: true });
+    await rm(tmpStateHome, { recursive: true, force: true });
   });
 
   it("uses cached route when available", async () => {

@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -622,12 +622,23 @@ describe("refreshSource", () => {
 
 describe("refreshSource: via routing", () => {
   let pool: McpClientPool | null = null;
+  let tmpStateHome: string;
+  let origXdgStateHome: string | undefined;
+
+  beforeEach(async () => {
+    tmpStateHome = await mkdtemp(join(tmpdir(), "rs-state-"));
+    origXdgStateHome = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = tmpStateHome;
+  });
 
   afterEach(async () => {
     if (pool) {
       await pool.shutdown();
       pool = null;
     }
+    if (origXdgStateHome === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = origXdgStateHome;
+    await rm(tmpStateHome, { recursive: true, force: true });
   });
 
   test("threads mcpPool through to acquireSource", async () => {
