@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { AgentExportModal } from "./AgentExportModal";
 
 const mutate = vi.fn();
@@ -72,15 +72,74 @@ describe("AgentExportModal", () => {
     expect(cb.checked).toBe(false);
   });
 
-  it("confirm step shows the resolved path read-only (no text input)", async () => {
+  it("confirm step shows the resolved path in an editable input", async () => {
     renderModal();
     // Wait for plan to load, then advance to confirm step.
     await waitFor(() => screen.getByText("code-reviewer"));
     fireEvent.click(screen.getByText("continue"));
-    // The resolved path must appear as static text, not as an input.
-    expect(screen.getByText("/Users/test/Downloads")).toBeTruthy();
-    expect(screen.queryByRole("textbox", { name: /output directory/i })).toBeNull();
+    // The resolved path must appear as an editable input.
+    const input = (await waitFor(() =>
+      screen.getByRole("textbox", { name: /save to path/i }),
+    )) as HTMLInputElement;
+    expect(input.value).toBe("/Users/test/Downloads");
     // Settings link must be present.
     expect(screen.getByText(/change default in settings/i)).toBeTruthy();
   });
+});
+
+test("renders the format segmented control on the Plan step", async () => {
+  renderModal({ open: true });
+  await waitFor(() => screen.getByRole("button", { name: /Archive/i }));
+  expect(screen.getByRole("button", { name: /Archive/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Directory/i })).toBeInTheDocument();
+});
+
+test("clicking Directory toggles the format and re-fetches the plan", async () => {
+  renderModal({ open: true });
+  await waitFor(() => screen.getByRole("button", { name: /Directory/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Directory/i }));
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Directory/i }).getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+test("shows a collision warning when the destination <name>/ exists", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = vi.fn((url: string | URL | Request, _init?: RequestInit) => {
+    const u = url.toString();
+    if (u.includes("/export/preflight-collision")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ exists: true, modifiedAt: "2026-06-01T00:00:00Z" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    if (u.includes("/export/plan")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ manifest: FAKE_MANIFEST, defaultExportDir: "/tmp" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as unknown as typeof globalThis.fetch;
+
+  try {
+    renderModal({ open: true });
+    // Switch to directory format on the plan step.
+    await waitFor(() => screen.getByRole("button", { name: /Directory/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Directory/i }));
+    // Wait for plan ready then click Continue.
+    await waitFor(() => expect(screen.getByRole("button", { name: /continue/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    // After advancing to confirm step, collision preflight should fire and show the warning.
+    await waitFor(() => {
+      expect(screen.getByText(/already exists/i)).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText(/overwrite existing files/i)).toBeInTheDocument();
+  } finally {
+    global.fetch = originalFetch;
+  }
 });

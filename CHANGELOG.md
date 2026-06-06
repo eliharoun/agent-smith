@@ -4,6 +4,64 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] — 2026-06-05
+
+Producer side gains a directory-mode export for publishing bundles
+into shared catalog repos; recipient side gains a local-directory
+install path for working from already-cloned catalogs. The GUI's
+Export modal grows a format toggle, recents dropdown, and collision
+preflight; the Install modal grows a live source-type badge and a
+sticky info toast that surfaces git-remote registration when the
+target is a git checkout.
+
+### Added
+
+- `smith agent export <name> --format directory --to <dir>`: writes
+  loose files at `<dir>/<name>/` instead of a `.smith-bundle.tgz`
+  archive. Refuses if `<name>/` exists; `--force` overrides with full
+  replace. New flags `--with-readme` (off by default — the
+  auto-generated README's content is wrong inside a git checkout)
+  and `--no-manifest` (default keeps the manifest).
+- `smith agent install --from <local-dir>`: register-and-install from
+  a local directory. Refuses paths inside `<XDG_STATE_HOME>/.../remote/`
+  (use the upstream URL instead) and re-registration of the same
+  path. Prints a one-line stderr hint when the directory is a git
+  checkout, suggesting `smith agent register --git-remote` to enable
+  `smith agent sync`.
+- GUI Export modal: segmented format toggle on the Plan step
+  (Archive | Directory) with a one-time dismissible hint; editable
+  path field with a per-format recents dropdown on Confirm; collision
+  preflight + Overwrite toggle on Confirm; format-aware Run+Result
+  with a "Copy git commit command" CTA in directory mode.
+- GUI Install modal: live `[archive]`/`[local directory]`/`[git url]`
+  badge below the URL field; folder-drop friendly error.
+- GUI sync-hint toast: sticky info toast fires after a local-dir
+  install when the directory has a detected git remote, with a
+  "Register for sync" action button. Dismissed paths persist in
+  localStorage.
+- New endpoint `POST /api/agents/:name/export/preflight-collision`
+  for the modal's collision check.
+- New endpoint `POST /api/agents/discover-from-dir` for the install
+  modal's local-directory discovery.
+- New helpers in `src/io/`: `local-dir-detect.ts` and
+  `git-remote-detect.ts` (parses `.git/config` directly, no shell-out
+  to `git`).
+
+### Changed
+
+- The export plan endpoint accepts a `format` query param so the
+  preview adapts (file list vs single archive size).
+- `formatExportSummary` and friends now branch on format; directory
+  mode prints a "next steps" hint with the git commit command on TTY.
+
+### Documentation
+
+- `guide/14-cli-reference.md` gains full reference entries for
+  `--format directory` and `--from <local-dir>`.
+- `guide/15-sharing-and-distribution.md` gains §9.9 (directory-mode
+  publishing) and §9.10 (installing from a local checkout).
+- `README.md`, `CHEATSHEET.md`, and `GUIDE.md` updated.
+
 ## [1.10.2] — 2026-06-05
 
 Hotfix release that hardens long-running daemons against staleness after

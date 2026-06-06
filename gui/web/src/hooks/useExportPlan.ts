@@ -9,7 +9,10 @@ interface PlanState {
   error?: string;
 }
 
-export function useExportPlan(name: string | null) {
+export function useExportPlan(
+  name: string | null,
+  format: "archive" | "directory" = "archive",
+) {
   const [state, setState] = useState<PlanState>({ status: "idle" });
 
   useEffect(() => {
@@ -20,7 +23,7 @@ export function useExportPlan(name: string | null) {
     let cancelled = false;
     setState({ status: "loading" });
     apiFetch<{ manifest: ExportManifest; defaultExportDir: string }>(
-      `/api/agents/${encodeURIComponent(name)}/export/plan`,
+      `/api/agents/${encodeURIComponent(name)}/export/plan?format=${format}`,
       { method: "POST" },
     )
       .then((body) => {
@@ -41,7 +44,7 @@ export function useExportPlan(name: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [name]);
+  }, [name, format]);
 
   return state;
 }

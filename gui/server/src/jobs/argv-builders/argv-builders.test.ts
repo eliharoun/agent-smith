@@ -923,6 +923,10 @@ describe("buildAgentExport", () => {
       json: false,
       dryRun: false,
       stdout: false,
+      format: "archive",
+      withReadme: false,
+      noManifest: false,
+      force: false,
     });
     expect(r.argv).toEqual([
       "agent",
@@ -946,6 +950,10 @@ describe("buildAgentExport", () => {
       json: true,
       dryRun: false,
       stdout: false,
+      format: "archive",
+      withReadme: false,
+      noManifest: false,
+      force: false,
     });
     expect(r.argv).toContain("--no-include-skills");
     expect(r.argv).toContain("--json");
@@ -962,7 +970,91 @@ describe("buildAgentExport", () => {
         json: false,
         dryRun: false,
         stdout: true,
+        format: "archive",
+        withReadme: false,
+        noManifest: false,
+        force: false,
       }),
     ).toThrow();
+  });
+
+  test("emits --format directory when format=directory", () => {
+    const result = buildAgentExport({
+      name: "foo",
+      to: "/tmp/bundles",
+      includeSkills: true,
+      userMd: "stub",
+      compression: "gzip",
+      json: false,
+      dryRun: false,
+      stdout: false,
+      format: "directory",
+      withReadme: false,
+      noManifest: false,
+      force: false,
+    });
+    expect(result.argv).toContain("--format");
+    expect(result.argv).toContain("directory");
+    expect(result.argv).not.toContain("--with-readme");
+    expect(result.argv).not.toContain("--no-manifest");
+    expect(result.argv).not.toContain("--force");
+  });
+
+  test("emits --with-readme / --no-manifest / --force when set", () => {
+    const result = buildAgentExport({
+      name: "foo",
+      to: "/tmp/bundles",
+      includeSkills: true,
+      userMd: "stub",
+      compression: "gzip",
+      json: false,
+      dryRun: false,
+      stdout: false,
+      format: "directory",
+      withReadme: true,
+      noManifest: true,
+      force: true,
+    });
+    expect(result.argv).toContain("--with-readme");
+    expect(result.argv).toContain("--no-manifest");
+    expect(result.argv).toContain("--force");
+  });
+
+  test("rejects --format directory --stdout", () => {
+    expect(() =>
+      buildAgentExport({
+        name: "foo",
+        to: ".",
+        includeSkills: true,
+        userMd: "stub",
+        compression: "gzip",
+        json: false,
+        dryRun: false,
+        stdout: true,
+        format: "directory",
+        withReadme: false,
+        noManifest: false,
+        force: false,
+      }),
+    ).toThrow(/stdout/);
+  });
+
+  test("rejects --format directory --compression none", () => {
+    expect(() =>
+      buildAgentExport({
+        name: "foo",
+        to: "/tmp/bundles",
+        includeSkills: true,
+        userMd: "stub",
+        compression: "none",
+        json: false,
+        dryRun: false,
+        stdout: false,
+        format: "directory",
+        withReadme: false,
+        noManifest: false,
+        force: false,
+      }),
+    ).toThrow(/compression/);
   });
 });

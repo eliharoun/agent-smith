@@ -35,3 +35,22 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export interface DirectoryExportSummaryInput {
+  bundleName: string;
+  outputPath: string;
+  filesWritten: string[];
+}
+
+export function formatDirectoryExportSummary(s: DirectoryExportSummaryInput): string {
+  // Build a concise hint that suggests the next git steps. The user might
+  // not be in a git repo; that's fine — the hint is harmless to ignore.
+  const parent = s.outputPath.split("/").slice(0, -1).join("/");
+  const lines = [
+    pc.green(`✓ wrote ${s.filesWritten.length} files to ${s.outputPath}`),
+    "",
+    "next:",
+    `  cd ${parent} && git add ${s.bundleName} && git commit -m "Add ${s.bundleName} agent"`,
+  ];
+  return lines.join("\n");
+}

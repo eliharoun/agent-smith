@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, readFile, mkdir, copyFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exportAgent } from "../../src/cli/commands/export";
@@ -118,5 +119,72 @@ describe("smith agent export", () => {
     } finally {
       process.stdout.write = original;
     }
+  });
+});
+
+describe("smith agent export --format directory", () => {
+  test("writes loose files when --format directory --to <dir>", async () => {
+    await seedBundle();
+    const outDir = await mkdtemp(join(tmpdir(), "agent-export-dir-out-"));
+    try {
+      const result = await exportAgent("minimal-bundle", {
+        to: outDir,
+        format: "directory",
+        includeSkills: false,
+        userMd: "stub",
+        compression: "gzip",
+        json: false,
+        dryRun: false,
+        stdout: false,
+        force: false,
+        withReadme: false,
+        noManifest: false,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.outputPath).toBe(join(outDir, "minimal-bundle"));
+      expect(existsSync(join(outDir, "minimal-bundle", "agent.config.json"))).toBe(true);
+      expect(existsSync(join(outDir, "minimal-bundle", "_smith-export.json"))).toBe(true);
+      expect(existsSync(join(outDir, "minimal-bundle", "README.md"))).toBe(false);
+    } finally {
+      await rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects --format directory --stdout at parse time", async () => {
+    await seedBundle();
+    const result = await exportAgent("minimal-bundle", {
+      to: ".",
+      format: "directory",
+      includeSkills: false,
+      userMd: "stub",
+      compression: "gzip",
+      json: false,
+      dryRun: false,
+      stdout: true,
+      force: false,
+      withReadme: false,
+      noManifest: false,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("stdout");
+  });
+
+  test("rejects --format directory --compression none at parse time", async () => {
+    await seedBundle();
+    const result = await exportAgent("minimal-bundle", {
+      to: ".",
+      format: "directory",
+      includeSkills: false,
+      userMd: "stub",
+      compression: "none",
+      json: false,
+      dryRun: false,
+      stdout: false,
+      force: false,
+      withReadme: false,
+      noManifest: false,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("compression");
   });
 });

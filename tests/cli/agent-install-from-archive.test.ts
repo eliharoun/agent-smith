@@ -41,7 +41,7 @@ async function seedArchive(): Promise<string> {
     smithVersion: "1.7.0",
   });
   const archivePath = join(home, "minimal.smith-bundle.tgz");
-  await writeFile(archivePath, result.archive);
+  await writeFile(archivePath, result.archive!);
   return archivePath;
 }
 

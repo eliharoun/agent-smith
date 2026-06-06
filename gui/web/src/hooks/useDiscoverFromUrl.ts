@@ -32,8 +32,21 @@ export function useDiscoverFromUrl(kind: "skill" | "agent") {
     setStatus("discovering");
     setError(null);
     try {
-      const path = `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-url`;
-      const data = await apiFetch<DiscoverData>(path, { method: "POST", body: JSON.stringify({ url, ref }) });
+      // Local-directory inputs (absolute path or ./) are dispatched to the
+      // discover-from-dir endpoint for agents. Skills keep using the URL
+      // endpoint because skills/discover-from-dir does not exist yet.
+      const isLocalDir =
+        kind === "agent" &&
+        /^[\/~]|^\.[\/]/.test(url) &&
+        !url.endsWith(".smith-bundle.tgz") &&
+        !url.endsWith(".tgz");
+      const apiPath = isLocalDir
+        ? "/api/agents/discover-from-dir"
+        : `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-url`;
+      const body = isLocalDir
+        ? JSON.stringify({ path: url })
+        : JSON.stringify({ url, ref });
+      const data = await apiFetch<DiscoverData>(apiPath, { method: "POST", body });
       setData(data);
       setStatus("select");
     } catch (e) {

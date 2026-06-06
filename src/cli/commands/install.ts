@@ -343,10 +343,100 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         printErr(`smith: failed to install from ${localPath}: ${(err as Error).message}`);
         return 2;
       }
+    } else if (await (await import("../../io/local-dir-detect")).isLocalDirectory(o.from)) {
+      const { installFromDir } = await import("../../core/install-from-dir");
+      let dirResult: Awaited<ReturnType<typeof installFromDir>>;
+      try {
+        dirResult = await installFromDir({ localPath: o.from });
+      } catch (err) {
+        if (err instanceof SmithError) throw err;
+        printErr(`smith: failed to install from ${o.from}: ${(err as Error).message}`);
+        return 2;
+      }
+
+      // Sync-registration hint on TTY when the directory has a git remote.
+      if (dirResult.detectedGitRemote !== undefined && process.stderr.isTTY) {
+        printErr(
+          `hint: this directory is a git repo. To enable \`smith agent sync\`, register the remote:\n  smith agent register ${dirResult.catalogRootPath} --git-remote ${dirResult.detectedGitRemote}`,
+        );
+      }
+
+      // --json: emit envelope so the GUI watcher can read catalogRootPath and
+      // detectedGitRemote from stdout, then continue into the install loop.
+      // Unlike the git-URL branch (which exits after discovery), local-dir
+      // installs always proceed — the JSON line is informational, not a gate.
+      if (o.json) {
+        process.stdout.write(
+          JSON.stringify({
+            catalogRootPath: dirResult.catalogRootPath,
+            detectedGitRemote: dirResult.detectedGitRemote ?? null,
+            bundles: dirResult.bundles,
+          }) + "\n",
+        );
+      }
+
+      // Resolve which bundles to install. Mirror the git-URL branch's
+      // resolveAgentSelection flow exactly so --all / --agents / [name]
+      // behave identically to --from <git-url> minus the clone.
+      const isTtyDir = o.isTTY ? o.isTTY() : Boolean(process.stdin.isTTY);
+      const readDir = o.prompt
+        ? () => o.prompt!("> ")
+        : (): Promise<string> => import("../prompt").then((m) => m.readToken("> "));
+      const discoBundles = dirResult.bundles.map((name) => ({
+        name,
+        description: "",
+        alreadyInstalled: false,
+      }));
+      const dirNames = await resolveAgentSelection(discoBundles, {
+        ...(o.name ? { name: o.name } : {}),
+        ...(o.agents ? { agents: o.agents } : {}),
+        all: Boolean(o.all),
+        isTty: isTtyDir,
+        read: readDir,
+        from: o.from,
+        printErr,
+      });
+      if (dirNames === null) return 2;
+
+      // Per-bundle install — recursively call install() with from cleared
+      // so each bundle goes through the standard local-bundle install path
+      // (including pending-ops machinery for skipped platforms).
+      const chosenDir = o.platformFilter ?? undefined;
+      let failedDir = 0;
+      let installedDir = 0;
+      for (const n of dirNames) {
+        const code = await install({
+          name: n,
+          paths,
+          ...(chosenDir ? { platformFilter: chosenDir } : {}),
+          ...(o.noRefreshHooks ? { noRefreshHooks: true } : {}),
+          ...(o.loadRegistry ? { loadRegistry: o.loadRegistry } : {}),
+          ...(o.loadAllBundles ? { loadAllBundles: o.loadAllBundles } : {}),
+          ...(o.buildAndInstall ? { buildAndInstall: o.buildAndInstall } : {}),
+          ...(o.force ? { force: true } : {}),
+          ...(o.verbose ? { verbose: true } : {}),
+          ...(o.allowMissingMcp ? { allowMissingMcp: true } : {}),
+          ...(o.allowMissingCli ? { allowMissingCli: true } : {}),
+          ...(o.platformConventions ? { platformConventions: o.platformConventions } : {}),
+          print,
+          printErr,
+          ...(o.skillMode ? { skillMode: o.skillMode } : {}),
+          ...(o.refreshConsent ? { refreshConsent: o.refreshConsent } : {}),
+          ...(o.agentSmithHome ? { agentSmithHome: o.agentSmithHome } : {}),
+          ...(o.codexHome ? { codexHome: o.codexHome } : {}),
+          ...(o.opencodeConfigHome ? { opencodeConfigHome: o.opencodeConfigHome } : {}),
+          ...(o.forceUnlock ? { forceUnlock: true } : {}),
+          ...(o.stateHome ? { stateHome: o.stateHome } : {}),
+          ...(o.detectInstalledPlatforms ? { detectInstalledPlatforms: o.detectInstalledPlatforms } : {}),
+        });
+        if (code === 0) installedDir++;
+        else failedDir++;
+      }
+      return failedDir > 0 ? (installedDir > 0 ? 3 : 1) : 0;
     } else {
     const { isLikelyGitUrl } = await import("../../io/remote-path");
     if (!isLikelyGitUrl(o.from)) {
-      printErr(`smith: --from is not a recognized git url: ${o.from}`);
+      printErr(`smith: --from is not a recognized git url, archive, or directory: ${o.from}`);
       return 2;
     }
     const { discoverFromUrl, installFromUrl } = await import("../../core/install-from-url");

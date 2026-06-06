@@ -44,7 +44,7 @@ async function seedImportedCatalog(): Promise<{ archivePath: string; label: stri
     smithVersion: "1.7.0",
   });
   const archivePath = join(home, "minimal.smith-bundle.tgz");
-  await writeFile(archivePath, result.archive);
+  await writeFile(archivePath, result.archive!);
   await installFromArchive({ archivePath, smithVersion: "1.7.0" });
   return { archivePath, label: "imported/minimal-bundle" };
 }

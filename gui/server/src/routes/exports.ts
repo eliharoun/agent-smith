@@ -21,7 +21,11 @@ export function registerExportsRoute(app: Hono, deps: ExportsRouteDeps): void {
         400 as ContentfulStatusCode,
       );
     }
-    const r = await run(["agent", "export", name, "--dry-run", "--json"]);
+    const format = c.req.query("format") ?? "archive";
+    if (format !== "archive" && format !== "directory") {
+      return c.json({ error: "invalid format" }, 400 as ContentfulStatusCode);
+    }
+    const r = await run(["agent", "export", name, "--dry-run", "--json", "--format", format]);
     if (r.code !== 0) {
       return c.json(
         { error: r.stderr.split("\n").slice(-5).join("\n") || "dry-run failed" },
