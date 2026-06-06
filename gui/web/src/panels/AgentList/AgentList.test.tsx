@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { AgentList } from "./AgentList";
 
 type FetchMock = (input: RequestInfo | URL) => Promise<Response>;
@@ -22,9 +23,11 @@ function renderList() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
-        <AgentList />
-      </MemoryRouter>
+      <NotificationCenter>
+        <MemoryRouter>
+          <AgentList />
+        </MemoryRouter>
+      </NotificationCenter>
     </QueryClientProvider>,
   );
 }

@@ -7,6 +7,7 @@ import { useDetectedPlatforms } from "@/hooks/useDetectedPlatforms";
 import { useGrantRefreshConsent, useKnowledge } from "@/hooks/useKnowledge";
 import { useReinstall } from "@/hooks/useReinstall";
 import { useStartJob } from "@/hooks/useStartJob";
+import { useJobToast } from "@/hooks/useJobToast";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
@@ -105,6 +106,47 @@ export function KnowledgeSources({ agent }: Props) {
   // itself can't own this hook: by the time the user clicks the toast
   // action, the modal is already gone.
   const { reinstall } = useReinstall(agent);
+
+  const compileToast = useJobToast({
+    command: "knowledge.compile",
+    label: {
+      progress: () => "Compiling knowledge…",
+      success: () => "Knowledge compiled",
+      error: () => "Compile failed",
+    },
+    dedupKey: `job-toast:knowledge.compile:${agent}`,
+  });
+
+  const fetchAllToast = useJobToast({
+    command: "knowledge.fetch",
+    label: {
+      progress: () => "Refreshing knowledge…",
+      success: () => "Knowledge refreshed",
+      error: () => "Refresh failed",
+    },
+    dedupKey: `job-toast:knowledge.fetch:${agent}`,
+  });
+
+  const fetchSingleToast = useJobToast({
+    command: "knowledge.fetch",
+    label: {
+      progress: () => "Refreshing source…",
+      success: () => "Source refreshed",
+      error: () => "Refresh failed",
+    },
+    dedupKey: `job-toast:knowledge.fetch.single:${agent}`,
+  });
+
+  const removeToast = useJobToast({
+    command: "knowledge.remove",
+    label: {
+      progress: () => "Removing source…",
+      success: () => "Source removed",
+      error: () => "Remove failed",
+    },
+    dedupKey: `job-toast:knowledge.remove:${agent}`,
+  });
+
   const [addOpen, setAddOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<KnowledgeSource | null>(null);
   const [editing, setEditing] = useState<KnowledgeSource | null>(null);
@@ -304,7 +346,7 @@ export function KnowledgeSources({ agent }: Props) {
           <Button
             variant="ghost"
             disabled={empty}
-            onClick={() => start.mutate({ command: "knowledge.compile", name: agent })}
+            onClick={() => compileToast.dispatch({ command: "knowledge.compile", name: agent })}
           >
             compile
           </Button>
@@ -408,7 +450,7 @@ export function KnowledgeSources({ agent }: Props) {
                 source={joined.source}
                 refreshCache={joined.refreshCache}
                 onRefresh={() =>
-                  start.mutate({
+                  fetchSingleToast.dispatch({
                     command: "knowledge.fetch",
                     agent,
                     source: joined.source.id,
@@ -464,7 +506,7 @@ export function KnowledgeSources({ agent }: Props) {
           }
           onCancel={() => setPendingRemove(null)}
           onConfirm={() => {
-            start.mutate({
+            removeToast.dispatch({
               command: "knowledge.remove",
               agent,
               sourceId: pendingRemove.id,
@@ -497,7 +539,7 @@ export function KnowledgeSources({ agent }: Props) {
           }
           onCancel={() => setRefreshAllConfirm(false)}
           onConfirm={() => {
-            start.mutate({ command: "knowledge.fetch", agent });
+            fetchAllToast.dispatch({ command: "knowledge.fetch", agent });
             setRefreshAllConfirm(false);
           }}
         />

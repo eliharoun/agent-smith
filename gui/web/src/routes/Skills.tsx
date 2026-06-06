@@ -4,6 +4,7 @@ import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
 import { SkillBootstrap } from "@/panels/SkillBootstrap";
 import { SkillCatalogList } from "@/panels/SkillCatalogList";
 import { SkillList } from "@/panels/SkillList";
+import { useJobToast } from "@/hooks/useJobToast";
 import { Button } from "@/ui/Button";
 import { Chrome } from "@/ui/Chrome";
 import { ScreenShell } from "@/ui/ScreenShell";
@@ -27,6 +28,15 @@ function InstallFromUrlButton({ onClick }: { onClick: () => void }) {
 
 export function Skills() {
   const [installOpen, setInstallOpen] = useState(false);
+  const installSkillToast = useJobToast({
+    command: "skill.install",
+    label: {
+      progress: () => "Installing skill\u2026",
+      success: () => "Skill installed",
+      error: () => "Install failed",
+    },
+    dedupKey: "job-toast:skill.install",
+  });
 
   return (
     <ScreenShell
@@ -48,7 +58,12 @@ export function Skills() {
       <SkillList />
       <SkillBootstrap />
       <SkillCatalogList />
-      <InstallFromUrlModal kind="skill" open={installOpen} onClose={() => setInstallOpen(false)} />
+      <InstallFromUrlModal
+        kind="skill"
+        open={installOpen}
+        onClose={() => setInstallOpen(false)}
+        onDispatch={installSkillToast.dispatch}
+      />
     </ScreenShell>
   );
 }

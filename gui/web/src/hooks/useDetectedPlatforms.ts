@@ -8,13 +8,14 @@ export const detectedPlatformsKey = ["platforms", "detected"] as const;
  * the consent banner and any other UI that should filter actions to
  * platforms the user has installed.
  *
- * Cached for the lifetime of the React-query client; staleTime is short
- * so installing a new CLI mid-session is picked up reasonably quickly.
+ * Polls every 30 s so that useDetectPlatformCli can fire a toast when the
+ * user installs a new platform CLI mid-session.
  */
 export function useDetectedPlatforms() {
   return useQuery({
     queryKey: detectedPlatformsKey,
     queryFn: platformsApi.detected,
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 }

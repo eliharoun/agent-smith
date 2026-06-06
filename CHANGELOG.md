@@ -4,6 +4,40 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] — 2026-06-05
+
+Every fire-and-forget GUI job now surfaces toast feedback: sticky progress
+on dispatch, timed success on clean exit, sticky error with stderr tail and
+Retry/View-logs actions on failure. Three ambient monitoring toasts cover
+daemon health, daemon restart-after-upgrade, and pending-ops replay when a
+new platform CLI is installed.
+
+### Added
+
+- `useJobToast` hook (`gui/web/src/hooks/useJobToast.ts`): generic
+  progress→success/error toast lifecycle for any `useStartJob` dispatch. Uses
+  the v1.11.0 `notify`/`update`/`dedupKey` API; mirrors `useReinstall.ts`'s
+  SSE-driven exit pattern.
+- Install feedback: `InstallFromUrlModal` (agent.install / skill.install) now
+  shows progress and result toasts.
+- Sync feedback: `RemoteSyncConfirm` (agent.sync / skill.sync) now shows
+  progress and result toasts.
+- Knowledge feedback: `KnowledgeSources` compile, fetch (all and per-source),
+  and remove operations now show progress and result toasts.
+- Skill feedback: `SkillNew` register and install, `SkillValidate` validate
+  operations now show progress and result toasts.
+- `useDaemonStalenessToast`: fires a sticky error toast when the daemon is
+  stuck or has a stale pid; recovers to a timed success toast when the daemon
+  becomes healthy again. Includes a "Restart daemon" action button.
+- `useDaemonRestartToast`: fires a timed info toast when the daemon's PID
+  changes (indicating a self-restart after `smith` binary upgrade). No server
+  changes needed — uses the existing `DaemonStatus.pid` field.
+- `useDetectPlatformCli`: polls `/api/platforms/detected` every 30 s; when a
+  previously-absent CLI appears, fetches pending ops and fires an info toast
+  with a "Replay N installs" action.
+- `GET /api/pending-ops` server endpoint: reads `~/.local/state/agent-smith/
+  pending/` via `listPendingOps` and returns the full list as `{ ops: PendingOp[] }`.
+
 ## [1.11.1] — 2026-06-04
 
 ### Changed

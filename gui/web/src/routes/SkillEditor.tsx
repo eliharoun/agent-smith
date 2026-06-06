@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useSkill } from "@/hooks/useSkill";
+import { useJobToast } from "@/hooks/useJobToast";
 import { deriveRemotePathWeb } from "@/lib/remote-path";
 import { REMOTE_ROOT_DISPLAY } from "@/lib/remote-root-display";
 import { RemoteSyncConfirm } from "@/panels/RemoteSyncConfirm";
@@ -28,6 +29,16 @@ export function SkillEditor() {
   const { name = "" } = useParams();
   const q = useSkill(name);
   const [syncOpen, setSyncOpen] = useState(false);
+
+  const syncToast = useJobToast({
+    command: "skill.sync",
+    label: {
+      progress: () => `Syncing ${name}…`,
+      success: () => `Synced ${name}`,
+      error: () => "Sync failed",
+    },
+    dedupKey: `job-toast:skill.sync:${name}`,
+  });
 
   if (q.isLoading) {
     return (
@@ -116,6 +127,7 @@ export function SkillEditor() {
           cloneDir={safeCloneDir(remote.url)}
           open={syncOpen}
           onClose={() => setSyncOpen(false)}
+          onDispatch={syncToast.dispatch}
         />
       )}
     </ScreenShell>

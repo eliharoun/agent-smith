@@ -1,7 +1,6 @@
 import type { JobRequest } from "gui-shared";
 import { useEffect, useState } from "react";
 import { useDiscoverFromUrl } from "@/hooks/useDiscoverFromUrl";
-import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { FormField } from "@/ui/FormField";
 
@@ -11,7 +10,7 @@ function classifySource(s: string): SourceKind {
   if (s.length === 0) return "unknown";
   if (s.endsWith(".smith-bundle.tgz") || s.endsWith(".tgz")) return "archive";
   if (/^(https:\/\/|git@|ssh:\/\/)/.test(s)) return "git-url";
-  if (/^[/~]|^\.\//.test(s)) return "directory";
+  if (/^[\/~]|^\.\//.test(s)) return "directory";
   return "unknown";
 }
 
@@ -83,17 +82,17 @@ interface Props {
   kind: "agent" | "skill";
   open: boolean;
   onClose: () => void;
+  onDispatch: (req: JobRequest) => void;
   initialUrl?: string;
 }
 
-export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) {
+export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUrl }: Props) {
   const [url, setUrl] = useState(initialUrl ?? "");
   const [ref, setRef] = useState("");
   const [autoInstallSkills, setAutoInstallSkills] = useState(true);
   const [allowMissingCli, setAllowMissingCli] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [platforms, setPlatforms] = useState<Set<string>>(new Set());
-  const start = useStartJob();
   const { status, data, error, discover, reset } = useDiscoverFromUrl(kind);
 
   // Seed url from initialUrl prop when it changes (only when idle)
@@ -179,7 +178,7 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
         ref: trimmedRef,
       };
     }
-    start.mutate(req);
+    onDispatch(req);
     onClose();
   }
 
@@ -204,13 +203,12 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
               <span className="text-matrix-green">{url.trim()}</span>
             </div>
 
-            {/* Bundle checkboxes — aligned name / description / status columns */}
+            {/* Bundle checkboxes */}
             <fieldset className="border border-matrix-line p-2">
               <legend className="text-[10px] uppercase tracking-widest text-matrix-green-muted px-1">
                 // bundles
               </legend>
               <div className="grid grid-cols-[auto_auto_1fr_auto] items-baseline gap-x-4 gap-y-1.5 text-xs">
-                {/* column header */}
                 <div className="contents text-[10px] uppercase tracking-widest text-matrix-green-muted">
                   <span aria-hidden="true" />
                   <span>name</span>
@@ -255,7 +253,6 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
               ))}
             </fieldset>
 
-            {/* Agent: auto-install-skills toggle */}
             {kind === "agent" && (
               <label className="flex items-center gap-2 text-xs text-matrix-body mt-1 font-mono">
                 <input
@@ -267,7 +264,6 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
               </label>
             )}
 
-            {/* Allow missing CLI toggle */}
             {kind === "agent" && (
               <label className="flex items-center gap-2 text-xs text-matrix-body mt-1 font-mono">
                 <input

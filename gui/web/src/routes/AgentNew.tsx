@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
 import { AgentCreateWizard } from "@/panels/AgentCreateWizard";
+import { useJobToast } from "@/hooks/useJobToast";
 import { Chrome } from "@/ui/Chrome";
 import { FormField } from "@/ui/FormField";
 import { Button } from "@/ui/Button";
@@ -13,6 +14,15 @@ export function AgentNew() {
   const [quickUrl, setQuickUrl] = useState("");
   const [urlModalOpen, setUrlModalOpen] = useState(false);
   const [urlModalInitial, setUrlModalInitial] = useState("");
+  const installAgentToast = useJobToast({
+    command: "agent.install",
+    label: {
+      progress: () => "Installing agent\u2026",
+      success: () => "Agent installed",
+      error: () => "Install failed",
+    },
+    dedupKey: "job-toast:agent.install",
+  });
 
   function handleQuickInstall() {
     if (!quickUrl.trim()) return;
@@ -33,7 +43,7 @@ export function AgentNew() {
             label="git url"
             value={quickUrl}
             onChange={(e) => setQuickUrl(e.target.value)}
-            placeholder="https://… or git@host:…"
+            placeholder="https://\u2026 or git@host:\u2026"
             className="flex-1"
           />
           <Button
@@ -49,6 +59,7 @@ export function AgentNew() {
         kind="agent"
         open={urlModalOpen}
         onClose={() => setUrlModalOpen(false)}
+        onDispatch={installAgentToast.dispatch}
         initialUrl={urlModalInitial}
       />
     </ScreenShell>

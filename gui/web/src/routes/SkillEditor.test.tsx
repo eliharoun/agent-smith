@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NotificationCenter } from "@/ui/NotificationCenter";
 import { SkillEditor } from "./SkillEditor";
 
 type FetchMock = (input: RequestInfo | URL) => Promise<Response>;
@@ -22,11 +23,13 @@ function renderRoute(name: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[`/skills/${name}`]}>
-        <Routes>
-          <Route path="/skills/:name" element={<SkillEditor />} />
-        </Routes>
-      </MemoryRouter>
+      <NotificationCenter>
+        <MemoryRouter initialEntries={[`/skills/${name}`]}>
+          <Routes>
+            <Route path="/skills/:name" element={<SkillEditor />} />
+          </Routes>
+        </MemoryRouter>
+      </NotificationCenter>
     </QueryClientProvider>,
   );
 }

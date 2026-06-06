@@ -1,5 +1,4 @@
 import type { JobRequest } from "gui-shared";
-import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 
 interface Props {
@@ -12,6 +11,7 @@ interface Props {
   cloneDir: string;
   open: boolean;
   onClose: () => void;
+  onDispatch: (req: JobRequest) => void;
 }
 
 /**
@@ -23,15 +23,17 @@ interface Props {
  * Sync is destructive of local edits — the CLI does a hard fast-forward
  * against the remote ref and discards any uncommitted changes in the clone
  * directory. We surface that warning prominently before dispatch.
+ *
+ * The parent route owns useJobToast and passes its dispatch function as
+ * onDispatch so that job feedback toasts are scoped to the parent view.
  */
-export function RemoteSyncConfirm({ kind, name, url, gitRef, cloneDir, open, onClose }: Props) {
-  const start = useStartJob();
+export function RemoteSyncConfirm({ kind, name, url, gitRef, cloneDir, open, onClose, onDispatch }: Props) {
   if (!open) return null;
 
   const onSync = () => {
     const req: JobRequest =
       kind === "agent" ? { command: "agent.sync", name } : { command: "skill.sync", name };
-    start.mutate(req);
+    onDispatch(req);
     onClose();
   };
 

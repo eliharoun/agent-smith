@@ -32,6 +32,7 @@ import { registerMcpRoutes } from "./routes/mcp";
 import { registerMcpPickerRoute } from "./routes/mcp-picker";
 import { registerModelConfigRoute } from "./routes/model-config";
 import { registerOnboardingRoute } from "./routes/onboarding";
+import { registerPendingOpsRoute } from "./routes/pending-ops";
 import { registerPlatformsRoutes } from "./routes/platforms";
 import { registerRefreshManifestRoute } from "./routes/refresh-manifest";
 import { registerRegistryRoute } from "./routes/registry";
@@ -259,6 +260,7 @@ export function createApp(deps: AppDeps) {
   });
   registerGitVerifyRoute(app);
   registerOnboardingRoute(app, { configRoot, registryPath, detectTool });
+  registerPendingOpsRoute(app, { stateRoot: stateDir });
   registerPlatformsRoutes(app);
 
   // Daemon, history, update, jack-out routes.
