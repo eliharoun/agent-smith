@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { JobCompletionListener } from "@/panels/JobCompletionListener/JobCompletionListener";
 import { useDetectPlatformCli } from "@/hooks/useDetectPlatformCli";
 import { useDaemonRestartToast } from "@/hooks/useDaemonRestartToast";
@@ -7,10 +7,8 @@ import { useDaemonStalenessToast } from "@/hooks/useDaemonStalenessToast";
 import { JobStreamModal } from "@/panels/JobStreamModal/JobStreamModal";
 import { captureToken } from "./api/client";
 import { AgentEditor } from "./routes/AgentEditor";
-import { AgentNew } from "./routes/AgentNew";
 import { AgentsList } from "./routes/Agents";
 import { AtlassianSetup } from "./routes/AtlassianSetup";
-import { CatalogRegister } from "./routes/CatalogRegister";
 import { Catalogs } from "./routes/Catalogs";
 import { Daemon } from "./routes/Daemon";
 import { Dashboard } from "./routes/Dashboard";
@@ -32,6 +30,17 @@ import { Skills } from "./routes/Skills";
 import { Update } from "./routes/Update";
 import { AppNav } from "./ui/AppNav";
 import { TopBar } from "./ui/TopBar";
+
+// Redirects /catalogs/register?registry=<X> → /catalogs?add=register&registry=<X>
+// so deep links into the register flow preserve the skill/agent registry param.
+function RedirectCatalogsRegister() {
+  const [params] = useSearchParams();
+  const registry = params.get("registry");
+  const to = registry
+    ? `/catalogs?add=register&registry=${encodeURIComponent(registry)}`
+    : "/catalogs?add=register";
+  return <Navigate to={to} replace />;
+}
 
 function DaemonStatusWatcher() {
   useDaemonStalenessToast();
@@ -66,14 +75,14 @@ export function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/agents" element={<AgentsList />} />
-            <Route path="/agents/new" element={<AgentNew />} />
+            <Route path="/agents/new" element={<Navigate to="/agents?add=true" replace />} />
             <Route path="/agents/install-matrix" element={<InstallMatrix />} />
             <Route path="/agents/:name" element={<AgentEditor />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/skills/new" element={<SkillNew />} />
             <Route path="/skills/:name" element={<SkillEditor />} />
             <Route path="/catalogs" element={<Catalogs />} />
-            <Route path="/catalogs/register" element={<CatalogRegister />} />
+            <Route path="/catalogs/register" element={<RedirectCatalogsRegister />} />
             <Route path="/knowledge" element={<Knowledge />} />
             <Route path="/knowledge/refresh-history" element={<RefreshHistoryIndex />} />
             <Route path="/knowledge/:agent" element={<KnowledgeAgentRedirect />} />

@@ -1,9 +1,10 @@
-import type { GitVerifyResult } from "gui-shared";
-import { useState } from "react";
+import type { GitVerifyResult, JobRequest } from "gui-shared";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitVerify } from "@/hooks/useGitVerify";
 import { useStartJob } from "@/hooks/useStartJob";
 import { previewFor } from "@/lib/argv-preview";
+import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Chip } from "@/ui/Chip";
@@ -17,22 +18,66 @@ type Registry = "agent" | "skill";
 const AGENT_KINDS = ["user-global", "project", "registered"] as const;
 const SKILL_KINDS = ["user-global", "user-local", "team-shared"] as const;
 
+type AgentKind = (typeof AGENT_KINDS)[number];
+type SkillKind = (typeof SKILL_KINDS)[number];
+
+interface KindMeta {
+  label: string;
+  subtitle: string;
+}
+
+const AGENT_KIND_META: Record<AgentKind, KindMeta> = {
+  "user-global": {
+    label: "For me",
+    subtitle: "Install just for you, available in every project.",
+  },
+  project: {
+    label: "For this project",
+    subtitle: "Install into the current project only (.agent-smith/).",
+  },
+  registered: {
+    label: "Shared with team",
+    subtitle: "Register in a shared catalog accessible to the whole team.",
+  },
+};
+
+const SKILL_KIND_META: Record<SkillKind, KindMeta> = {
+  "user-global": {
+    label: "For me",
+    subtitle: "Install just for you, available in every project.",
+  },
+  "user-local": {
+    label: "For this project",
+    subtitle: "Install into the current project only (.agent-smith/).",
+  },
+  "team-shared": {
+    label: "Shared with team",
+    subtitle: "Publish to the team-shared skill registry.",
+  },
+};
+
 interface Props {
   initialRegistry?: Registry;
+  onDispatch?: (request: JobRequest) => void;
+  onClose?: () => void;
 }
 
 /**
  * New-catalog form. Supports both agent and skill registries — the toggle at
  * the top of the form decides which `smith ... register` command is dispatched.
  *
- * Verify button calls POST /api/git-verify (no job). Inline chip reports the
- * result. Register button is disabled until verify returns ok OR skipGitCheck
- * is on.
+ * Auto-verify: path is debounced 400ms → POST /api/git-verify (no job). Inline
+ * chip reports the result. Register button is disabled until verify returns ok
+ * OR skipGitCheck is on.
+ *
+ * Optional onDispatch/onClose props: when provided the form dispatches via the
+ * caller (modal-embeddable); when absent it falls back to useStartJob + nav
+ * (standalone /catalogs/register route).
  *
  * JobCompletionListener invalidates ['catalogs'] on agent.register/skill.register
  * (see Task 19), so the catalogs list refreshes after navigation.
  */
-export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
+export function CatalogRegisterForm({ initialRegistry = "agent", onDispatch, onClose }: Props = {}) {
   const [registry, setRegistry] = useState<Registry>(initialRegistry);
   const [path, setPath] = useState("");
   const [kind, setKind] = useState<string>("user-global");
@@ -46,6 +91,8 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
   const nav = useNavigate();
 
   const kinds = registry === "agent" ? AGENT_KINDS : SKILL_KINDS;
+  const kindMeta = registry === "agent" ? AGENT_KIND_META : SKILL_KIND_META;
+
   // Reset kind when registry changes if current kind is invalid for new registry.
   const switchRegistry = (next: Registry) => {
     setRegistry(next);
@@ -56,6 +103,25 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
     // Verify result is path/remote-specific but registry-agnostic, so leave it.
   };
 
+  // Debounced auto-verify — fires 400ms after the user stops typing path/gitRemote.
+  const debouncedPath = useDebounced(path, 400);
+  const debouncedGitRemote = useDebounced(gitRemote, 400);
+
+  useEffect(() => {
+    if (!debouncedPath || skipGitCheck) return;
+    verify.mutate(
+      {
+        path: debouncedPath,
+        ...(debouncedGitRemote ? { gitRemote: debouncedGitRemote } : {}),
+        skipGitCheck,
+      },
+      {
+        onSuccess: (result) => setVerifyResult(result),
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedPath, debouncedGitRemote]);
+
   const canRegister = path.length > 0 && (skipGitCheck || verifyResult?.ok === true);
 
   const request =
@@ -63,7 +129,7 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       ? ({
           command: "agent.register" as const,
           path: path || "<path>",
-          kind: kind as "user-global" | "project" | "registered",
+          kind: kind as AgentKind,
           ...(label ? { label } : {}),
           ...(gitRemote ? { gitRemote } : {}),
           allowEmpty,
@@ -72,25 +138,21 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       : ({
           command: "skill.register" as const,
           path: path || "<path>",
-          kind: kind as "user-global" | "user-local" | "team-shared",
+          kind: kind as SkillKind,
           ...(label ? { label } : {}),
           ...(gitRemote ? { gitRemote } : {}),
           allowEmpty,
           skipGitCheck,
         } as const);
 
-  const onVerify = async () => {
-    const result = await verify.mutateAsync({
-      path,
-      ...(gitRemote ? { gitRemote } : {}),
-      skipGitCheck,
-    });
-    setVerifyResult(result);
-  };
-
   const onRegister = async () => {
-    await start.mutateAsync(request);
-    nav("/catalogs");
+    if (onDispatch) {
+      onDispatch(request);
+      onClose?.();
+    } else {
+      await start.mutateAsync(request);
+      nav("/catalogs");
+    }
   };
 
   return (
@@ -98,6 +160,10 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-3">
         // register catalog
       </div>
+
+      <p className="font-mono text-xs text-matrix-body mb-4">
+        A catalog is a folder or git repo full of agents that smith can browse and install from.
+      </p>
 
       <div className="flex gap-2 mb-3">
         {(["agent", "skill"] as Registry[]).map((r) => (
@@ -121,21 +187,42 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
       />
 
       <div className="mt-3 flex flex-col gap-1">
-        <FieldHelp fieldId="catalog.kind" htmlFor="f-kind">
+        <FieldHelp fieldId="catalog.kind" htmlFor="f-kind-group">
           kind
         </FieldHelp>
-        <select
-          id="f-kind"
-          value={kind}
-          onChange={(e) => setKind(e.target.value)}
-          className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green focus:shadow-matrix-focus"
-        >
-          {kinds.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
+        <fieldset id="f-kind-group" className="flex flex-col gap-2 border-0 p-0 m-0">
+          <legend className="sr-only">kind</legend>
+          {kinds.map((k) => {
+            const meta: KindMeta | undefined = (kindMeta as Record<string, KindMeta | undefined>)[k];
+            const selected = kind === k;
+            if (!meta) return null;
+            return (
+              <label
+                key={k}
+                className={`flex flex-col gap-0.5 cursor-pointer font-mono text-xs px-2 py-1 border ${
+                  selected
+                    ? "border-matrix-green text-matrix-body"
+                    : "border-matrix-line text-matrix-muted hover:border-matrix-green-muted"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="catalog-kind"
+                    value={k}
+                    checked={selected}
+                    onChange={() => setKind(k)}
+                    className="accent-matrix-green"
+                  />
+                  {meta.label}
+                </span>
+                {selected && (
+                  <span className="text-[10px] text-matrix-green-muted pl-5">{meta.subtitle}</span>
+                )}
+              </label>
+            );
+          })}
+        </fieldset>
       </div>
 
       <div className="mt-3">
@@ -153,37 +240,43 @@ export function CatalogRegisterForm({ initialRegistry = "agent" }: Props) {
         />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-4">
-        <span className="inline-flex items-center gap-1">
-          <Toggle label="skip git check" checked={skipGitCheck} onChange={setSkipGitCheck} />
-          <FieldHelp fieldId="catalog.skipGitCheck" iconOnly>
-            skip git check
-          </FieldHelp>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <Toggle label="allow empty" checked={allowEmpty} onChange={setAllowEmpty} />
-          <FieldHelp fieldId="catalog.allowEmpty" iconOnly>
-            allow empty
-          </FieldHelp>
-        </span>
-      </div>
+      <details className="mt-3">
+        <summary className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted cursor-pointer select-none">
+          // advanced
+        </summary>
+        <div className="mt-2 flex flex-wrap gap-4">
+          <span className="inline-flex items-center gap-1">
+            <Toggle label="skip git check" checked={skipGitCheck} onChange={setSkipGitCheck} />
+            <FieldHelp fieldId="catalog.skipGitCheck" iconOnly>
+              skip git check
+            </FieldHelp>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Toggle label="allow empty" checked={allowEmpty} onChange={setAllowEmpty} />
+            <FieldHelp fieldId="catalog.allowEmpty" iconOnly>
+              allow empty
+            </FieldHelp>
+          </span>
+        </div>
+      </details>
 
-      <div className="mt-4 flex items-center gap-2">
-        <Button variant="ghost" disabled={!path || verify.isPending} onClick={onVerify}>
-          Verify
-        </Button>
-        {verify.isPending && (
+      {verify.isPending && (
+        <div className="mt-3">
           <span className="font-mono text-[10px] text-matrix-green-muted">// verifying…</span>
-        )}
-        {verifyResult && <VerifyChip result={verifyResult} />}
-      </div>
+        </div>
+      )}
+      {verifyResult && (
+        <div className="mt-3">
+          <VerifyChip result={verifyResult} />
+        </div>
+      )}
 
       <div className="mt-4">
         <CliPreview command={previewFor(request)} />
       </div>
 
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={() => nav("/catalogs")}>
+        <Button variant="ghost" onClick={onClose ?? (() => nav("/catalogs"))}>
           Cancel
         </Button>
         <Button disabled={!canRegister || start.isPending} onClick={onRegister}>

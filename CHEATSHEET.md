@@ -79,14 +79,14 @@ back to the page over SSE.
 | Construct | `/` | dashboard (system summary + recent jobs) |
 | Onboarding | `/onboarding` | first-run setup wizard |
 | Construct | `/agents` | `smith agent list` + per-platform install grid |
-| Construct | `/agents/new` | guided `smith agent init` |
+| Construct | `/agents?add=true` | unified Add Agent modal (create / install / register agents) |
 | Construct | `/agents/install-matrix` | bulk `smith agent install` across platforms |
 | Construct | `/agents/:name` | bundle editor (persona files + `agent.config.json`) |
 | Construct | `/skills` | `smith skill list` with drift status |
 | Construct | `/skills/new` | scaffold a new skill (`SKILL.md` editor) |
 | Construct | `/skills/:name` | skill editor + **Validate** button (→ `smith skill validate <name>`) |
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
-| Construct | `/catalogs/register` | `smith {agent,skill} register` |
+| Construct | `/catalogs?add=register` | deep-link to unified Add Agent modal for `smith {agent,skill} register` |
 | Knowledge | `/knowledge` | `smith knowledge list` across agents |
 | Knowledge | `/knowledge/:agent` | per-agent knowledge sources (add/fetch/validate); **Edit** modal exposes every per-source field (delivery, retrieval—default `bm25` for search-style queries; see [guide/04](./guide/04-knowledge.md#retrieval-mode)—summary, toc, materialize, extractor, refresh, optional, inlineBudgetTokens) and an **MCP wiring toggle** writes/removes the per-agent key `<agent>-knowledge` from the bundle's `mcpServers`. CLI parity: `smith knowledge wire <agent>` / `smith knowledge unwire <agent>`. |
 | Knowledge | `/knowledge/refresh-history` | refresh-mode timeline across agents |
@@ -99,6 +99,8 @@ back to the page over SSE.
 | System | `/system/model-config` | per-target model configuration overrides |
 | System | `/system/settings` | GUI settings |
 | System | `/system/jack-out` | `smith jack-out` with typed-phrase confirm (`jack-out`), MatrixRain runtime, disconnect-as-success semantic |
+
+> **v1.13.0:** The GUI consolidates all agent-creation entry points into a single `+ Add agent` modal (accessible from Dashboard, Agents page, and Catalogs page). `/agents/new` and `/catalogs/register` redirect to their modal equivalents automatically — existing bookmarks and docs links continue to work.
 
 **New job commands surfaced only by the GUI:** `daemon.start`, `daemon.stop`,
 `update`, `knowledge.migrate-codex`, `skill.validate`, `jack-out`, plus the

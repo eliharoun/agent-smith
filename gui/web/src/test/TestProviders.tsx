@@ -18,16 +18,19 @@ import { NotificationCenter } from "@/ui/NotificationCenter";
 interface Props {
   children: ReactNode;
   routerEntries?: string[];
+  /** Alias for routerEntries — matches the MemoryRouter prop name directly. */
+  initialEntries?: string[];
 }
 
-export function TestProviders({ children, routerEntries }: Props) {
+export function TestProviders({ children, routerEntries, initialEntries }: Props) {
   // Fresh QueryClient per render keeps tests independent.
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  const entries = initialEntries ?? routerEntries;
   return (
     <QueryClientProvider client={qc}>
-      <MemoryRouter {...(routerEntries ? { initialEntries: routerEntries } : {})}>
+      <MemoryRouter {...(entries ? { initialEntries: entries } : {})}>
         <NotificationCenter>
           {children}
         </NotificationCenter>

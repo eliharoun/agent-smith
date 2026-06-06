@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { InstallFromUrlModal } from "./InstallFromUrlModal";
+import { InstallExistingForm } from "./InstallExistingForm";
 
 const onDispatch = vi.fn();
 
@@ -21,23 +21,23 @@ beforeEach(() => {
   })) as unknown as typeof fetch;
 });
 
-describe("InstallFromUrlModal (multi)", () => {
+describe("InstallExistingForm (multi)", () => {
   test("resets to the URL step when closed and reopened", async () => {
-    const { rerender } = render(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
-    fireEvent.change(screen.getByLabelText(/git url/i), { target: { value: "https://github.com/o/r" } });
+    const { rerender } = render(<InstallExistingForm kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
+    fireEvent.change(screen.getByLabelText(/where is the skill/i), { target: { value: "https://github.com/o/r" } });
     fireEvent.click(screen.getByRole("button", { name: /discover/i }));
     await waitFor(() => screen.getByText("alpha"));
     // Close then reopen
-    rerender(<InstallFromUrlModal kind="skill" open={false} onClose={() => {}} onDispatch={onDispatch} />);
-    rerender(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
+    rerender(<InstallExistingForm kind="skill" open={false} onClose={() => {}} onDispatch={onDispatch} />);
+    rerender(<InstallExistingForm kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
     // Back to step 1: discover button present, no bundle list
     expect(screen.getByRole("button", { name: /discover/i })).toBeTruthy();
     expect(screen.queryByText("alpha")).toBeNull();
   });
 
   test("discovers, lets the user pick a subset, and dispatches one install job", async () => {
-    render(<InstallFromUrlModal kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
-    fireEvent.change(screen.getByLabelText(/git url/i), { target: { value: "https://github.com/o/r" } });
+    render(<InstallExistingForm kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
+    fireEvent.change(screen.getByLabelText(/where is the skill/i), { target: { value: "https://github.com/o/r" } });
     fireEvent.click(screen.getByRole("button", { name: /discover/i }));
     await waitFor(() => screen.getByText("alpha"));
     fireEvent.click(screen.getByLabelText("alpha"));

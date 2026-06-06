@@ -1,6 +1,6 @@
 {
   "name": "agent-smith",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "workspaces": ["gui/server", "gui/web", "gui/shared"],
   "description": "Lifecycle manager for persona-driven AI coding agents",
   "repository": "github:eliharoun/agent-smith",

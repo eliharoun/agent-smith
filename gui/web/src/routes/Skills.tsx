@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
+import { InstallExistingForm } from "@/panels/InstallExistingForm";
 import { SkillBootstrap } from "@/panels/SkillBootstrap";
 import { SkillCatalogList } from "@/panels/SkillCatalogList";
 import { SkillList } from "@/panels/SkillList";
@@ -58,7 +58,7 @@ export function Skills() {
       <SkillList />
       <SkillBootstrap />
       <SkillCatalogList />
-      <InstallFromUrlModal
+      <InstallExistingForm
         kind="skill"
         open={installOpen}
         onClose={() => setInstallOpen(false)}

@@ -23,36 +23,38 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Agents route Install-from-URL button (C4.8.2)", () => {
-  it("renders the Install-from-URL button in the chrome header", () => {
-    render(
-      <TestProviders>
-        <AgentsList />
-      </TestProviders>,
-    );
-    expect(screen.getByRole("button", { name: /install from url/i })).toBeInTheDocument();
+describe("Agents route — + Add agent button (v1.13.0)", () => {
+  it("renders a single '+ Add agent' button", () => {
+    render(<TestProviders><AgentsList /></TestProviders>);
+    expect(screen.getByRole("button", { name: /\+ add agent/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /install from url/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /\+ new agent/i })).toBeNull();
   });
 
-  it("renders the green pulse dot adjacent to the button", () => {
-    render(
-      <TestProviders>
-        <AgentsList />
-      </TestProviders>,
-    );
-    const button = screen.getByRole("button", { name: /install from url/i });
-    expect(button.parentElement?.querySelector("[data-pulse-dot]")).toBeInTheDocument();
+  it("renders 'Install across platforms' secondary link", () => {
+    render(<TestProviders><AgentsList /></TestProviders>);
+    expect(screen.getByRole("link", { name: /install across platforms/i })).toBeInTheDocument();
   });
 
-  it("opens InstallFromUrlModal when the button is clicked", () => {
-    render(
-      <TestProviders>
-        <AgentsList />
-      </TestProviders>,
-    );
+  it("opens AddAgentModal when '+ Add agent' is clicked", () => {
+    render(<TestProviders><AgentsList /></TestProviders>);
     expect(screen.queryByRole("dialog")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /install from url/i }));
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toBeInTheDocument();
-    expect(dialog.textContent?.toLowerCase()).toContain("install agent from url");
+    fireEvent.click(screen.getByRole("button", { name: /\+ add agent/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("?add=true opens modal on mount in menu view", () => {
+    render(<TestProviders initialEntries={["/agents?add=true"]}><AgentsList /></TestProviders>);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("?add=install opens modal in install view directly", () => {
+    render(<TestProviders initialEntries={["/agents?add=install"]}><AgentsList /></TestProviders>);
+    // install view renders the InstallExistingForm sub-form (also role=dialog)
+    // so there are 2 nested dialogs — verify the outer one is present and
+    // the "start from template" menu card is NOT shown (we're past the menu)
+    const dialogs = screen.getAllByRole("dialog");
+    expect(dialogs.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("button", { name: /start from template/i })).toBeNull();
   });
 });

@@ -55,7 +55,7 @@ export function KnowledgeIndex() {
       {summaries.length === 0 ? (
         <div className="font-mono text-sm text-matrix-body py-4">
           // no agents registered yet —{" "}
-          <Link to="/agents/new" className="text-matrix-green underline">
+          <Link to="/agents?add=true" className="text-matrix-green underline">
             create one
           </Link>
           .

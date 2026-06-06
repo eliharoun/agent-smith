@@ -21,8 +21,7 @@ function crumbsFor(pathname: string, search: URLSearchParams): Crumb[] {
   switch (top) {
     case "agents":
       out.push({ label: "agents", to: rest.length ? "/agents" : undefined });
-      if (rest[0] === "new") out.push({ label: "new" });
-      else if (rest[0] === "install-matrix") out.push({ label: "install matrix" });
+      if (rest[0] === "install-matrix") out.push({ label: "install matrix" });
       else if (rest[0]) {
         const name = rest[0];
         const tab = search.get("tab");
@@ -37,7 +36,6 @@ function crumbsFor(pathname: string, search: URLSearchParams): Crumb[] {
       break;
     case "catalogs":
       out.push({ label: "catalogs", to: rest.length ? "/catalogs" : undefined });
-      if (rest[0] === "register") out.push({ label: "register" });
       break;
     case "knowledge":
       out.push({ label: "knowledge", to: rest.length ? "/knowledge" : undefined });

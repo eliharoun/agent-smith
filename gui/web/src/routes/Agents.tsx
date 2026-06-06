@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import type { JobRequest } from "gui-shared";
 import { AgentList } from "@/panels/AgentList";
-import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
+import { AddAgentModal } from "@/panels/AddAgentModal/AddAgentModal";
 import {
   InstallJobWatcher,
   useInstallCompletionWatcher,
@@ -11,36 +12,71 @@ import { Button } from "@/ui/Button";
 import { Chrome } from "@/ui/Chrome";
 import { ScreenShell } from "@/ui/ScreenShell";
 
-// InstallFromUrlButton (C4.8.2) — pairs the ghost-style trigger with the
-// v0.26.0 pulse dot. The dot is decorative (aria-hidden); it telegraphs the
-// new external-install entry point until it stops being new.
-function InstallFromUrlButton({ onClick }: { onClick: () => void }) {
-  return (
-    <span className="relative inline-block">
-      <span
-        data-pulse-dot
-        aria-hidden
-        className="absolute -top-0.5 -left-0.5 w-[6px] h-[6px] bg-matrix-green shadow-matrix-glow animate-pulse"
-      />
-      <Button variant="ghost" onClick={onClick}>
-        Install from URL
-      </Button>
-    </span>
-  );
-}
+type AddView = "menu" | "template" | "install" | "register";
 
 export function AgentsList() {
-  const [installOpen, setInstallOpen] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [addOpen, setAddOpen] = useState(false);
+  const [initialView, setInitialView] = useState<AddView>("menu");
+
   const { installJobIds, maybeFire } = useInstallCompletionWatcher();
+
   const installAgentToast = useJobToast({
     command: "agent.install",
     label: {
-      progress: () => "Installing agent\u2026",
+      progress: () => "Installing agent…",
       success: () => "Agent installed",
       error: () => "Install failed",
     },
     dedupKey: "job-toast:agent.install",
   });
+
+  const initAgentToast = useJobToast({
+    command: "agent.init",
+    label: {
+      progress: () => "Creating agent…",
+      success: () => "Agent created",
+      error: () => "Create failed",
+    },
+    dedupKey: "job-toast:agent.init",
+  });
+
+  const registerAgentToast = useJobToast({
+    command: "agent.register",
+    label: {
+      progress: () => "Registering catalog…",
+      success: () => "Catalog registered",
+      error: () => "Register failed",
+    },
+    dedupKey: "job-toast:agent.register",
+  });
+
+  // Deep-link: ?add=true|create → menu, ?add=install → install, ?add=register → register
+  useEffect(() => {
+    const add = searchParams.get("add");
+    if (!add) return;
+    if (add === "install") {
+      setInitialView("install");
+    } else if (add === "register") {
+      setInitialView("register");
+    } else {
+      setInitialView("menu");
+    }
+    setAddOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleDispatch(req: JobRequest) {
+    const cmd = (req as { command?: string }).command ?? "";
+    if (cmd === "agent.install") {
+      installAgentToast.dispatch(req);
+    } else if (cmd === "agent.init") {
+      initAgentToast.dispatch(req);
+    } else if (cmd === "agent.register" || cmd === "skill.register") {
+      registerAgentToast.dispatch(req);
+    }
+  }
 
   return (
     <ScreenShell
@@ -49,25 +85,31 @@ export function AgentsList() {
           title="Agents"
           subtitle="construct registry"
           actions={
-            <>
-              <Link to="/agents/install-matrix">
-                <Button variant="ghost">Install matrix</Button>
-              </Link>
-              <InstallFromUrlButton onClick={() => setInstallOpen(true)} />
-              <Link to="/agents/new">
-                <Button>+ New agent</Button>
-              </Link>
-            </>
+            <Button onClick={() => { setInitialView("menu"); setAddOpen(true); }}>
+              + Add agent
+            </Button>
           }
         />
       }
     >
+      <div className="flex justify-end px-4 pt-1 pb-0">
+        <Link
+          to="/agents/install-matrix"
+          className="font-mono text-[10px] text-matrix-green-muted hover:text-matrix-green"
+        >
+          Install across platforms ↗
+        </Link>
+      </div>
       <AgentList />
-      <InstallFromUrlModal
-        kind="agent"
-        open={installOpen}
-        onClose={() => setInstallOpen(false)}
-        onDispatch={installAgentToast.dispatch}
+      <AddAgentModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onDispatch={handleDispatch}
+        initialView={initialView}
+        onAgentCreated={(name) => {
+          setAddOpen(false);
+          navigate("/agents/" + encodeURIComponent(name));
+        }}
       />
       {/* One watcher per active agent.install job — fires sync-hint toast when
           the job exits 0 and its stdout contained a dir-install envelope. */}

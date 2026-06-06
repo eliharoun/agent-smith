@@ -4,6 +4,38 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] — 2026-06-06
+
+### GUI
+
+**Unified Add Agent modal** — replaces 9 scattered entry points with one `+ Add agent` modal accessible from the Dashboard, Agents page, and Catalogs page.
+
+Before:
+
+| Where | Buttons / links |
+|---|---|
+| Dashboard | `+ New agent`, `Install matrix` |
+| Agents page | `+ New agent`, `Install from URL`, `Install matrix` |
+| `/agents/new` | full-page create wizard + quick-install card |
+| Catalogs page | `+ Register` (links to `/catalogs/register`) |
+
+After:
+
+| Where | Action |
+|---|---|
+| Dashboard | `+ Add agent` (navigates to Agents page, opens modal) |
+| Agents page | `+ Add agent` (opens modal); `Install across platforms ↗` secondary link |
+| Catalogs page | `+ Register` (opens modal, pre-jumped to register sub-form) |
+
+**Smart input:** paste a git URL, local path, or `.tgz` archive into the modal's input field and it auto-routes to the correct sub-form. SSH URLs (e.g. `git@host:repo.tgz`) correctly route to git-url, not archive.
+
+**Sub-form improvements:**
+- `AgentCreateWizard`: 3-card template gallery with descriptions; live char counter; constraints shown upfront.
+- `InstallExistingForm` (renamed from `InstallFromUrlModal`): conditional git-ref field; plain-English toggle labels.
+- `CatalogRegisterForm`: plain-English kind radio buttons with subtitles; debounced auto-verify; advanced toggles collapsed by default; explainer header.
+
+**Deep-link compatibility:** `/agents/new` → `/agents?add=true`; `/catalogs/register` → `/catalogs?add=register` (query params preserved). Existing bookmarks and docs links continue to work.
+
 ## [1.12.0] — 2026-06-05
 
 Every fire-and-forget GUI job now surfaces toast feedback: sticky progress

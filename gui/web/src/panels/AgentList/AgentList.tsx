@@ -69,7 +69,7 @@ export function AgentList() {
       <Card>
         <div className="text-matrix-green-muted text-sm">
           No agents yet.{" "}
-          <Link className="text-matrix-green" to="/agents/new">
+          <Link className="text-matrix-green" to="/agents?add=true">
             Create one
           </Link>
           .
