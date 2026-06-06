@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitVerify } from "@/hooks/useGitVerify";
 import { useJobToast } from "@/hooks/useJobToast";
-import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
+import { InstallExistingForm } from "@/panels/InstallExistingForm";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { Chrome } from "@/ui/Chrome";
@@ -244,7 +244,7 @@ export function SkillNew() {
           </div>
         )}
       </Card>
-      <InstallFromUrlModal
+      <InstallExistingForm
         kind="skill"
         open={urlModalOpen}
         onClose={() => setUrlModalOpen(false)}

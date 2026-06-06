@@ -47,7 +47,7 @@ describe("Skills route Install-from-URL button (C4.8.3)", () => {
     expect(button.parentElement?.querySelector("[data-pulse-dot]")).toBeInTheDocument();
   });
 
-  it("opens InstallFromUrlModal in skill mode when the button is clicked", () => {
+  it("opens InstallExistingForm in skill mode when the button is clicked", () => {
     render(
       <TestProviders>
         <Skills />
@@ -57,6 +57,6 @@ describe("Skills route Install-from-URL button (C4.8.3)", () => {
     fireEvent.click(screen.getByRole("button", { name: /install from url/i }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
-    expect(dialog.textContent?.toLowerCase()).toContain("install skill from url");
+    expect(dialog.textContent?.toLowerCase()).toContain("install existing skill");
   });
 });

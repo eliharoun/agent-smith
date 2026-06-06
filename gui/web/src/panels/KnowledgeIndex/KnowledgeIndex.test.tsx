@@ -37,7 +37,7 @@ describe("KnowledgeIndex", () => {
     globalThis.fetch = mockFetch([]) as typeof fetch;
     renderPanel();
     await waitFor(() => expect(screen.getByText(/no agents registered yet/)).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: /create one/ })).toHaveAttribute("href", "/agents/new");
+    expect(screen.getByRole("link", { name: /create one/ })).toHaveAttribute("href", "/agents?add=true");
   });
 
   it("each row links into /agents/:name?tab=knowledge", async () => {

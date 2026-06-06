@@ -15,7 +15,6 @@ describe("Breadcrumbs", () => {
   it.each([
     ["/", ["smith"]],
     ["/agents", ["smith", "agents"]],
-    ["/agents/new", ["smith", "agents", "new"]],
     ["/agents/install-matrix", ["smith", "agents", "install matrix"]],
     ["/agents/myagent", ["smith", "agents", "myagent"]],
     ["/agents/myagent?tab=knowledge", ["smith", "agents", "myagent", "knowledge"]],
@@ -24,7 +23,6 @@ describe("Breadcrumbs", () => {
     ["/skills/new", ["smith", "skills", "new"]],
     ["/skills/myskill", ["smith", "skills", "myskill"]],
     ["/catalogs", ["smith", "catalogs"]],
-    ["/catalogs/register", ["smith", "catalogs", "register"]],
     ["/knowledge", ["smith", "knowledge"]],
     ["/knowledge/refresh-history", ["smith", "knowledge", "refresh history"]],
     ["/knowledge/myagent/refresh-history", ["smith", "knowledge", "myagent", "refresh history"]],
@@ -46,8 +44,8 @@ describe("Breadcrumbs", () => {
   });
 
   it("last crumb is not a link", () => {
-    renderAt("/agents/new");
-    const last = screen.getByText("new");
+    renderAt("/agents/myagent");
+    const last = screen.getByText("myagent");
     expect(last.closest("a")).toBeNull();
   });
 });

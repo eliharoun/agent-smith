@@ -1,18 +1,9 @@
 import type { JobRequest } from "gui-shared";
 import { useEffect, useState } from "react";
+import { type SourceKind, classifySource } from "@/panels/AddAgentModal/classifySource";
 import { useDiscoverFromUrl } from "@/hooks/useDiscoverFromUrl";
 import { Button } from "@/ui/Button";
 import { FormField } from "@/ui/FormField";
-
-type SourceKind = "archive" | "directory" | "git-url" | "unknown";
-
-function classifySource(s: string): SourceKind {
-  if (s.length === 0) return "unknown";
-  if (s.endsWith(".smith-bundle.tgz") || s.endsWith(".tgz")) return "archive";
-  if (/^(https:\/\/|git@|ssh:\/\/)/.test(s)) return "git-url";
-  if (/^[\/~]|^\.\//.test(s)) return "directory";
-  return "unknown";
-}
 
 const BADGE_LABEL: Record<SourceKind, string> = {
   archive: "[archive]",
@@ -84,9 +75,11 @@ interface Props {
   onClose: () => void;
   onDispatch: (req: JobRequest) => void;
   initialUrl?: string;
+  /** When true, render bare content only (no backdrop/dialog chrome/title) for use inside AddAgentModal. */
+  embedded?: boolean;
 }
 
-export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUrl }: Props) {
+export function InstallExistingForm({ kind, open, onClose, onDispatch, initialUrl, embedded }: Props) {
   const [url, setUrl] = useState(initialUrl ?? "");
   const [ref, setRef] = useState("");
   const [autoInstallSkills, setAutoInstallSkills] = useState(true);
@@ -184,18 +177,15 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
 
   const installableCount = data?.bundles.filter((b) => !b.alreadyInstalled).length ?? 0;
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-    >
-      <div className="border border-matrix-green bg-black p-6 w-[42rem] max-w-[92vw] font-mono max-h-[80vh] overflow-y-auto">
+  const content = (
+    <>
+      {!embedded && (
         <h2 className="text-matrix-green text-sm uppercase tracking-widest mb-4">
-          // install {kind} from url
+          // install existing {kind}(s)
         </h2>
+      )}
 
-        {status === "select" && data ? (
+      {status === "select" && data ? (
           /* Step 2: bundle + platform selection */
           <div className="flex flex-col gap-3">
             <div className="text-xs text-matrix-body mb-2">
@@ -260,7 +250,7 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
                   checked={autoInstallSkills}
                   onChange={(e) => setAutoInstallSkills(e.target.checked)}
                 />
-                auto-install required skills
+                also install required skills
               </label>
             )}
 
@@ -271,7 +261,7 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
                   checked={allowMissingCli}
                   onChange={(e) => setAllowMissingCli(e.target.checked)}
                 />
-                Render even if the target platform CLI isn't installed
+                install even if a platform CLI isn't on PATH yet
               </label>
             )}
 
@@ -303,7 +293,7 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
           <div className="flex flex-col gap-3">
             <DropZone onUploaded={(path) => setUrl(path)} />
             <FormField
-              label="git url or bundle archive"
+              label={kind === "agent" ? "where is the agent?" : "where is the skill?"}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://… or git@host:… or path to .smith-bundle.tgz"
@@ -313,12 +303,14 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
                 {BADGE_LABEL[kind_]}
               </span>
             )}
-            <FormField
-              label="git ref (branch / tag / sha)"
-              value={ref}
-              onChange={(e) => setRef(e.target.value)}
-              placeholder="default: HEAD"
-            />
+            {kind_ === "git-url" && (
+              <FormField
+                label="git ref (branch / tag / sha)"
+                value={ref}
+                onChange={(e) => setRef(e.target.value)}
+                placeholder="default: HEAD"
+              />
+            )}
             {error && (
               <div className="text-xs text-matrix-red font-mono">{error}</div>
             )}
@@ -335,6 +327,21 @@ export function InstallFromUrlModal({ kind, open, onClose, onDispatch, initialUr
             </div>
           </div>
         )}
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+    >
+      <div className="border border-matrix-green bg-black p-6 w-[42rem] max-w-[92vw] font-mono max-h-[80vh] overflow-y-auto">
+        {content}
       </div>
     </div>
   );
