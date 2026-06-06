@@ -297,7 +297,7 @@ Build the agent and write rendered files to all target platforms (opencode/claud
 | `--no-skills` | bool | `false` | Skip required-skill installs entirely; warn at end. |
 | `--no-refresh-hooks` | bool | `false` | Skip refresh hook install; no consent prompt, no `SessionStart` block written, no `refresh-manifest.json`. Refresh stays manual via `smith knowledge fetch`. |
 | `--refresh-consent <yn>` | enum: `y\|yes\|n\|no` (case-insensitive) | — | Pre-answer the refresh-hook consent prompt. Required in non-TTY/CI when you want hooks (default in non-TTY is *no* with a warning). See [guide/04 — Consent and the refresh manifest](./guide/04-knowledge.md#consent-and-the-refresh-manifest). |
-| `--from <url-or-path>` | git URL (https://, ssh://, git@, file://) **or** path / HTTPS URL ending in `.smith-bundle.tgz` | — | Two modes. **Git URL:** clone the repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. **Archive (`.smith-bundle.tgz`):** verify, hash-check, stage under `<stateHome>/imported/<sha-prefix>/<name>/`, register as an imported-archive catalog, then install. HTTPS URLs are downloaded with a 200 MB cap; loopback / link-local / RFC1918 hosts are refused. Skips local lookup; `[name]` becomes optional when the source contains exactly one bundle. See [guide/15 — Sharing & distribution](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
+| `--from <url-or-path>` | git URL **or** archive path/HTTPS URL **or** local directory path | — | Three modes. **Git URL:** clone the repo, register it under `<stateHome>/remote/<host>/<owner>/<repo>`, then install. **Archive (`.smith-bundle.tgz`):** verify, hash-check, stage under `<stateHome>/imported/<sha-prefix>/<name>/`, register as an imported-archive catalog, then install. **Local directory path:** register-as-catalog, then install. HTTPS URLs are downloaded with a 200 MB cap; loopback / link-local / RFC1918 hosts are refused. The local-directory mode prints a one-line stderr hint when the directory is a git repo, suggesting `smith agent register --git-remote` to enable `smith agent sync`. Skips local lookup; `[name]` becomes optional when the source contains exactly one bundle. See [guide/15 — Sharing & distribution](./guide/15-sharing-and-distribution.md#9-sharing-via-direct-url). |
 | `--ref <ref>` | git ref | remote HEAD | Git branch, tag, or SHA to check out after cloning with `--from`. Ignored without `--from`. |
 | `--force` | bool | `false` | Bypass smith's would-clobber refusal: write the rendered file even if the destination exists and isn't claimed by smith's `installed-agents.json` manifest. Also re-claims a manifest entry whose recorded path no longer matches the new render's relativePath (rename / translator change). |
 | `--allow-missing-mcp` | bool | `false` | Demote missing-MCP-server errors to warnings (install blocks by default). |
@@ -335,7 +335,7 @@ Install every bundle in every registered catalog. Same flag set as `agent instal
 
 Package a bundle into a single `.smith-bundle.tgz` archive that a recipient can install via `smith agent install --from <archive>`. Embeds local knowledge (`type: file` / `dir` / `glob`) and — by default — every skill in `requires.skills[]`. Does NOT contain MCP servers, credentials, or remote knowledge content; those are declared in the manifest and the recipient brings or fetches them at install time.
 
-**Synopsis:** `smith agent export [--to <path>] [--stdout] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--json] [--dry-run] <name>`
+**Synopsis:** `smith agent export [--format <archive|directory>] [--to <path>] [--stdout] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--with-readme] [--no-manifest] [--force] [--json] [--dry-run] <name>`
 
 **Flags:**
 | Flag | Type | Default | Description |
@@ -347,6 +347,10 @@ Package a bundle into a single `.smith-bundle.tgz` archive that a recipient can 
 | `--compression <gzip\|none>` | enum | `gzip` | Use `none` to skip gzip wrapping when streaming through your own compression layer. |
 | `--json` | bool | `false` | Emit machine-readable progress on stderr; artifact path on stdout. |
 | `--dry-run` | bool | `false` | Plan and validate; print the manifest; write nothing to disk. |
+| `--format <mode>` | enum: `archive\|directory` | `archive` | Output format. `directory` writes loose files at `<--to>/<name>/` for committing into a git repo. |
+| `--with-readme` | bool | `false` | Directory mode: include the auto-generated README.md (off by default; the README's content is intended for archive recipients). |
+| `--no-manifest` | bool | `false` | Directory mode: drop `_smith-export.json`. Default keeps the manifest so downstream `smith` commands can read it. |
+| `--force` | bool | `false` | Directory mode: replace `<--to>/<name>/` if it already exists (full replace, not merge). |
 
 **Notes:**
 - Refuses bundles whose knowledge sources use absolute paths or paths that escape the bundle directory — the producer fixes the source declarations and re-exports.
@@ -1394,6 +1398,12 @@ smith agent validate my-agent && smith agent install my-agent && smith doctor
 
 # Dry-run an update before pulling
 smith update --dry-run
+
+# Publish a bundle into a catalog repo (directory mode)
+smith agent export <name> --format directory --to <dir>/agents/   # publish into a catalog repo
+
+# Install from a local checkout
+smith agent install --from <local-dir>                            # install from a local checkout
 ```
 
 ### Exit-code recipes

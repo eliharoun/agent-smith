@@ -18,7 +18,7 @@ describe("exportBundle — minimal bundle", () => {
       now: () => new Date("2026-06-03T15:00:00Z"),
       smithVersion: "1.7.0",
     });
-    const entries = await readArchive(result.archive);
+    const entries = await readArchive(result.archive!);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("minimal-bundle/agent.config.json");
     expect(paths).toContain("minimal-bundle/IDENTITY.md");
@@ -52,7 +52,7 @@ describe("exportBundle — minimal bundle", () => {
       now: () => new Date("2026-06-03T15:00:00Z"),
       smithVersion: "1.7.0",
     });
-    const entries = await readArchive(result.archive);
+    const entries = await readArchive(result.archive!);
     const userMd = entries.find((e) => e.path === "minimal-bundle/USER.md")!;
     expect(userMd.bytes.toString()).toBe("# USER context\n\nThis file is a placeholder.\n");
   });
@@ -68,7 +68,7 @@ describe("exportBundle — minimal bundle", () => {
     };
     const a = await exportBundle(opts);
     const b = await exportBundle(opts);
-    expect(a.archive.equals(b.archive)).toBe(true);
+    expect(a.archive!.equals(b.archive!)).toBe(true);
     expect(a.contentHash).toBe(b.contentHash);
   });
 });
@@ -106,7 +106,7 @@ describe("exportBundle — local knowledge", () => {
       now: () => new Date("2026-06-03T15:00:00Z"),
       smithVersion: "1.7.0",
     });
-    const entries = await readArchive(result.archive);
+    const entries = await readArchive(result.archive!);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("local-knowledge-bundle/notes/intro.md");
   });
@@ -122,7 +122,7 @@ describe("exportBundle — local knowledge", () => {
     };
     const a = await exportBundle(opts);
     const b = await exportBundle(opts);
-    expect(a.archive.equals(b.archive)).toBe(true);
+    expect(a.archive!.equals(b.archive!)).toBe(true);
     expect(a.contentHash).toBe(b.contentHash);
   });
 
@@ -159,7 +159,7 @@ describe("exportBundle — local knowledge", () => {
         now: () => new Date("2026-06-03T15:00:00Z"),
         smithVersion: "1.7.0",
       });
-      const entries = await readArchive(result.archive);
+      const entries = await readArchive(result.archive!);
       const readmeEntries = entries.filter((e) => e.path.endsWith("/README.md"));
       // Exactly one README.md: the export-generated one, not a duplicate from knowledge.
       expect(readmeEntries).toHaveLength(1);
@@ -240,7 +240,7 @@ describe("exportBundle — skill embedding", () => {
         return null;
       },
     });
-    const entries = await readArchive(result.archive);
+    const entries = await readArchive(result.archive!);
     const paths = entries.map((e) => e.path);
     expect(paths).toContain("with-skill-bundle/skills/fixture-skill/SKILL.md");
     expect(result.manifest.requires.skills).toEqual([
@@ -258,7 +258,7 @@ describe("exportBundle — skill embedding", () => {
       now: () => new Date("2026-06-03T15:00:00Z"),
       smithVersion: "1.7.0",
     });
-    const entries = await readArchive(result.archive);
+    const entries = await readArchive(result.archive!);
     const paths = entries.map((e) => e.path);
     expect(paths.some((p) => p.startsWith("with-skill-bundle/skills/"))).toBe(false);
     expect(result.manifest.requires.skills).toEqual([
@@ -339,7 +339,7 @@ describe("exportBundle — compression option", () => {
       compression: "none",
     });
     // Bare tar starts with the file's name (ASCII), gzipped tar starts with 0x1f 0x8b.
-    expect(r.archive[0]).not.toBe(0x1f);
+    expect(r.archive![0]).not.toBe(0x1f);
   });
 });
 
@@ -371,7 +371,7 @@ describe("exportBundle — USER.md policies", () => {
         now: () => new Date("2026-06-04T15:00:00Z"),
         smithVersion: "1.7.0",
       });
-      const entries = await readArchive(result.archive);
+      const entries = await readArchive(result.archive!);
       const userEntry = entries.find((e) => e.path === "usermd-keep/USER.md");
       expect(userEntry?.bytes.toString()).toBe(customUserMd);
     } finally {

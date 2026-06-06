@@ -175,4 +175,25 @@ describe("InstallFromUrlModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /discover/i }));
     await waitFor(() => screen.getByText("repo not found"));
   });
+
+  it("badges the source as archive when URL ends in .smith-bundle.tgz", async () => {
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    const input = screen.getByLabelText(/git url/i);
+    fireEvent.change(input, { target: { value: "/tmp/foo.smith-bundle.tgz" } });
+    expect(screen.getByText(/\[archive\]/)).toBeInTheDocument();
+  });
+
+  it("badges the source as local directory for an absolute path", async () => {
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    const input = screen.getByLabelText(/git url/i);
+    fireEvent.change(input, { target: { value: "/Users/me/work/team-agents" } });
+    expect(screen.getByText(/\[local directory\]/)).toBeInTheDocument();
+  });
+
+  it("badges the source as git url for a git@ URL", async () => {
+    render(<InstallFromUrlModal kind="agent" open onClose={() => {}} />);
+    const input = screen.getByLabelText(/git url/i);
+    fireEvent.change(input, { target: { value: "git@github.com:acme/team-agents.git" } });
+    expect(screen.getByText(/\[git url\]/)).toBeInTheDocument();
+  });
 });

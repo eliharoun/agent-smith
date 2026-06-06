@@ -10,6 +10,10 @@ interface Req {
   json: boolean;
   dryRun: boolean;
   stdout: boolean;
+  format: "archive" | "directory";
+  withReadme: boolean;
+  noManifest: boolean;
+  force: boolean;
 }
 
 const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$/;
@@ -21,12 +25,22 @@ export function buildAgentExport(req: Req): BuiltArgv {
   if (req.stdout && req.to !== ".") {
     throw new Error("agent.export: --stdout and --to are mutually exclusive");
   }
+  if (req.format === "directory" && req.stdout) {
+    throw new Error("agent.export: --format directory cannot be combined with --stdout");
+  }
+  if (req.format === "directory" && req.compression === "none") {
+    throw new Error("agent.export: --compression has no effect in directory mode");
+  }
   const argv: string[] = ["agent", "export", req.name];
   if (req.stdout) argv.push("--stdout");
   else argv.push("--to", req.to);
-  if (req.compression !== "gzip") argv.push("--compression", req.compression);
+  if (req.format === "directory") argv.push("--format", "directory");
+  if (req.compression !== "gzip" && req.format !== "directory") argv.push("--compression", req.compression);
   if (!req.includeSkills) argv.push("--no-include-skills");
   argv.push("--user-md", req.userMd);
+  if (req.withReadme) argv.push("--with-readme");
+  if (req.noManifest) argv.push("--no-manifest");
+  if (req.force) argv.push("--force");
   if (req.json) argv.push("--json");
   if (req.dryRun) argv.push("--dry-run");
   return { argv, lockKeys: [`agent:${req.name}`], preview: previewOf(argv) };

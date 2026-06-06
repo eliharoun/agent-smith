@@ -140,6 +140,8 @@ smith agent install <name>                 # render + install to its targets
 smith agent install --from <git-url>       # install from a git repo
 smith agent install --from <archive.tgz>   # install from an exported bundle archive
 smith agent export <name>                  # package a bundle as a .smith-bundle.tgz
+smith agent export <name> --format directory --to <dir>/  # publish into a catalog repo
+smith agent install --from <local-dir>                    # install from a local checkout
 smith agent list                           # all known agents and their targets
 
 smith skill list                           # installed skills + drift status

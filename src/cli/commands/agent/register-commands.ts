@@ -365,6 +365,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
     .option("--user-md <policy>", "stub | keep | reject", "stub")
     .option("--json", "Emit machine-readable output", false)
     .option("--dry-run", "Plan and validate; print the manifest; write nothing", false)
+    .option("--format <mode>", "archive | directory", "archive")
+    .option("--with-readme", "Directory mode: include the auto-generated README.md", false)
+    .option("--no-manifest", "Directory mode: drop _smith-export.json", false)
+    .option("--force", "Directory mode: replace <to>/<name>/ if it exists", false)
     .action(
       wrap(
         "agent export",
@@ -377,6 +381,10 @@ export function registerAgentCommands(parent: Command, opts: RegisterAgentComman
             json: Boolean(options.json),
             dryRun: Boolean(options.dryRun),
             stdout: Boolean(options.stdout),
+            format: (options.format as "archive" | "directory") ?? "archive",
+            withReadme: Boolean(options.withReadme),
+            noManifest: Boolean(options.noManifest),
+            force: Boolean(options.force),
           });
           if (result.exitCode !== 0) process.exit(result.exitCode);
           return 0;

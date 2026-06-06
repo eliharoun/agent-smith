@@ -13,8 +13,10 @@ import { registerAtlassianRoute } from "./routes/atlassian";
 import { registerCatalogsRoute } from "./routes/catalogs";
 import { registerConventionsRoutes } from "./routes/conventions";
 import { registerDaemonRoute } from "./routes/daemon";
+import { registerDiscoverFromDirRoute } from "./routes/discover-from-dir";
 import { registerDoctorRoute } from "./routes/doctor";
 import { registerDriftCheckRoute } from "./routes/drift-check";
+import { registerExportsCollisionRoute } from "./routes/exports-collision";
 import { registerExportsRoute } from "./routes/exports";
 import { registerFsShowRoute } from "./routes/fs-show";
 import { registerGitVerifyRoute } from "./routes/git-verify";
@@ -169,6 +171,7 @@ export function createApp(deps: AppDeps) {
   registerInstallStateRoute(app, { agentSmithHome });
   registerDriftCheckRoute(app, { agentSmithHome, registryPath });
   registerAgentsRoutes(app, { registryPath, installPathsFor });
+  registerDiscoverFromDirRoute(app);
   registerConventionsRoutes(app);
 
   const configRoot = deps.configRoot ?? join(xdgConfig, "agent-smith");
@@ -192,6 +195,7 @@ export function createApp(deps: AppDeps) {
 
   registerRegistryRoute(app, { registryPath });
   registerRefreshManifestRoute(app, { agentSmithHome });
+  registerExportsCollisionRoute(app);
   registerExportsRoute(app, { guiStatePath, smithVersion: currentVersion });
   registerFsShowRoute(app);
   registerImportStageRoute(app);

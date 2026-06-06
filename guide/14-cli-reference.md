@@ -1358,6 +1358,25 @@ $ smith agent install code-reviewer \
     --from https://github.com/acme/team-agents.git --ref release-2026-05
 ```
 
+**Local directory mode (`--from <local-dir>`)**
+
+`--from` accepts a path to a local directory containing one or more agent bundles (single-bundle layout: `<dir>/agent.config.json`; catalog layout: `<dir>/<name>/agent.config.json`). Smith registers the directory as `kind: registered` and installs from it.
+
+Refused when:
+
+- The path is inside `<XDG_STATE_HOME>/agent-smith/remote/` (that is smith's managed-clones directory; install from the upstream URL instead).
+- The path is already registered as a catalog with the same `rootPath`.
+- The path contains no `agent.config.json` files.
+
+When the directory is a git checkout (`<dir>/.git/config` contains a `[remote "origin"]` entry), smith prints a one-line stderr hint after install suggesting:
+
+```
+hint: this directory is a git repo. To enable `smith agent sync`, register the remote:
+      smith agent register /Users/me/work/team-agents --git-remote git@github.com:acme/team-agents.git
+```
+
+The hint is suppressed when stdout is not a TTY, and when a registry entry for the path already has a `gitRemote` set.
+
 **See also:** [`smith agent sync`](#smith-agent-sync-name),
 [Installing and rendering](./03-installing-and-rendering.md),
 [Skills](./05-skills.md#required-skills-requiresskills),
@@ -1367,7 +1386,7 @@ $ smith agent install code-reviewer \
 
 ### `smith agent export <name>`
 
-**Synopsis:** `smith agent export <name> [--to <path>] [--stdout] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--json] [--dry-run]`
+**Synopsis:** `smith agent export <name> [--to <path>] [--stdout] [--format <archive|directory>] [--include-skills | --no-include-skills] [--user-md <stub|keep|reject>] [--compression <gzip|none>] [--no-manifest] [--with-readme] [--force] [--quiet] [--json] [--dry-run]`
 
 **Description:** Package an agent bundle into a single `.smith-bundle.tgz` archive that the recipient can install via `smith agent install --from <archive>`. The archive contains the bundle's persona files (IDENTITY/EXPERTISE/SOUL/USER stub), all local-knowledge files (`type: file` / `dir` / `glob`), and (by default) every skill the bundle requires. It does NOT contain MCP servers, credentials, or remote knowledge content — those are declared in the manifest and the recipient brings or fetches them at install time. Source: `src/cli/commands/export.ts` and `src/core/export-bundle.ts`.
 
@@ -1384,6 +1403,11 @@ $ smith agent install code-reviewer \
 - `--user-md <policy>` — `stub` (default), `keep`, or `reject`. `stub` always emits the canonical placeholder `USER.md`; `keep` ships whatever's on disk; `reject` refuses if the source isn't already the canonical stub.
 - `--compression <gzip|none>` — default `gzip`. Use `none` when streaming through your own compression layer.
 - `--json` — emit machine-readable progress on stderr; the artifact path on stdout when not streaming.
+- `--format <archive|directory>` — `archive` (default) writes a single `.smith-bundle.tgz` archive. `directory` writes the bundle's loose files at `<--to>/<name>/` instead. Mutually exclusive with `--stdout` and with `--compression` (both combinations are rejected at flag-parse time with a clear error).
+- `--no-manifest` — omit the `_smith-export.json` manifest file from the output. Applies to both archive and directory mode.
+- `--with-readme` — include a generated `README.md` in the output. Off by default because the auto-generated README describes how to install from a `.tgz` archive, which is misleading when the bundle is committed into a git checkout via directory mode.
+- `--force` — in directory mode, replace an existing `<--to>/<name>/` directory (full replace, not merge). Without `--force`, smith refuses with exit 1 when the destination already exists. In archive mode, overwrite an existing archive file at the same path.
+- `--quiet` — suppress the "next steps" TTY hint printed after a successful directory-mode export. Also suppresses the hint when stdout is not a TTY (CI use).
 - `--dry-run` — plan and validate; print the manifest; write nothing.
 
 **Exit codes:**
@@ -1410,6 +1434,30 @@ $ smith agent export code-reviewer --no-include-skills --to ~/Downloads/
 # Pipe to a remote uploader
 $ smith agent export code-reviewer --stdout | gh release upload v1.0 - --name code-reviewer.smith-bundle.tgz
 ```
+
+**Directory mode (`--format directory`)**
+
+When `--format directory` is passed, smith writes the bundle's loose files at `<--to>/<name>/` instead of producing a single `.smith-bundle.tgz` archive. The destination is treated as the parent of the bundle dir, mirroring `helm pull --untar --untardir`. If `<--to>/<name>/` already exists, smith refuses with exit 1; pass `--force` to replace it (full replace, not merge — `--force` does not preserve user edits).
+
+Directory mode is mutually exclusive with `--stdout` (you cannot stream a directory tree) and with `--compression` (no archive; nothing to compress). Both combinations are rejected at flag-parse time with a clear error.
+
+The directory output contains:
+
+- `agent.config.json`, `IDENTITY.md`, `EXPERTISE.md`, `SOUL.md`, `USER.md` (stub) — always
+- Local-knowledge files (`type: file`/`dir`/`glob`) — always
+- `skills/<name>/` subdirs — when `--include-skills` (default on)
+- `_smith-export.json` — by default; pass `--no-manifest` to drop it
+- `README.md` — NOT included by default; pass `--with-readme` to include it (the README's auto-generated content describes archive installation, which is wrong inside a git checkout)
+
+After a successful directory export on a TTY, smith prints a one-line "next steps" hint with the git commands to commit and push:
+
+```
+wrote 7 files to /Users/me/work/team-agents/agents/code-reviewer/
+next:
+  cd /Users/me/work/team-agents && git add agents/code-reviewer && git commit -m "Add code-reviewer agent"
+```
+
+The hint is suppressed under `--quiet` and when stdout is not a TTY (CI use).
 
 **See also:** [`smith agent install --from`](#smith-agent-install-name) accepts both git URLs and `.smith-bundle.tgz` paths/URLs.
 [Sharing & distribution § archive-based sharing](./15-sharing-and-distribution.md#sharing-via-exported-archive).

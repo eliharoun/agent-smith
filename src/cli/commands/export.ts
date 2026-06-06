@@ -4,7 +4,7 @@ import pc from "picocolors";
 import { exportBundle } from "../../core/export-bundle";
 import { findBundleOrFail, loadAllBundles } from "../load-all";
 import { SmithError } from "../../core/smith-error";
-import { formatExportSummary } from "../format-export";
+import { formatDirectoryExportSummary, formatExportSummary } from "../format-export";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { readSmithVersion } from "../../io/smith-version";
 
@@ -16,6 +16,14 @@ export interface ExportAgentOptions {
   json: boolean;
   dryRun: boolean;
   stdout: boolean;
+  /** Output format. Default "archive". */
+  format?: "archive" | "directory";
+  /** Directory mode: include the auto-generated README.md (off by default). */
+  withReadme?: boolean;
+  /** Directory mode: drop _smith-export.json (kept by default). */
+  noManifest?: boolean;
+  /** Directory mode: replace <to>/<name>/ if it exists. */
+  force?: boolean;
 }
 
 export interface ExportAgentResult {
@@ -24,12 +32,29 @@ export interface ExportAgentResult {
   archiveSha256?: string;
   manifestJson?: string;
   errorMessage?: string;
+  /** Directory mode: absolute path of the bundle dir written. */
+  outputPath?: string;
 }
 
 export async function exportAgent(
   name: string,
   opts: ExportAgentOptions,
 ): Promise<ExportAgentResult> {
+  // Mutex validation: reject incompatible flag combos before doing any I/O.
+  const format = opts.format ?? "archive";
+  if (format === "directory" && opts.stdout) {
+    process.stderr.write(
+      `${pc.red("error:")} cannot stream a directory tree to stdout (--format directory is incompatible with --stdout)\n`,
+    );
+    return { exitCode: 1, errorMessage: "--format directory cannot be combined with --stdout" };
+  }
+  if (format === "directory" && opts.compression === "none") {
+    process.stderr.write(
+      `${pc.red("error:")} --compression has no effect in directory mode\n`,
+    );
+    return { exitCode: 1, errorMessage: "--compression has no effect in directory mode" };
+  }
+
   try {
     const registry = await loadRegistry(canonicalRegistryPath());
     const all = await loadAllBundles(registry);
@@ -44,7 +69,15 @@ export async function exportAgent(
       userMdPolicy: opts.userMd,
       now: () => new Date(),
       smithVersion,
-      compression: opts.compression,
+      format,
+      ...(format === "directory"
+        ? {
+            outputPath: opts.to,
+            includeManifest: !opts.noManifest,
+            includeReadme: opts.withReadme === true,
+            force: opts.force === true,
+          }
+        : { compression: opts.compression }),
     });
 
     if (opts.dryRun) {
@@ -52,6 +85,33 @@ export async function exportAgent(
       if (opts.json) process.stdout.write(out);
       else process.stdout.write(`${pc.dim("(dry run)")}\n${out}\n`);
       return { exitCode: 0, manifestJson: out };
+    }
+
+    if (format === "directory") {
+      if (!opts.json && process.stdout.isTTY) {
+        process.stdout.write(
+          formatDirectoryExportSummary({
+            bundleName: bundle.config.name,
+            outputPath: result.outputPath!,
+            filesWritten: result.filesWritten ?? [],
+          }) + "\n",
+        );
+      } else if (opts.json) {
+        process.stdout.write(
+          JSON.stringify({ outputPath: result.outputPath, filesWritten: result.filesWritten }),
+        );
+      }
+      return { exitCode: 0, outputPath: result.outputPath! };
+    }
+
+    // The CLI currently only runs in archive mode at this point; guard so
+    // TypeScript knows archive and archiveSha256 are defined from here forward.
+    if (result.format !== "archive" || result.archive === undefined || result.archiveSha256 === undefined) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "export result",
+        reasons: ["unexpected directory-mode result in archive-only CLI path"],
+      });
     }
 
     if (opts.stdout) {
@@ -117,4 +177,3 @@ async function resolveOutputPath(to: string, filename: string): Promise<string> 
     reasons: [`refusing to overwrite ${abs} (not an archive file)`],
   });
 }
-

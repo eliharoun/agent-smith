@@ -620,4 +620,36 @@ describe("agent.export", () => {
       JobRequest.parse({ command: "agent.export", to: "/tmp" }),
     ).toThrow();
   });
+
+  it("AgentExport: rejects format=directory + stdout=true", () => {
+    const result = JobRequest.safeParse({
+      command: "agent.export",
+      name: "foo",
+      to: "/tmp/bundles",
+      format: "directory",
+      stdout: true,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("AgentExport: rejects format=directory + compression=none", () => {
+    const result = JobRequest.safeParse({
+      command: "agent.export",
+      name: "foo",
+      to: "/tmp/bundles",
+      format: "directory",
+      compression: "none",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("AgentExport: accepts format=directory with default compression", () => {
+    const result = JobRequest.safeParse({
+      command: "agent.export",
+      name: "foo",
+      to: "/tmp/bundles",
+      format: "directory",
+    });
+    expect(result.success).toBe(true);
+  });
 });

@@ -5,6 +5,23 @@ import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { FormField } from "@/ui/FormField";
 
+type SourceKind = "archive" | "directory" | "git-url" | "unknown";
+
+function classifySource(s: string): SourceKind {
+  if (s.length === 0) return "unknown";
+  if (s.endsWith(".smith-bundle.tgz") || s.endsWith(".tgz")) return "archive";
+  if (/^(https:\/\/|git@|ssh:\/\/)/.test(s)) return "git-url";
+  if (/^[/~]|^\.\//.test(s)) return "directory";
+  return "unknown";
+}
+
+const BADGE_LABEL: Record<SourceKind, string> = {
+  archive: "[archive]",
+  directory: "[local directory]",
+  "git-url": "[git url]",
+  unknown: "",
+};
+
 function DropZone({ onUploaded }: { onUploaded: (path: string) => void }) {
   const [hover, setHover] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +43,9 @@ function DropZone({ onUploaded }: { onUploaded: (path: string) => void }) {
           return;
         }
         const file = files[0]!;
-        // A directory drop has size 0 and no type; flag it specifically.
+        // Browsers surface folder drops as a zero-byte file with no extension.
         if (file.size === 0 && !file.name.includes(".")) {
-          setError("dropped item looks like a folder; drop a .smith-bundle.tgz file");
+          setError("folder drops aren't supported by the browser. Paste the absolute path into the field above.");
           return;
         }
         if (!file.name.endsWith(".smith-bundle.tgz")) {
@@ -99,6 +116,7 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
   if (!open) return null;
 
   const discoverDisabled = url.trim().length === 0 || status === "discovering";
+  const kind_ = classifySource(url.trim());
 
   function handleDiscover() {
     if (discoverDisabled) return;
@@ -294,6 +312,11 @@ export function InstallFromUrlModal({ kind, open, onClose, initialUrl }: Props) 
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://… or git@host:… or path to .smith-bundle.tgz"
             />
+            {kind_ !== "unknown" && (
+              <span className="text-[10px] font-mono text-matrix-green-muted -mt-2">
+                {BADGE_LABEL[kind_]}
+              </span>
+            )}
             <FormField
               label="git ref (branch / tag / sha)"
               value={ref}

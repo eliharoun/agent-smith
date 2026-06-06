@@ -43,7 +43,7 @@ describe("POST /api/agents/:name/export/plan", () => {
     // The route must include the resolved default export directory.
     expect(body.defaultExportDir).toBe(join(homedir(), "Downloads"));
     // Verify the route invokes smith with the canonical dry-run flags.
-    expect(received.args).toEqual(["agent", "export", "code-reviewer", "--dry-run", "--json"]);
+    expect(received.args).toEqual(["agent", "export", "code-reviewer", "--dry-run", "--json", "--format", "archive"]);
   });
 
   test("returns 502 when the dry-run fails", async () => {
@@ -71,5 +71,29 @@ describe("POST /api/agents/:name/export/plan", () => {
     registerExportsRoute(app, { runSmith: async () => ({ code: 0, stdout: "{}", stderr: "" }) });
     const res = await app.request("/api/agents/--help/export/plan", { method: "POST" });
     expect(res.status).toBe(400);
+  });
+
+  test("plan: rejects unknown format with 400", async () => {
+    const app = new Hono();
+    registerExportsRoute(app, { runSmith: async () => ({ code: 0, stdout: "{}", stderr: "" }) });
+    const res = await app.request("/api/agents/x/export/plan?format=banana", { method: "POST" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("invalid format");
+  });
+
+  test("plan: passes --format directory to the CLI when format=directory", async () => {
+    const received: { args: string[] | null } = { args: null };
+    const app = new Hono();
+    registerExportsRoute(app, {
+      runSmith: async (args) => {
+        received.args = args;
+        return { code: 0, stdout: JSON.stringify({ exportSchemaVersion: 1 }), stderr: "" };
+      },
+    });
+    const res = await app.request("/api/agents/my-agent/export/plan?format=directory", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(received.args).toContain("--format");
+    expect(received.args).toContain("directory");
   });
 });

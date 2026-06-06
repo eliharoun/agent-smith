@@ -42,7 +42,7 @@ describe("export round-trip", () => {
       smithVersion: "1.7.0",
     });
     const archive1Path = join(home, "first.smith-bundle.tgz");
-    await writeFile(archive1Path, r1.archive);
+    await writeFile(archive1Path, r1.archive!);
 
     // Import on a clean home
     const importResult = await installFromArchive({
@@ -77,7 +77,7 @@ describe("export round-trip", () => {
       },
     });
     const archive1Path = join(home, "with-skill.smith-bundle.tgz");
-    await writeFile(archive1Path, r1.archive);
+    await writeFile(archive1Path, r1.archive!);
 
     const importResult = await installFromArchive({
       archivePath: archive1Path,
@@ -114,7 +114,7 @@ describe("export round-trip", () => {
       smithVersion: "1.7.0",
     });
     const archive1Path = join(home, "local-knowledge.smith-bundle.tgz");
-    await writeFile(archive1Path, r1.archive);
+    await writeFile(archive1Path, r1.archive!);
 
     const importResult = await installFromArchive({
       archivePath: archive1Path,

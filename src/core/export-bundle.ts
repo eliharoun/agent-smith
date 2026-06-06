@@ -27,15 +27,33 @@ export interface ExportBundleOptions {
   resolveSkill?: (name: string) => Promise<string | null>;
   /** Compression mode for the output archive. Default "gzip". */
   compression?: "gzip" | "none";
+  /** Output format. Default "archive". */
+  format?: "archive" | "directory";
+  /** Required when format === "directory": absolute parent dir to write into.
+   *  Files land at <outputPath>/<bundleName>/. */
+  outputPath?: string;
+  /** Directory mode: include _smith-export.json. Default true. */
+  includeManifest?: boolean;
+  /** Directory mode: include the auto-generated README.md. Default false. */
+  includeReadme?: boolean;
+  /** Directory mode: replace <outputPath>/<bundleName>/ if it exists. Default false. */
+  force?: boolean;
 }
 
 export interface ExportBundleResult {
-  archive: Buffer;
-  /** sha256 of `archive`. */
-  archiveSha256: string;
+  /** Output format actually used. */
+  format: "archive" | "directory";
+  /** Archive bytes (archive mode only). */
+  archive?: Buffer;
+  /** sha256 of `archive` (archive mode only). */
+  archiveSha256?: string;
   /** sha256 over agent.config.json + IDENTITY/EXPERTISE/SOUL/USER stub. */
   contentHash: string;
   manifest: ExportManifest;
+  /** Directory mode: absolute path of the bundle dir written. */
+  outputPath?: string;
+  /** Directory mode: relative paths (from `outputPath`) of every file written. */
+  filesWritten?: string[];
 }
 
 const STUB_USER_MD = "# USER context\n\nThis file is a placeholder.\n";
@@ -302,6 +320,31 @@ export async function exportBundle(opts: ExportBundleOptions): Promise<ExportBun
 
   const finalManifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
 
+  const format = opts.format ?? "archive";
+
+  if (format === "directory") {
+    if (!opts.outputPath) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "output path",
+        reasons: ["format: directory requires an outputPath"],
+      });
+    }
+    return await writeBundleDirectory({
+      bundleEntries,
+      readmeEntry,
+      finalManifestBytes,
+      contentHash,
+      manifest,
+      bundleName: opts.bundleName,
+      outputPath: opts.outputPath,
+      includeManifest: opts.includeManifest ?? true,
+      includeReadme: opts.includeReadme ?? false,
+      force: opts.force ?? false,
+    });
+  }
+
+  // archive mode (existing behavior)
   const allEntries: ArchiveEntry[] = [
     ...bundleEntries,
     readmeEntry,
@@ -313,6 +356,7 @@ export async function exportBundle(opts: ExportBundleOptions): Promise<ExportBun
 
   const archive = await writeArchive(allEntries, { gzip: opts.compression !== "none" });
   return {
+    format: "archive",
     archive,
     archiveSha256: sha256(archive),
     contentHash,
@@ -442,3 +486,100 @@ function posixJoin(...parts: string[]): string {
   return posixPath.join(...parts);
 }
 
+interface WriteBundleDirectoryOptions {
+  bundleEntries: ArchiveEntry[];
+  readmeEntry: ArchiveEntry;
+  finalManifestBytes: Buffer;
+  contentHash: string;
+  manifest: ExportManifest;
+  bundleName: string;
+  outputPath: string;
+  includeManifest: boolean;
+  includeReadme: boolean;
+  force: boolean;
+}
+
+async function writeBundleDirectory(opts: WriteBundleDirectoryOptions): Promise<ExportBundleResult> {
+  const { mkdir, rm, stat, writeFile } = await import("node:fs/promises");
+  const { dirname, join: pathJoin, sep } = await import("node:path");
+
+  const target = pathJoin(opts.outputPath, opts.bundleName);
+
+  // Containment guard: target must be under outputPath. mkdir(target) would
+  // create whatever the path resolves to; this guard catches a bundle name
+  // like "../escape" before any I/O.
+  const parentResolved = pathJoin(opts.outputPath);
+  if (!target.startsWith(parentResolved + sep)) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "output path",
+      reasons: [`bundle name resolves outside outputPath: ${opts.bundleName}`],
+    });
+  }
+
+  // Collision check.
+  let exists = false;
+  try {
+    await stat(target);
+    exists = true;
+  } catch {
+    exists = false;
+  }
+  if (exists && !opts.force) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "output path",
+      reasons: [`${target} already exists; pass force=true to overwrite`],
+    });
+  }
+  if (exists && opts.force) {
+    await rm(target, { recursive: true, force: true });
+  }
+  await mkdir(target, { recursive: true });
+
+  // Build the file list. Same shape as archive mode, minus the conditional pieces.
+  type FileToWrite = { rel: string; bytes: Buffer };
+  const files: FileToWrite[] = [];
+
+  // Persona files + local-knowledge entries: bundleEntries paths are like
+  // "<bundleName>/IDENTITY.md"; strip the prefix to get the relative path.
+  const prefix = `${opts.bundleName}/`;
+  for (const e of opts.bundleEntries) {
+    const rel = e.path.startsWith(prefix) ? e.path.slice(prefix.length) : e.path;
+    files.push({ rel, bytes: e.bytes });
+  }
+
+  // README is opt-in for directory mode (its content references "extract this
+  // archive", which is wrong inside a git checkout).
+  if (opts.includeReadme) {
+    const rel = opts.readmeEntry.path.startsWith(prefix)
+      ? opts.readmeEntry.path.slice(prefix.length)
+      : opts.readmeEntry.path;
+    files.push({ rel, bytes: opts.readmeEntry.bytes });
+  }
+
+  // Manifest is opt-out for directory mode (downstream `smith` commands may
+  // read it; matches helm pull keeping Chart.yaml).
+  if (opts.includeManifest) {
+    files.push({ rel: "_smith-export.json", bytes: opts.finalManifestBytes });
+  }
+
+  // Sort by rel for deterministic iteration order.
+  files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+
+  const filesWritten: string[] = [];
+  for (const f of files) {
+    const out = pathJoin(target, f.rel);
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, f.bytes);
+    filesWritten.push(f.rel);
+  }
+
+  return {
+    format: "directory",
+    contentHash: opts.contentHash,
+    manifest: opts.manifest,
+    outputPath: target,
+    filesWritten,
+  };
+}

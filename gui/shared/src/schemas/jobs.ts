@@ -128,8 +128,23 @@ const AgentExport = z
     json: z.boolean().default(false),
     dryRun: z.boolean().default(false),
     stdout: z.boolean().default(false),
+    // Directory mode (default "archive" preserves prior behavior).
+    format: z.enum(["archive", "directory"]).default("archive"),
+    withReadme: z.boolean().default(false),
+    noManifest: z.boolean().default(false),
+    force: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .refine((v) => !(v.format === "directory" && v.stdout), {
+    message: "--format directory cannot be combined with --stdout",
+    path: ["stdout"],
+  })
+  .refine((v) => !(v.format === "directory" && v.compression === "none"), {
+    // --compression is meaningless in directory mode; reject explicitly so
+    // the GUI surfaces a clear error rather than silently dropping the flag.
+    message: "--compression has no effect in directory mode",
+    path: ["compression"],
+  });
 
 // ─── Skill commands ───────────────────────────────────────────────────────
 

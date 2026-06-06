@@ -609,6 +609,42 @@ The recipient sees a one-line summary of what the artifact will need from their 
 
 **See also:** [`smith agent export`](./14-cli-reference.md#smith-agent-export-name) and [`smith agent install --from`](./14-cli-reference.md#smith-agent-install-name) in the CLI reference.
 
+### 9.9 Producing a catalog repo with `--format directory`
+
+For producers who maintain a shared catalog repo (the [Pattern A](#81-pattern-a--single-shared-catalog-recommended-starting-point) layout), `smith agent export --format directory` writes the bundle's loose files directly into the repo's `agents/` directory:
+
+```bash
+$ smith agent export code-reviewer --format directory --to ~/work/team-agents/agents/
+✓ wrote 7 files to /Users/me/work/team-agents/agents/code-reviewer/
+next:
+  cd /Users/me/work/team-agents && git add agents/code-reviewer && git commit -m "Add code-reviewer agent"
+```
+
+The destination path follows the [Helm convention](https://helm.sh/docs/helm/helm_pull/) — `--to` is treated as the *parent* of the bundle dir. Files land at `<--to>/<name>/`. If `<name>/` already exists in the destination, smith refuses with exit 1; pass `--force` to replace it (full replace, no merge).
+
+The directory output is shaped exactly like the catalog layout the install pipeline already discovers: `<repo>/agents/<name>/agent.config.json`. Recipients install via the existing `smith agent install --from <git-url>` or via `smith agent install --from <local-checkout>` (see §9.10 below).
+
+By default, the directory output contains the bundle files + `_smith-export.json` (the manifest) and *omits* the auto-generated `README.md` (its content references "extract this archive", which is wrong inside a git checkout). Pass `--with-readme` to include it; pass `--no-manifest` to drop the manifest.
+
+### 9.10 Installing from a local checkout
+
+If you've already cloned a catalog repo for editing, you can install bundles directly from your working copy without re-cloning:
+
+```bash
+$ smith agent install --from ~/work/team-agents/
+```
+
+Smith registers the directory as a catalog and installs the bundle(s). When the directory is a git repo, smith prints a one-line hint after install showing how to register the remote URL for `smith agent sync`:
+
+```
+hint: this directory is a git repo. To enable `smith agent sync`, register the remote:
+      smith agent register /Users/me/work/team-agents --git-remote git@github.com:acme/team-agents.git
+```
+
+The hint is informational; the install completed successfully without it.
+
+The `--from <local-dir>` flow accepts the same flags as `--from <git-url>`: `--all` to install every bundle in the directory, `--agents <list>` for a subset, `[name]` for a single bundle, `--json` for machine-readable discovery output.
+
 ---
 
 ## 10. Gotchas and common mistakes

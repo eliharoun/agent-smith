@@ -2,6 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AgentList } from "@/panels/AgentList";
 import { InstallFromUrlModal } from "@/panels/InstallFromUrlModal";
+import {
+  InstallJobWatcher,
+  useInstallCompletionWatcher,
+} from "@/hooks/useInstallCompletionWatcher";
 import { Button } from "@/ui/Button";
 import { Chrome } from "@/ui/Chrome";
 import { ScreenShell } from "@/ui/ScreenShell";
@@ -26,6 +30,7 @@ function InstallFromUrlButton({ onClick }: { onClick: () => void }) {
 
 export function AgentsList() {
   const [installOpen, setInstallOpen] = useState(false);
+  const { installJobIds, maybeFire } = useInstallCompletionWatcher();
 
   return (
     <ScreenShell
@@ -49,6 +54,11 @@ export function AgentsList() {
     >
       <AgentList />
       <InstallFromUrlModal kind="agent" open={installOpen} onClose={() => setInstallOpen(false)} />
+      {/* One watcher per active agent.install job — fires sync-hint toast when
+          the job exits 0 and its stdout contained a dir-install envelope. */}
+      {installJobIds.map((id) => (
+        <InstallJobWatcher key={id} jobId={id} maybeFire={maybeFire} />
+      ))}
     </ScreenShell>
   );
 }
