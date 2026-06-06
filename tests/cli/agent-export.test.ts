@@ -187,4 +187,26 @@ describe("smith agent export --format directory", () => {
     expect(result.exitCode).toBe(1);
     expect(result.errorMessage).toContain("compression");
   });
+
+  test("--format directory --dry-run succeeds without --to (manifest preview)", async () => {
+    // Regression: the GUI's plan endpoint passes --format directory --dry-run
+    // --json without --to. Before the fix, exportBundle's directory branch
+    // ran first and rejected the empty/relative output path.
+    await seedBundle();
+    const result = await exportAgent("minimal-bundle", {
+      to: ".",
+      format: "directory",
+      includeSkills: false,
+      userMd: "stub",
+      compression: "gzip",
+      json: true,
+      dryRun: true,
+      stdout: false,
+      force: false,
+      withReadme: false,
+      noManifest: false,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.manifestJson).toBeDefined();
+  });
 });

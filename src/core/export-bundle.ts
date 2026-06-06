@@ -501,15 +501,14 @@ interface WriteBundleDirectoryOptions {
 
 async function writeBundleDirectory(opts: WriteBundleDirectoryOptions): Promise<ExportBundleResult> {
   const { mkdir, rm, stat, writeFile } = await import("node:fs/promises");
-  const { dirname, join: pathJoin, sep } = await import("node:path");
+  const { dirname, join: pathJoin, resolve: pathResolve, sep } = await import("node:path");
 
-  const target = pathJoin(opts.outputPath, opts.bundleName);
+  // Resolve to absolute paths so the containment guard works for relative
+  // outputPaths like "." and the prefix comparison is reliable.
+  const parentAbs = pathResolve(opts.outputPath);
+  const target = pathResolve(parentAbs, opts.bundleName);
 
-  // Containment guard: target must be under outputPath. mkdir(target) would
-  // create whatever the path resolves to; this guard catches a bundle name
-  // like "../escape" before any I/O.
-  const parentResolved = pathJoin(opts.outputPath);
-  if (!target.startsWith(parentResolved + sep)) {
+  if (!target.startsWith(parentAbs + sep) && target !== parentAbs) {
     throw new SmithError({
       code: "validation-failed",
       what: "output path",
