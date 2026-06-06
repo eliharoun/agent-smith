@@ -85,21 +85,18 @@ export function AgentsList() {
           title="Agents"
           subtitle="construct registry"
           actions={
-            <Button onClick={() => { setInitialView("menu"); setAddOpen(true); }}>
-              + Add agent
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => { setInitialView("menu"); setAddOpen(true); }}>
+                + Add agent
+              </Button>
+              <Link to="/agents/install-matrix">
+                <Button variant="ghost">Manage installs</Button>
+              </Link>
+            </div>
           }
         />
       }
     >
-      <div className="flex justify-end px-4 pt-1 pb-0">
-        <Link
-          to="/agents/install-matrix"
-          className="font-mono text-[10px] text-matrix-green-muted hover:text-matrix-green"
-        >
-          Install across platforms ↗
-        </Link>
-      </div>
       <AgentList />
       <AddAgentModal
         open={addOpen}

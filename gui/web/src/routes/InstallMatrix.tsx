@@ -4,7 +4,7 @@ import { ScreenShell } from "@/ui/ScreenShell";
 
 export function InstallMatrix() {
   return (
-    <ScreenShell chrome={<Chrome title="Install Matrix" subtitle="agents × platforms" />}>
+    <ScreenShell chrome={<Chrome title="Manage installs" subtitle="agents × platforms" />}>
       <InstallMatrixGrid />
     </ScreenShell>
   );

@@ -14,9 +14,15 @@ describe("Dashboard route (v1.13.0)", () => {
     expect(screen.getByRole("button", { name: /\+ add agent/i })).toBeInTheDocument();
   });
 
-  it("'Install matrix' link is present on the Dashboard", () => {
+  it("'Manage installs' link is present on the Dashboard (renamed from Install matrix)", () => {
     render(<TestProviders><Dashboard /></TestProviders>);
-    expect(screen.getByRole("link", { name: /install matrix/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /manage installs/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /install matrix/i })).toBeNull();
+  });
+
+  it("shows a '+ Add skill' action on the Dashboard quick actions", () => {
+    render(<TestProviders><Dashboard /></TestProviders>);
+    expect(screen.getByRole("button", { name: /\+ add skill/i })).toBeInTheDocument();
   });
 
   it("no stale '+ New agent' link appears (replaced by button)", () => {
