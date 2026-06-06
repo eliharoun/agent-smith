@@ -36,7 +36,7 @@ if (process.env.SMITH_HINT_PENDING === "1") {
 }
 
 const program = new Command();
-program.name("smith").description("Lifecycle manager for AI coding agents").version("1.11.0");
+program.name("smith").description("Lifecycle manager for AI coding agents").version("1.11.1");
 // Funnel commander's own usage errors (unknown command, missing required option,
 // --help, --version) through the catch at the bottom so formatCommanderError()
 // renders them with the same prefix as wrap()'s SmithError path.

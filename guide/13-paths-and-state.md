@@ -202,6 +202,7 @@ This is the correct XDG bucket for runtime state per the [XDG Base Directory spe
 | `daemon.heartbeat.json` | running daemon | every 5 s while running | JSON `HeartbeatSnapshot` | **yes** (temp + rename) |
 | `gui-jobs.jsonl` | `smith gui` | first GUI job | append-only NDJSON | append |
 | `gui-jobs-output/` | `smith gui` | per stored job | per-job stdout/stderr files | n/a |
+| `mcp-logs/<server>.log` | every smith command that spawns child MCP servers | per child spawn | per-server stderr captured from child MCP processes (rotates at 10MB; keeps `.log` through `.log.3`; cleared by `jack-out`) | append |
 | `remote/<host>/<owner>/<repo>/` | `smith {agent,skill} install --from <url>` | per remote-backed catalog | git clone working tree | n/a |
 
 There is **no `daemon.sock`**. Earlier specs mentioned a unix socket; the daemon does not open one. Inter-process visibility is achieved entirely through the heartbeat file plus `kill(pid, 0)` liveness checks. (`src/cli/commands/daemon.ts` for the path helpers; `src/daemon/heartbeat.ts:heartbeatPath()` for the heartbeat writer.)
@@ -373,6 +374,7 @@ Re-running `smith init` over an initialized config dir is safe. Only missing fil
 - Daemon runtime files and GUI job history under `~/.local/state/agent-smith/` (or `${XDG_STATE_HOME}/agent-smith/`):
   - `daemon.pid`, `daemon.log`, `daemon.heartbeat.json`
   - `gui-jobs.jsonl`, `gui-jobs-output/`
+  - `mcp-logs/`
   
   The `remote/` subdirectory of the runtime state root is **not** removed — see [Not removed](#not-removed). Source: `src/cli/commands/jack-out.ts` (the `RUNTIME_STATE_FILES_TO_REMOVE` and `RUNTIME_STATE_DIRS_TO_REMOVE` constants).
 - The agent-smith marker block from your shell rc file (the `# >>> agent-smith installer >>>` ... `# <<< agent-smith installer <<<` lines `bin/install` appended for PATH). Source: `src/cli/commands/jack-out.ts` (`removeMarkerBlock`) + `:301`.

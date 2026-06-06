@@ -34,7 +34,7 @@ const RUNTIME_STATE_FILES_TO_REMOVE = [
   "daemon.heartbeat.json",
   "gui-jobs.jsonl",
 ];
-const RUNTIME_STATE_DIRS_TO_REMOVE = ["gui-jobs-output"];
+const RUNTIME_STATE_DIRS_TO_REMOVE = ["gui-jobs-output", "mcp-logs"];
 
 export interface JackOutCliOptions {
   dryRun?: boolean;

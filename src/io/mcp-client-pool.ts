@@ -1,4 +1,7 @@
+import { join } from "node:path";
+import pc from "picocolors";
 import { McpClient, type McpClientOpts } from "./mcp-client";
+import { runtimeStateHome } from "./runtime-state-home";
 
 /**
  * Process-wide pool of connected McpClient instances. Keyed by
@@ -17,6 +20,7 @@ export class McpClientPool {
   private readonly clients = new Map<string, McpClient>();
   private readonly inflight = new Map<string, Promise<McpClient>>();
   private shuttingDown = false;
+  private hintPrinted = false;
 
   async acquire(name: string, opts: McpClientOpts): Promise<McpClient> {
     if (this.shuttingDown) throw new Error("pool is shutting down");
@@ -25,6 +29,14 @@ export class McpClientPool {
     if (existing) return existing;
     const inflight = this.inflight.get(key);
     if (inflight) return inflight;
+    if (!this.hintPrinted && process.env.SMITH_MCP_VERBOSE !== "1") {
+      this.hintPrinted = true;
+      process.stderr.write(
+        pc.dim(
+          `[mcp] child server logs → ${join(runtimeStateHome(), "mcp-logs")}/ (set SMITH_MCP_VERBOSE=1 to inherit stderr)\n`,
+        ),
+      );
+    }
     const promise = this.connectNew(opts).then((client) => {
       if (this.shuttingDown) {
         // Race: shutdown landed before connect resolved. Close eagerly.

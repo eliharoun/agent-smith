@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { basename, join } from "node:path";
+import { type LogWriter, openMcpStderrLog } from "./mcp-stderr-log";
+import { runtimeStateHome } from "./runtime-state-home";
 
 export interface McpToolDescriptor {
   readonly name: string;
@@ -41,6 +44,7 @@ export class McpClient {
   private buf = "";
   private connected = false;
   private closed = false;
+  private stderrLog: LogWriter | null = null;
 
   constructor(private readonly opts: McpClientOpts) {
     this.callTimeoutMs = opts.callTimeoutMs ?? 10_000;
@@ -51,9 +55,13 @@ export class McpClient {
   async connect(): Promise<void> {
     if (this.connected) return;
     if (this.closed) throw new Error("mcp client already closed");
+    const verbose = process.env.SMITH_MCP_VERBOSE === "1";
     this.child = spawn(this.opts.command, [...(this.opts.args ?? [])], {
-      // stderr inherited so server logs don't fill the pipe buffer.
-      stdio: ["pipe", "pipe", "inherit"],
+      // When SMITH_MCP_VERBOSE=1 the user opted in to live stderr; otherwise
+      // pipe stderr so we can drain it to a log file without flooding the
+      // parent terminal. The reader MUST consume the pipe (via the on-data
+      // handler below) or the child will deadlock when the buffer fills.
+      stdio: verbose ? ["pipe", "pipe", "inherit"] : ["pipe", "pipe", "pipe"],
       ...(this.opts.cwd ? { cwd: this.opts.cwd } : {}),
       ...(this.opts.env ? { env: { ...process.env, ...this.opts.env } } : {}),
     });
@@ -61,12 +69,24 @@ export class McpClient {
     this.child.stdout?.on("data", (chunk: string) => this.onData(chunk));
     this.child.on("error", (err) => this.failAll(err));
     this.child.on("exit", (code, signal) => {
+      this.stderrLog?.close().catch(() => {});
+      this.stderrLog = null;
       if (this.pending.size > 0) {
         this.failAll(new Error(
           `mcp server exited with code ${code}${signal ? ` (signal ${signal})` : ""} while RPCs were pending`,
         ));
       }
     });
+    if (!verbose && this.child.stderr) {
+      const serverName = basename(this.opts.command).replace(/\.[a-z]+$/i, "") || "mcp";
+      this.stderrLog = await openMcpStderrLog({
+        logDir: join(runtimeStateHome(), "mcp-logs"),
+        serverName,
+      });
+      this.child.stderr.on("data", (chunk: Buffer) => {
+        this.stderrLog?.write(chunk);
+      });
+    }
     const initResult = await this.callRaw("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
@@ -110,6 +130,8 @@ export class McpClient {
     const child = this.child;
     this.child = null;
     this.connected = false;
+    await this.stderrLog?.close().catch(() => {});
+    this.stderrLog = null;
     if (!child) return;
     try { child.stdin?.end(); } catch { /* ignore */ }
     await new Promise<void>((resolve) => {

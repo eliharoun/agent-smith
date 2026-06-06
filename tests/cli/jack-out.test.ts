@@ -826,8 +826,9 @@ describe("cli/jack-out runJackOutCli", () => {
     expect(rmFileCalls).toContain("/fake/state/agent-smith/daemon.heartbeat.json");
     expect(rmFileCalls).toContain("/fake/state/agent-smith/gui-jobs.jsonl");
 
-    // gui-jobs-output/ gets rmDir'd
+    // gui-jobs-output/ and mcp-logs/ get rmDir'd
     expect(rmDirCalls).toContain("/fake/state/agent-smith/gui-jobs-output");
+    expect(rmDirCalls).toContain("/fake/state/agent-smith/mcp-logs");
 
     // remote/ is NOT touched (managed separately by unregister --purge-clone).
     // The runtimeStateDir itself isn't recursively removed either.

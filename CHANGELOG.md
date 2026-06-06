@@ -4,6 +4,27 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] — 2026-06-04
+
+### Changed
+
+- Child MCP server stderr no longer floods the terminal that ran
+  `smith gui` (or any smith command that spawns MCP servers). Each
+  child's stderr is now piped to `<runtimeStateHome>/mcp-logs/<server>.log`
+  (typically `~/.local/state/agent-smith/mcp-logs/`) with size-based
+  rotation: `.log` → `.log.1` → ... → `.log.3` once the active file
+  exceeds 10MB. On first MCP spawn per session, smith prints a single
+  dim line pointing at the log directory.
+
+### Added
+
+- `SMITH_MCP_VERBOSE=1` env var: when set, restores the old behavior
+  of inheriting stderr from child MCP processes. Useful when actively
+  debugging an MCP server that won't initialize.
+- New `src/io/mcp-stderr-log.ts` helper: per-server log writer with
+  fire-and-forget semantics (writes never throw or block) and graceful
+  degradation when the log dir can't be created.
+
 ## [1.11.0] — 2026-06-05
 
 Producer side gains a directory-mode export for publishing bundles
