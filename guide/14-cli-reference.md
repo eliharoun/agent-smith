@@ -97,9 +97,11 @@ duplication and surfaces only in tests, not user-visible output.
 persisted via `atomicWriteJson` — temp file + rename), and seeding
 `USER.md` with a stub if it does not already exist. Idempotent —
 re-running over a seeded directory leaves all existing files untouched.
-The installer (`bash bin/install`) calls this automatically as Step 8b
-on every install. Manual invocation is only needed for recovery from a
-corrupt or version-skewed registry. Source: `src/cli/commands/init.ts`.
+The from-source installer (`bash bin/install`) calls this automatically
+as Step 8b on every install. The npm install does not auto-init — run
+`smith init` once after `npm install -g agent-smith`. Manual invocation
+is otherwise only needed for recovery from a corrupt or version-skewed
+registry. Source: `src/cli/commands/init.ts`.
 
 **Arguments:** none.
 
@@ -1113,11 +1115,14 @@ works from a checked-out source tree). Honors
 postinstall context (skipped, not failed). Source: `scripts/bootstrap.ts`.
 
 > Note: this command no longer installs the `agent-smith` persona. The
-> persona is installed separately by `bin/install` Step 9, by `smith
-> update` Step 4, and on demand via `smith agent install agent-smith` (which
-> resolves the persona through the synthetic `agent-smith-self` source
-> registered in `src/io/registry.ts`). Recovery after a wipe is two
-> commands: `smith skill bootstrap` and `smith agent install agent-smith`.
+> persona is installed separately by the from-source `bin/install` Step
+> 9, by `smith update` Step 4, and on demand via `smith agent install
+> agent-smith` (which resolves the persona through the synthetic
+> `agent-smith-self` source registered in `src/io/registry.ts`). After
+> an `npm install -g agent-smith`, run `smith agent install agent-smith`
+> manually if you want the companion persona installed. Recovery after a
+> wipe is two commands: `smith skill bootstrap` and `smith agent install
+> agent-smith`.
 
 **Arguments:** none.
 
@@ -2660,15 +2665,16 @@ $ smith doctor --fix-mcp-commands
 
 **Description:** Pull the latest agent-smith from `origin/main`,
 install dependencies, rebuild the GUI bundle, refresh agent-smith's
-knowledge directory, and run `smith doctor` to verify. Refuses to
-run from a corrupt install (when `import.meta.url` does not resolve
-to a workspace — should not happen under the single-mode install
-where every clone lives at `~/.agent-smith/`) with a pointer to a
-clean reinstall (`gh repo clone eliharoun/agent-smith ~/.agent-smith
-&& bash ~/.agent-smith/bin/install`). Refuses to pull when the git
-workspace is dirty (any porcelain output). Doctor's exit code is
-propagated verbatim, so post-update drift surfaces. Source:
-`src/cli/commands/update.ts`.
+knowledge directory, and run `smith doctor` to verify. Specific to
+the from-source install path; for npm installs use `npm update -g
+agent-smith` instead. Refuses to run from a corrupt install (when
+`import.meta.url` does not resolve to a workspace — should not happen
+under the single-mode source install where every clone lives at
+`~/.agent-smith/`) with a pointer to a clean reinstall (`gh repo clone
+eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install`).
+Refuses to pull when the git workspace is dirty (any porcelain output).
+Doctor's exit code is propagated verbatim, so post-update drift
+surfaces. Source: `src/cli/commands/update.ts`.
 
 **Pipeline (7 steps):**
 

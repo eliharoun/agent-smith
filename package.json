@@ -1,10 +1,14 @@
 {
   "name": "agent-smith",
-  "version": "1.14.0",
+  "version": "1.14.1",
+  "license": "MIT",
   "workspaces": ["gui/server", "gui/web", "gui/shared"],
   "description": "Lifecycle manager for persona-driven AI coding agents",
   "repository": "github:eliharoun/agent-smith",
   "type": "module",
+  "bin": {
+    "smith": "./bin/smith.js"
+  },
   "scripts": {
     "test": "bun test",
     "test:install": "bash tests/bin/install.test.sh",
@@ -14,7 +18,7 @@
     "format:check": "biome format .",
     "lint": "biome lint .",
     "check": "biome check --write .",
-    "postinstall": "bun run scripts/bootstrap.ts --mode=postinstall",
+    "postinstall": "node scripts/postinstall-preflight.cjs",
     "refresh-schemas": "bun run scripts/refresh-schemas.ts",
     "check-drift": "bun run scripts/check-drift.ts",
     "gui:dev": "bun run --filter gui-web dev",
@@ -31,10 +35,15 @@
     "skills",
     "agents",
     "examples",
+    "data",
+    "guide",
+    "bin",
     "scripts/bootstrap.ts",
+    "scripts/postinstall-preflight.cjs",
     "README.md",
     "GUIDE.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

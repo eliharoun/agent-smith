@@ -1,0 +1,16 @@
+# .npmignore — overrides `files` in package.json for matching paths.
+# We use `files` as the include list and this as the targeted-exclude
+# layer so test sources and dev-only directories don't ship.
+#
+# Anchored exclusions for the three known test files. Glob patterns
+# (*.test.ts, **/*.test.ts) silently fail to match nested files under
+# the npm pack semantics that interact with `files` allowlists.
+src/cli/commands/skill/install-cmd.test.ts
+src/cli/commands/skill/validate.test.ts
+src/cli/parse-platforms.test.ts
+
+tests
+gui
+docs
+.claude
+.yolo-sisyphus

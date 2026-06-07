@@ -31,8 +31,10 @@ For concepts, narrative, and design rationale see [`GUIDE.md`](./GUIDE.md).
 
 ## Quick start
 
+**Requires [Bun](https://bun.sh) >= 1.1.0** (the runtime; not just for install).
+
 ```bash
-gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install
+npm install -g agent-smith                           # install the CLI from npm
 smith init                                           # create ~/.config/agent-smith and registry
 smith init-user                                      # edit ~/.config/agent-smith/USER.md ($EDITOR)
 smith agent init my-agent --description "Reviews PRs for style and bugs"
@@ -46,15 +48,17 @@ smith doctor                                         # verify installation healt
 
 | Step | Command | Notes |
 |---|---|---|
-| Install (fresh) | `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` | Clones to `~/.agent-smith/`, runs `bun install` (which fires `scripts/bootstrap.ts` postinstall to install bundled skills), installs the `agent-smith` persona, and symlinks `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`. Requires `bun >= 1.1.0` and `gh`. |
-| First-time setup (optional) | `smith init && smith init-user` | Both are optional — installer Step 8b runs `smith init` automatically. `smith init-user` self-bootstraps a missing `USER.md`. Use these to recover from a corrupt registry or to edit your shared persona file. |
-| Update | `smith update` | `git pull --ff-only` + `bun install` + `gui:build` + `agent-smith` reinstall + `doctor`. Idempotent — equivalent to re-running `bash ~/.agent-smith/bin/install`. |
-| Re-install bundled skills | `smith skill bootstrap` | Re-installs `the-architect` + `the-keymaker` skills (normally fired by the `bun install` postinstall). |
-| Re-install agent-smith persona | `smith agent install agent-smith` | Re-installs the companion agent (normally part of `bin/install` and `smith update`). |
+| Install (recommended) | `npm install -g agent-smith` | Ships the CLI plus the bundled skills. Postinstall hook copies `the-architect` + `the-keymaker` into per-platform skill dirs when `bun` is on PATH; otherwise prints a hint and exits cleanly. **Requires `bun >= 1.1.0`** at runtime. |
+| Install (from source — for the GUI or contributing) | `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` | Clones to `~/.agent-smith/`, runs `bun install` (which fires `scripts/bootstrap.ts` postinstall to install bundled skills), installs the `agent-smith` persona, builds the GUI SPA bundle, and symlinks `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`. Required if you want `smith gui`. Also requires `gh` (or substitute `git clone`). |
+| First-time setup | `smith init && smith init-user` | `smith init` creates `~/.config/agent-smith/` and the registry. `smith init-user` opens `USER.md` in `$EDITOR`. Both are idempotent. |
+| Update (npm install) | `npm update -g agent-smith` | Standard npm update. Re-runs the postinstall hook. |
+| Update (from source) | `smith update` | `git pull --ff-only` + `bun install` + `gui:build` + `agent-smith` reinstall + `doctor`. Equivalent to re-running `bash ~/.agent-smith/bin/install`. |
+| Re-install bundled skills | `smith skill bootstrap` | Re-installs `the-architect` + `the-keymaker` skills (normally fired by the postinstall hook). |
+| Re-install agent-smith persona | `smith agent install agent-smith` | Re-installs the companion agent (normally part of the from-source `bin/install` and `smith update`). |
 
-Dev invocation (no install): `bun run src/index.ts <cmd>` or `./src/index.ts <cmd>` from inside `~/.agent-smith/`.
+Dev invocation (no install): `bun run src/index.ts <cmd>` or `./src/index.ts <cmd>` from inside an `agent-smith` checkout.
 
-The source clone at `~/.agent-smith/` IS the install. There is no separate "user install" vs "dev install". `cd ~/.agent-smith && git pull` (or `smith update`) updates the running CLI.
+The from-source clone at `~/.agent-smith/` IS the install for the source path. There is no separate "user install" vs "dev install" — `cd ~/.agent-smith && git pull` (or `smith update`) updates the running CLI.
 
 ---
 

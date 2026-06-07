@@ -1,0 +1,5 @@
+# Exclude test files from npm tarball.
+*.test.ts
+*.test.tsx
+**/*.test.ts
+**/*.test.tsx
