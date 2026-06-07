@@ -48,7 +48,7 @@ describe("SkillList", () => {
     await waitFor(() => expect(screen.getByText(/no skills registered yet/i)).toBeInTheDocument());
     expect(screen.getByRole("link", { name: /register a catalog/i })).toHaveAttribute(
       "href",
-      "/skills/new",
+      "/skills?add=true",
     );
   });
 

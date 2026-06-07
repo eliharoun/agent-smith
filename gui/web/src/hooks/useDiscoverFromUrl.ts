@@ -33,15 +33,14 @@ export function useDiscoverFromUrl(kind: "skill" | "agent") {
     setError(null);
     try {
       // Local-directory inputs (absolute path or ./) are dispatched to the
-      // discover-from-dir endpoint for agents. Skills keep using the URL
-      // endpoint because skills/discover-from-dir does not exist yet.
+      // discover-from-dir endpoint for both agents and skills.
       const isLocalDir =
-        kind === "agent" &&
+        (kind === "agent" || kind === "skill") &&
         /^[\/~]|^\.[\/]/.test(url) &&
         !url.endsWith(".smith-bundle.tgz") &&
         !url.endsWith(".tgz");
       const apiPath = isLocalDir
-        ? "/api/agents/discover-from-dir"
+        ? `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-dir`
         : `/api/${kind === "skill" ? "skills" : "agents"}/discover-from-url`;
       const body = isLocalDir
         ? JSON.stringify({ path: url })

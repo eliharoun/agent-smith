@@ -25,7 +25,6 @@ import { RefreshHistory } from "./routes/RefreshHistory";
 import { RefreshHistoryIndex } from "./routes/RefreshHistoryIndex";
 import { SettingsScreen } from "./routes/Settings";
 import { SkillEditor } from "./routes/SkillEditor";
-import { SkillNew } from "./routes/SkillNew";
 import { Skills } from "./routes/Skills";
 import { Update } from "./routes/Update";
 import { AppNav } from "./ui/AppNav";
@@ -79,7 +78,7 @@ export function App() {
             <Route path="/agents/install-matrix" element={<InstallMatrix />} />
             <Route path="/agents/:name" element={<AgentEditor />} />
             <Route path="/skills" element={<Skills />} />
-            <Route path="/skills/new" element={<SkillNew />} />
+            <Route path="/skills/new" element={<Navigate to="/skills?add=true" replace />} />
             <Route path="/skills/:name" element={<SkillEditor />} />
             <Route path="/catalogs" element={<Catalogs />} />
             <Route path="/catalogs/register" element={<RedirectCatalogsRegister />} />

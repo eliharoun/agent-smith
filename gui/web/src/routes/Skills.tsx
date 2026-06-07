@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { InstallExistingForm } from "@/panels/InstallExistingForm";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import type { JobRequest } from "gui-shared";
+import { AddSkillModal } from "@/panels/AddSkillModal";
 import { SkillBootstrap } from "@/panels/SkillBootstrap";
 import { SkillCatalogList } from "@/panels/SkillCatalogList";
 import { SkillList } from "@/panels/SkillList";
@@ -9,34 +10,56 @@ import { Button } from "@/ui/Button";
 import { Chrome } from "@/ui/Chrome";
 import { ScreenShell } from "@/ui/ScreenShell";
 
-// InstallFromUrlButton (C4.8.3) — mirror of the Agents-route trigger; the
-// pulse dot telegraphs the new external-install surface on the Skills page.
-function InstallFromUrlButton({ onClick }: { onClick: () => void }) {
-  return (
-    <span className="relative inline-block">
-      <span
-        data-pulse-dot
-        aria-hidden
-        className="absolute -top-0.5 -left-0.5 w-[6px] h-[6px] bg-matrix-green shadow-matrix-glow animate-pulse"
-      />
-      <Button variant="ghost" onClick={onClick}>
-        Install from URL
-      </Button>
-    </span>
-  );
-}
+type AddView = "menu" | "install" | "register";
 
 export function Skills() {
-  const [installOpen, setInstallOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [addOpen, setAddOpen] = useState(false);
+  const [initialView, setInitialView] = useState<AddView>("menu");
+
   const installSkillToast = useJobToast({
     command: "skill.install",
     label: {
-      progress: () => "Installing skill\u2026",
+      progress: () => "Installing skill…",
       success: () => "Skill installed",
       error: () => "Install failed",
     },
     dedupKey: "job-toast:skill.install",
   });
+
+  const registerSkillToast = useJobToast({
+    command: "skill.register",
+    label: {
+      progress: () => "Registering catalog…",
+      success: () => "Catalog registered",
+      error: () => "Register failed",
+    },
+    dedupKey: "job-toast:skill.register",
+  });
+
+  // Deep-link: ?add=true → menu, ?add=install → install, ?add=register → register
+  useEffect(() => {
+    const add = searchParams.get("add");
+    if (!add) return;
+    if (add === "install") {
+      setInitialView("install");
+    } else if (add === "register") {
+      setInitialView("register");
+    } else {
+      setInitialView("menu");
+    }
+    setAddOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleDispatch(req: JobRequest) {
+    const cmd = (req as { command?: string }).command ?? "";
+    if (cmd === "skill.install") {
+      installSkillToast.dispatch(req);
+    } else if (cmd === "skill.register") {
+      registerSkillToast.dispatch(req);
+    }
+  }
 
   return (
     <ScreenShell
@@ -45,12 +68,9 @@ export function Skills() {
           title="Skills"
           subtitle="reusable workflows for your agents"
           actions={
-            <>
-              <InstallFromUrlButton onClick={() => setInstallOpen(true)} />
-              <Link to="/skills/new">
-                <Button>+ Register</Button>
-              </Link>
-            </>
+            <Button onClick={() => { setInitialView("menu"); setAddOpen(true); }}>
+              + Add skill
+            </Button>
           }
         />
       }
@@ -58,11 +78,11 @@ export function Skills() {
       <SkillList />
       <SkillBootstrap />
       <SkillCatalogList />
-      <InstallExistingForm
-        kind="skill"
-        open={installOpen}
-        onClose={() => setInstallOpen(false)}
-        onDispatch={installSkillToast.dispatch}
+      <AddSkillModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onDispatch={handleDispatch}
+        initialView={initialView}
       />
     </ScreenShell>
   );

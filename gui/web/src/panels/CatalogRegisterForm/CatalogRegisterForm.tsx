@@ -58,6 +58,7 @@ const SKILL_KIND_META: Record<SkillKind, KindMeta> = {
 
 interface Props {
   initialRegistry?: Registry;
+  lockRegistry?: boolean;
   onDispatch?: (request: JobRequest) => void;
   onClose?: () => void;
 }
@@ -77,7 +78,7 @@ interface Props {
  * JobCompletionListener invalidates ['catalogs'] on agent.register/skill.register
  * (see Task 19), so the catalogs list refreshes after navigation.
  */
-export function CatalogRegisterForm({ initialRegistry = "agent", onDispatch, onClose }: Props = {}) {
+export function CatalogRegisterForm({ initialRegistry = "agent", lockRegistry, onDispatch, onClose }: Props = {}) {
   const [registry, setRegistry] = useState<Registry>(initialRegistry);
   const [path, setPath] = useState("");
   const [kind, setKind] = useState<string>("user-global");
@@ -162,20 +163,22 @@ export function CatalogRegisterForm({ initialRegistry = "agent", onDispatch, onC
       </div>
 
       <p className="font-mono text-xs text-matrix-body mb-4">
-        A catalog is a folder or git repo full of agents that smith can browse and install from.
+        A catalog is a folder or git repo full of {registry === "agent" ? "agents" : "skills"} that smith can browse and install from.
       </p>
 
-      <div className="flex gap-2 mb-3">
-        {(["agent", "skill"] as Registry[]).map((r) => (
-          <Button
-            key={r}
-            variant={registry === r ? "primary" : "ghost"}
-            onClick={() => switchRegistry(r)}
-          >
-            {r === "agent" ? "Agent" : "Skill"}
-          </Button>
-        ))}
-      </div>
+      {!lockRegistry && (
+        <div className="flex gap-2 mb-3">
+          {(["agent", "skill"] as Registry[]).map((r) => (
+            <Button
+              key={r}
+              variant={registry === r ? "primary" : "ghost"}
+              onClick={() => switchRegistry(r)}
+            >
+              {r === "agent" ? "Agent" : "Skill"}
+            </Button>
+          ))}
+        </div>
+      )}
 
       <FormField
         label="path"

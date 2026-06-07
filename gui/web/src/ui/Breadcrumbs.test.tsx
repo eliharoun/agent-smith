@@ -20,7 +20,6 @@ describe("Breadcrumbs", () => {
     ["/agents/myagent?tab=knowledge", ["smith", "agents", "myagent", "knowledge"]],
     ["/agents/myagent?tab=skills", ["smith", "agents", "myagent", "skills"]],
     ["/skills", ["smith", "skills"]],
-    ["/skills/new", ["smith", "skills", "new"]],
     ["/skills/myskill", ["smith", "skills", "myskill"]],
     ["/catalogs", ["smith", "catalogs"]],
     ["/knowledge", ["smith", "knowledge"]],

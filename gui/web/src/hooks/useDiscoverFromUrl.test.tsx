@@ -70,4 +70,64 @@ describe("useDiscoverFromUrl", () => {
     expect(result.current.error).toMatch(/file:\/\//);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  test("agent local-dir path routes to /api/agents/discover-from-dir", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...okPayload, kind: "agent" }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useDiscoverFromUrl("agent"));
+    await act(async () => {
+      await result.current.discover("/tmp/my-agent");
+    });
+    await waitFor(() => expect(result.current.status).toBe("select"));
+
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]![0]).toContain("/api/agents/discover-from-dir");
+    const body = JSON.parse(calls[0]![1].body as string);
+    expect(body).toEqual({ path: "/tmp/my-agent" });
+  });
+
+  test("skill local-dir path routes to /api/skills/discover-from-dir", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => okPayload,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useDiscoverFromUrl("skill"));
+    await act(async () => {
+      await result.current.discover("/tmp/my-skills");
+    });
+    await waitFor(() => expect(result.current.status).toBe("select"));
+
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]![0]).toContain("/api/skills/discover-from-dir");
+    const body = JSON.parse(calls[0]![1].body as string);
+    expect(body).toEqual({ path: "/tmp/my-skills" });
+  });
+
+  test("skill git URL still routes to /api/skills/discover-from-url", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => okPayload,
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { result } = renderHook(() => useDiscoverFromUrl("skill"));
+    await act(async () => {
+      await result.current.discover("https://github.com/o/r");
+    });
+    await waitFor(() => expect(result.current.status).toBe("select"));
+
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]![0]).toContain("/api/skills/discover-from-url");
+    const body = JSON.parse(calls[0]![1].body as string);
+    expect(body).toEqual({ url: "https://github.com/o/r", ref: undefined });
+  });
 });
