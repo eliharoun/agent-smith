@@ -1,0 +1,91 @@
+name: publish
+
+# Publishes @eliharoun/agent-smith to npm when a version tag is pushed.
+#
+# Release flow (see ops/publishing-to-npm.md):
+#   1. bump version in package.json + src/index.ts, update CHANGELOG, merge to main
+#   2. git tag vX.Y.Z && git push origin vX.Y.Z   ← this workflow fires
+#
+# Auth: npm Trusted Publishing (OIDC). No NPM_TOKEN secret — GitHub's OIDC
+# identity is exchanged for a short-lived npm token, and npm records build
+# provenance automatically. One-time setup on npmjs.com links the package to
+# this repo + workflow (Package → Settings → Trusted Publisher).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: test gauntlet + npm publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # required for npm Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Node 20 for the GUI vitest suite AND for `npm publish` itself.
+      # Trusted Publishing requires npm >= 11.5.1, so refresh npm explicitly.
+      - name: Setup Node 20
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # --- Gate: never publish a red build ---
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run bun test suite (CLI + core + io)
+        run: bun test
+
+      - name: Run vitest GUI suite
+        working-directory: gui/web
+        run: node node_modules/vitest/vitest.mjs run
+
+      # --- Safety: the tag must match package.json, and the version must be new ---
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "package.json: $PKG_VERSION | tag: $TAG_VERSION"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Skip if this version is already on npm
+        id: published
+        run: |
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "$PKG_NAME@$PKG_VERSION is already published — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm (Trusted Publishing + provenance)
+        if: steps.published.outputs.skip == 'false'
+        run: npm publish
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
