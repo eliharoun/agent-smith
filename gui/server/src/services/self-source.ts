@@ -22,8 +22,10 @@ import { fileURLToPath } from "node:url";
 /** Stable label used by the synthetic source. Must match SELF_SOURCE_LABEL in src/io/registry.ts. */
 export const SELF_SOURCE_LABEL = "agent-smith-self";
 
-/** Walked up to find package.json with `name: "agent-smith"`. */
-const WORKSPACE_PKG_NAMES = new Set(["agent-smith"]);
+// Source clones / dev installs use "agent-smith"; npm-published tarballs
+// use "agent-smith-cli". Accept both so self-source discovery works in
+// either runtime context.
+const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "agent-smith-cli"]);
 
 export interface SelfSource {
   kind: "registered";

@@ -4,10 +4,28 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] — 2026-06-07
+
+Renamed the npm package from `agent-smith` to `agent-smith-cli` because
+npm refused the original name as too similar to an existing `agentsmith`
+package. The project, brand, GitHub repo, and CLI binary (`smith`) stay
+unchanged — only the install command differs.
+
+### Changed
+
+- npm package name: `agent-smith` → `agent-smith-cli`. Install with
+  `npm install -g agent-smith-cli`. The `smith` command on PATH is
+  unchanged.
+- `WORKSPACE_PKG_NAMES` (in `src/io/workspace-version.ts` and
+  `gui/server/src/services/self-source.ts`) now accepts both names so
+  source-clone installs (where `package.json:name` is still
+  `agent-smith`) and npm installs (where it's `agent-smith-cli`)
+  resolve self-source correctly.
+
 ## [1.14.1] — 2026-06-06
 
 Publish-readiness pass: smith is now installable via `npm install -g
-agent-smith` (after installing bun from https://bun.sh).
+agent-smith-cli` (after installing bun from https://bun.sh).
 
 ### Fixed
 

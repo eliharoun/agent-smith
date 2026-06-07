@@ -24,7 +24,7 @@ If you intend to use Atlassian-backed knowledge sources (Confluence, Jira) or th
 
 There are two supported install paths:
 
-- **From npm (recommended).** `npm install -g agent-smith` ships the CLI plus the bundled skills. Fastest way to start using `smith`.
+- **From npm (recommended).** `npm install -g agent-smith-cli` ships the CLI plus the bundled skills. Fastest way to start using `smith`.
 - **From source.** A `git clone` + `bash bin/install` flow. Pick this if you want `smith gui` (the local browser control panel) or you intend to develop against `agent-smith`.
 
 Both paths land at the same `smith` command on your PATH.
@@ -38,7 +38,7 @@ Both paths land at the same `smith` command on your PATH.
 curl -fsSL https://bun.sh/install | bash
 
 # Install agent-smith from npm
-npm install -g agent-smith
+npm install -g agent-smith-cli
 
 # Initialize state and verify
 smith init
@@ -87,11 +87,11 @@ smith doctor
 
 This runs the health check, auto-filtered to the platform CLIs on your `PATH` (`opencode`, `claude`, `codex`, `kiro`/`kiro-cli`): schema-drift checks for whichever of those you have installed, plus cross-cutting sections (atlassian auth, agent-required-skills audit, etc.). A clean run exits `0`. If you haven't yet installed any of the four platform CLIs, doctor refuses to run and exits `2` with install one-liners — install at least one platform CLI and re-run. See [Doctor](./10-doctor.md) for full details.
 
-> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. The GUI server source ships only with the from-source install — running `smith gui` after an `npm install -g agent-smith` prints a hint pointing you at the from-source path. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
+> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. The GUI server source ships only with the from-source install — running `smith gui` after an `npm install -g agent-smith-cli` prints a hint pointing you at the from-source path. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
 
 ### What got installed where
 
-From an `npm install -g agent-smith`:
+From an `npm install -g agent-smith-cli`:
 
 - `<npm prefix>/lib/node_modules/agent-smith/` — package source (managed by npm).
 - `<npm prefix>/bin/smith` — entry point on your PATH.

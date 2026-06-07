@@ -99,7 +99,7 @@ persisted via `atomicWriteJson` — temp file + rename), and seeding
 re-running over a seeded directory leaves all existing files untouched.
 The from-source installer (`bash bin/install`) calls this automatically
 as Step 8b on every install. The npm install does not auto-init — run
-`smith init` once after `npm install -g agent-smith`. Manual invocation
+`smith init` once after `npm install -g agent-smith-cli`. Manual invocation
 is otherwise only needed for recovery from a corrupt or version-skewed
 registry. Source: `src/cli/commands/init.ts`.
 
@@ -1119,7 +1119,7 @@ postinstall context (skipped, not failed). Source: `scripts/bootstrap.ts`.
 > 9, by `smith update` Step 4, and on demand via `smith agent install
 > agent-smith` (which resolves the persona through the synthetic
 > `agent-smith-self` source registered in `src/io/registry.ts`). After
-> an `npm install -g agent-smith`, run `smith agent install agent-smith`
+> an `npm install -g agent-smith-cli`, run `smith agent install agent-smith`
 > manually if you want the companion persona installed. Recovery after a
 > wipe is two commands: `smith skill bootstrap` and `smith agent install
 > agent-smith`.

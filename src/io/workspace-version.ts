@@ -24,7 +24,10 @@ export async function pathExists(p: string): Promise<boolean> {
  * `bin/install` is the only supported install path and it clones the
  * canonical repo.
  */
-const WORKSPACE_PKG_NAMES = new Set(["agent-smith"]);
+// Both names are recognized: source clones / dev installs use "agent-smith"
+// (the original git-tree package.json), npm-published tarballs use
+// "agent-smith-cli" (the npm registry name; the CLI binary is still "smith").
+const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "agent-smith-cli"]);
 
 /**
  * Walk up from a source file path looking for a package.json whose `name`
