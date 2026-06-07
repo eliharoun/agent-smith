@@ -52,7 +52,7 @@ A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool stand
 curl -fsSL https://bun.sh/install | bash
 
 # Install agent-smith from npm
-npm install -g agent-smith
+npm install -g agent-smith-cli
 
 # Initialize state and verify
 smith init
