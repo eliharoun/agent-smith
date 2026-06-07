@@ -83,7 +83,7 @@ back to the page over SSE.
 | Construct | `/agents/install-matrix` | bulk `smith agent install` across platforms |
 | Construct | `/agents/:name` | bundle editor (persona files + `agent.config.json`) |
 | Construct | `/skills` | `smith skill list` with drift status |
-| Construct | `/skills/new` | scaffold a new skill (`SKILL.md` editor) |
+| Construct | `/skills?add=true` | unified Add Skill modal (install existing / register catalog) |
 | Construct | `/skills/:name` | skill editor + **Validate** button (→ `smith skill validate <name>`) |
 | Construct | `/catalogs` | `smith {agent,skill} catalogs` |
 | Construct | `/catalogs?add=register` | deep-link to unified Add Agent modal for `smith {agent,skill} register` |
@@ -100,7 +100,7 @@ back to the page over SSE.
 | System | `/system/settings` | GUI settings |
 | System | `/system/jack-out` | `smith jack-out` with typed-phrase confirm (`jack-out`), MatrixRain runtime, disconnect-as-success semantic |
 
-> **v1.13.0:** The GUI consolidates all agent-creation entry points into a single `+ Add agent` modal (accessible from Dashboard, Agents page, and Catalogs page). `/agents/new` and `/catalogs/register` redirect to their modal equivalents automatically — existing bookmarks and docs links continue to work.
+> **v1.13.0–v1.14.0:** The GUI consolidates agent and skill creation entry points into unified modals. `+ Add agent` (Dashboard, Agents page, Catalogs page) and `+ Add skill` (Dashboard, Skills page) each open a single modal. `/agents/new`, `/catalogs/register`, and `/skills/new` redirect to their modal equivalents automatically — existing bookmarks and docs links continue to work.
 
 **New job commands surfaced only by the GUI:** `daemon.start`, `daemon.stop`,
 `update`, `knowledge.migrate-codex`, `skill.validate`, `jack-out`, plus the

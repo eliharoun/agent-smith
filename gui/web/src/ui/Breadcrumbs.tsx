@@ -31,8 +31,7 @@ function crumbsFor(pathname: string, search: URLSearchParams): Crumb[] {
       break;
     case "skills":
       out.push({ label: "skills", to: rest.length ? "/skills" : undefined });
-      if (rest[0] === "new") out.push({ label: "new" });
-      else if (rest[0]) out.push({ label: rest[0] });
+      if (rest[0]) out.push({ label: rest[0] });
       break;
     case "catalogs":
       out.push({ label: "catalogs", to: rest.length ? "/catalogs" : undefined });

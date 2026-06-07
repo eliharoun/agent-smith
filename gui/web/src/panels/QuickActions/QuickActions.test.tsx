@@ -19,12 +19,12 @@ describe("QuickActions", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/agents?add=true");
   });
 
-  it("'+ Add skill' is a button and navigates to /skills/new on click", () => {
+  it("'+ Add skill' is a button and navigates to /skills?add=true on click", () => {
     render(<MemoryRouter><QuickActions /></MemoryRouter>);
     const btn = screen.getByRole("button", { name: /\+ add skill/i });
     expect(btn).toBeInTheDocument();
     fireEvent.click(btn);
-    expect(mockNavigate).toHaveBeenCalledWith("/skills/new");
+    expect(mockNavigate).toHaveBeenCalledWith("/skills?add=true");
   });
 
   it("renders the agents group: Browse agents + Manage installs", () => {

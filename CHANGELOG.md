@@ -4,6 +4,37 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] — 2026-06-06
+
+### GUI
+
+**Unified Add Skill modal** — mirrors the v1.13.0 agent unification for the skill surface.
+
+Before:
+
+| Where | Buttons / links |
+|---|---|
+| Dashboard | `+ Add skill` (navigated to `/skills/new`) |
+| Skills page | `Install from URL` (pulse-dot button) + `+ Register` (link to `/skills/new`) |
+| `/skills/new` | full-page two-tab screen (Register catalog / Quick install) |
+
+After:
+
+| Where | Action |
+|---|---|
+| Dashboard | `+ Add skill` (navigates to Skills page, opens modal) |
+| Skills page | `+ Add skill` (opens modal) |
+
+**Smart input:** paste a git URL, local path, `.tgz` archive, or `catalog/name` reference — the modal auto-routes to the correct sub-form. A `catalog/name` ref (e.g. `default/tdd`) is recognized as a new `catalog-ref` kind distinct from paths.
+
+**Install by catalog ref preserved:** the `/skills/new` "Quick install" capability (install a skill by `catalog/name` reference) is folded into the Install existing card as a dedicated ref field, dispatching `skill.install { name }`.
+
+**Catalog registration upgraded:** the Register catalog card embeds `CatalogRegisterForm` with radio-button kind selector (subtitles, debounced auto-verify, advanced disclosure) — replaces `/skills/new`'s plain `<select>` + manual Verify button.
+
+**Local-directory skill install:** new `POST /api/skills/discover-from-dir` endpoint + client wiring let the GUI install a skill from a local directory (previously CLI-only).
+
+**Deep-link compatibility:** `/skills/new` → `/skills?add=true`. Existing bookmarks and doc links continue to work.
+
 ## [1.13.0] — 2026-06-06
 
 ### GUI

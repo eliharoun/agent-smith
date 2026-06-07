@@ -35,7 +35,7 @@ export function QuickActions() {
           </Link>
         </Group>
         <Group label="skills">
-          <Button onClick={() => navigate("/skills/new")}>+ Add skill</Button>
+          <Button onClick={() => navigate("/skills?add=true")}>+ Add skill</Button>
           <Link to="/skills">
             <Button variant="ghost">Browse skills</Button>
           </Link>

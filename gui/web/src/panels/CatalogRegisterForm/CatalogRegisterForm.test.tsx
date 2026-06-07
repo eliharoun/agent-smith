@@ -13,12 +13,21 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response, calls
   };
 }
 
-function renderForm(initialRegistry: "agent" | "skill" = "agent") {
+function renderForm(
+  props: { initialRegistry?: "agent" | "skill"; lockRegistry?: boolean } | ("agent" | "skill") = "agent",
+) {
+  // Accept both a plain string (legacy callers) and a props object
+  const normalised: { initialRegistry?: "agent" | "skill"; lockRegistry?: boolean } =
+    typeof props === "string" ? { initialRegistry: props } : props;
+  const { initialRegistry = "agent", lockRegistry } = normalised;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[`/catalogs/register?registry=${initialRegistry}`]}>
-        <CatalogRegisterForm initialRegistry={initialRegistry} />
+        <CatalogRegisterForm
+          initialRegistry={initialRegistry}
+          {...(lockRegistry !== undefined ? { lockRegistry } : {})}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -318,6 +327,32 @@ describe("CatalogRegisterForm", () => {
   });
 
   // ── onDispatch / onClose prop variants ──────────────────────────────────
+
+  // ── registry discrimination ─────────────────────────────────────────────
+
+  it("explainer says 'skills' when registry is skill", () => {
+    renderForm({ initialRegistry: "skill" });
+    expect(screen.getByText(/folder or git repo full of skills/i)).toBeInTheDocument();
+  });
+
+  it("explainer says 'agents' when registry is agent", () => {
+    renderForm({ initialRegistry: "agent" });
+    expect(screen.getByText(/folder or git repo full of agents/i)).toBeInTheDocument();
+  });
+
+  it("lockRegistry=true hides the Agent/Skill toggle", () => {
+    renderForm({ initialRegistry: "skill", lockRegistry: true });
+    // The toggle buttons for switching between Agent and Skill modes must be absent
+    expect(screen.queryByRole("button", { name: /^Agent$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Skill$/ })).toBeNull();
+  });
+
+  it("lockRegistry unset — Agent/Skill toggle is present (existing callers unaffected)", () => {
+    renderForm({ initialRegistry: "agent" });
+    // Toggle is present when lockRegistry is not passed
+    expect(screen.getByRole("button", { name: /^Agent$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Skill$/ })).toBeInTheDocument();
+  });
 
   it("calls onDispatch and onClose when provided, instead of navigating", async () => {
     vi.useFakeTimers();

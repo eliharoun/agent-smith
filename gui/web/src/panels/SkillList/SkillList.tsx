@@ -78,7 +78,7 @@ export function SkillList() {
       <Card>
         <div className="font-mono text-sm text-matrix-body">
           // no skills registered yet — bootstrap or{" "}
-          <Link className="text-matrix-green" to="/skills/new">
+          <Link className="text-matrix-green" to="/skills?add=true">
             register a catalog
           </Link>
         </div>

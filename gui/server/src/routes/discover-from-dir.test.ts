@@ -77,3 +77,52 @@ describe("POST /api/agents/discover-from-dir", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /api/skills/discover-from-dir", () => {
+  test("returns 200 and a discovery envelope for a valid local directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "discover-from-dir-skill-"));
+    try {
+      const app = new Hono();
+      registerDiscoverFromDirRoute(app, {
+        runSmith: async () => ({
+          code: 0,
+          stdout: JSON.stringify({
+            kind: "skill",
+            bundles: [{ name: "test-skill", description: "...", alreadyInstalled: false }],
+            detectedTargets: [],
+            catalog: { rootPath: dir },
+          }),
+          stderr: "",
+        }),
+      });
+      const res = await app.request("/api/skills/discover-from-dir", {
+        method: "POST",
+        body: JSON.stringify({ path: dir }),
+        headers: { "content-type": "application/json" },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { bundles: Array<{ name: string }> };
+      expect(body.bundles.some((b) => b.name === "test-skill")).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 400 when path is missing (skill route)", async () => {
+    const app = new Hono();
+    registerDiscoverFromDirRoute(app, { runSmith: async () => ({ code: 0, stdout: "", stderr: "" }) });
+    const res = await app.request("/api/skills/discover-from-dir", {
+      method: "POST", body: "{}", headers: { "content-type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 when path is not an existing directory (skill route)", async () => {
+    const app = new Hono();
+    registerDiscoverFromDirRoute(app, { runSmith: async () => ({ code: 0, stdout: "", stderr: "" }) });
+    const res = await app.request("/api/skills/discover-from-dir", {
+      method: "POST", body: JSON.stringify({ path: "/does/not/exist" }), headers: { "content-type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+  });
+});
