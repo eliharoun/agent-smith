@@ -10,6 +10,7 @@ import {
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { KnowledgeBlockSchema } from "../../../../src/core/knowledge/schema";
+import { isProtectedAgent, refusalMessage } from "../../../../src/core/protected-bundles";
 import { atomicWriteText } from "../io/atomic-write";
 import { HttpError } from "../middleware/error";
 import { agentWithRemote } from "../projections/agent-with-remote";
@@ -91,6 +92,7 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
                 catalog: detail.catalog,
                 path: detail.path,
                 targets: detail.targets,
+                protected: isProtectedAgent(detail.name),
               };
               if (detail.model !== undefined) summary.model = detail.model;
               return agentWithRemote(summary, remotes);
@@ -130,11 +132,16 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
           catalog: detail.catalog,
           path: detail.path,
           targets: detail.targets,
+          protected: isProtectedAgent(detail.name),
           ...(detail.model !== undefined ? { model: detail.model } : {}),
         },
         remotes,
       );
-      return c.json({ ...detail, ...(projected.remote ? { remote: projected.remote } : {}) });
+      return c.json({
+        ...detail,
+        protected: isProtectedAgent(detail.name),
+        ...(projected.remote ? { remote: projected.remote } : {}),
+      });
     } catch (err) {
       throw new HttpError(500, "BUNDLE_READ_ERROR", (err as Error).message);
     }
@@ -159,6 +166,13 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   app.put("/api/agents/:name/persona/:file", async (c) => {
     const name = c.req.param("name");
     assertValidAgentName(name);
+    if (isProtectedAgent(name)) {
+      throw new HttpError(
+        403,
+        "PROTECTED_BUNDLE",
+        refusalMessage({ entity: name, kind: "agent", verb: "edit" }),
+      );
+    }
     const fileParam = c.req.param("file");
     const fileParsed = PersonaFile.safeParse(fileParam);
     if (!fileParsed.success) {
@@ -190,6 +204,13 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
   app.put("/api/agents/:name/config", async (c) => {
     const name = c.req.param("name");
     assertValidAgentName(name);
+    if (isProtectedAgent(name)) {
+      throw new HttpError(
+        403,
+        "PROTECTED_BUNDLE",
+        refusalMessage({ entity: name, kind: "agent", verb: "edit" }),
+      );
+    }
     const body = await c.req.json().catch(() => null);
     const parsed = AgentConfigPatch.safeParse(body);
     if (!parsed.success) {

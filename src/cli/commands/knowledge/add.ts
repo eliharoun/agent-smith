@@ -16,6 +16,7 @@ import type {
 import { validateKnowledge } from "../../../core/knowledge/validator";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
+import { guardProtectedAgent } from "../protected-confirm";
 import type { McpClientOpts } from "../../../io/mcp-client";
 import { McpClientPool } from "../../../io/mcp-client-pool";
 import { type AvailableMap, readAvailableMcpServers } from "../../../io/mcp-config-readers";
@@ -271,6 +272,7 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
 }
 
 export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
+  await guardProtectedAgent(basename(opts.bundleDir), "knowledge.add", opts.prompt);
   if (opts.lazy === true && opts.type !== "url") {
     throw new SmithError({
       code: "validation-failed",

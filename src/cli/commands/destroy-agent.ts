@@ -13,6 +13,7 @@ import { EXIT_OK, EXIT_RUNTIME } from "../exit-codes";
 import { defaultInstallPaths, defaultKnowledgePaths } from "../install-paths";
 import { findBundleOrFail, loadAllBundles, type LoadAllBundlesResult } from "../load-all";
 import { readToken as defaultReadToken } from "../prompt";
+import { guardProtectedAgent } from "./protected-confirm";
 import { renderUninstallTable } from "../render/uninstall-table";
 
 function isOwnedBundle(bundle: AgentBundle, configDir: string): boolean {
@@ -59,6 +60,7 @@ export interface DestroyAgentCliOptions {
 }
 
 export async function runDestroyAgentCli(opts: DestroyAgentCliOptions): Promise<number> {
+  await guardProtectedAgent(opts.name, "destroy", opts.readToken);
   const paths = opts.paths ?? defaultInstallPaths();
   const knowledgePaths = opts.knowledgePaths ?? defaultKnowledgePaths();
   const home = opts.homeDir ?? homedir();

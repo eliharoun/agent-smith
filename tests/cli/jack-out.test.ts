@@ -874,3 +874,130 @@ describe("cli/jack-out runJackOutCli", () => {
     expect(all).toContain("not found: /fake/state/agent-smith/gui-jobs-output");
   });
 });
+
+describe("cli/jack-out is nuclear: it removes agent-smith and bundled skills too", () => {
+  const sandbox = {
+    paths,
+    configDir: FAKE_CONFIG,
+    homeDir: "/fake",
+    sourceDir: "/fake/.agent-smith",
+    symlinkPath: "/fake/.local/bin/smith",
+    shellRcPath: "/fake/.zshrc",
+    runtimeStateDir: "/fake/state/agent-smith",
+    statFile: async () => ({}),
+    rmFile: async () => {},
+    rmDir: async () => {},
+    readRcFile: async () => "",
+    writeRcFile: async () => {},
+    readToken: async () => "jack-out",
+    loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+  };
+
+  const installedSkill = (name: string) => ({
+    name,
+    sourceCatalogLabel: "user-global",
+    sourcePath: `/fake/skills/${name}`,
+    installedPaths: { claudeCode: `/fake/claude/skills/${name}` },
+    contentHash: "abc",
+    installedAt: "2026-01-01T00:00:00Z",
+  });
+
+  // agent-smith as it really appears: synthetic self-source — kind "registered",
+  // rootPath OUTSIDE configDir (it lives in the clone). So it is NOT
+  // configDir-owned; its rendered files must be cleaned via removeBundle.
+  const selfSourceBundle = (targets: Target[]) =>
+    fakeBundle("agent-smith", {
+      targets,
+      kind: "registered",
+      rootPath: "/fake/.agent-smith/agents",
+    });
+
+  test("plans removal of agent-smith's rendered files across every platform; routes them via removeBundle not destroy", async () => {
+    const destroyed: string[] = [];
+    const uninstalledSkills: string[] = [];
+    const printed: string[] = [];
+    const code = await runJackOutCli({
+      ...sandbox,
+      yes: true,
+      // Make the install roots "exist" so removeBundle proceeds to rm
+      // instead of short-circuiting on a missing root.
+      statFile: async () => ({}),
+      loadAllBundles: async () => ({
+        bundles: [
+          // agent-smith: synthetic self-source, multi-platform.
+          selfSourceBundle(["claude-code", "kiro"]),
+          // a genuine user bundle inside configDir → destroyed source-and-all.
+          ownedBundle("my-agent", ["opencode"]),
+        ],
+        failures: [],
+      }),
+      loadInstalledSkills: async () => ({
+        schemaVersion: 1 as const,
+        installed: [installedSkill("the-architect"), installedSkill("my-skill")],
+      }),
+      runDestroyAgent: async (o) => {
+        destroyed.push(o.name);
+        return 0;
+      },
+      uninstallSkill: async (name: string) => {
+        uninstalledSkills.push(name);
+        return { ok: true };
+      },
+      print: (m) => printed.push(m),
+    });
+    const all = printed.join("\n");
+    // agent-smith's rendered files for BOTH declared platforms are in the plan.
+    expect(all).toContain("/fake/claude/agents/agent-smith.md");
+    expect(all).toContain("/fake/kiro/agents/agent-smith.json");
+    // It is routed through removeBundle (its own line — success or attempted),
+    // NOT via agent destroy (reserved for configDir-owned bundles + which now
+    // refuses protected names). The "rendered files for: agent-smith" phrase
+    // only comes from the removeBundle branch.
+    expect(all).toContain("rendered files for: agent-smith");
+    expect(destroyed).toContain("my-agent");
+    expect(destroyed).not.toContain("agent-smith");
+    // Bundled + user skills both uninstalled.
+    expect(uninstalledSkills).toContain("the-architect");
+    expect(uninstalledSkills).toContain("my-skill");
+    // No preservation carve-out remains.
+    expect(all).not.toContain("preserved:");
+    // NOTE: exit code is not asserted here — removeBundle does real-fs hook
+    // teardown (mkdir under the install root) that EROFS-fails against the
+    // /fake sandbox, yielding EXIT_PARTIAL. The routing + plan are what this
+    // test verifies; an end-to-end removal is covered by the io/uninstaller
+    // suite against a real tmpdir.
+    void code;
+  });
+
+  test("genuine user-external catalogs are still preserved (not removed by jack-out)", async () => {
+    const removedFiles: string[] = [];
+    const printed: string[] = [];
+    await runJackOutCli({
+      ...sandbox,
+      yes: true,
+      rmFile: async (p: string) => {
+        removedFiles.push(p);
+      },
+      loadAllBundles: async () => ({
+        bundles: [
+          // user's own externally-registered catalog (registered, outside
+          // configDir, NOT agent-smith) → preserved.
+          fakeBundle("user-external", {
+            targets: ["claude-code"],
+            kind: "registered",
+            rootPath: "/fake/elsewhere/catalog",
+          }),
+        ],
+        failures: [],
+      }),
+      loadInstalledSkills: async () => ({ schemaVersion: 1 as const, installed: [] }),
+      runDestroyAgent: async () => 0,
+      uninstallSkill: async () => ({ ok: true }),
+      print: (m) => printed.push(m),
+    });
+    // The user catalog's rendered file must NOT be removed, and it should be
+    // listed under the "Skipped — not managed by agent-smith" section.
+    expect(removedFiles).not.toContain("/fake/claude/agents/user-external.md");
+    expect(printed.join("\n")).toContain("Skipped — not managed by agent-smith");
+  });
+});

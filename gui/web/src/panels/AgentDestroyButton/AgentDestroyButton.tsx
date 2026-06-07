@@ -13,10 +13,20 @@ import { Button } from "@/ui/Button";
  * see `AgentDestroyModal.tsx` and `src/cli/commands/destroy-agent.ts` for
  * rationale.
  */
-export function AgentDestroyButton({ name }: { name: string }) {
+export function AgentDestroyButton({
+  name,
+  protected: isProtected,
+}: {
+  name: string;
+  /** When true (system bundle like agent-smith), the destroy control is not
+   *  offered at all — hidden, not disabled, so the UI doesn't tease an action
+   *  the server would refuse with 403. */
+  protected?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const start = useStartJob();
   const nav = useNavigate();
+  if (isProtected) return null;
   return (
     <>
       <Button variant="danger" onClick={() => setOpen(true)}>

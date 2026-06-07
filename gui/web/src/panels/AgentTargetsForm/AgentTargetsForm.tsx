@@ -9,6 +9,7 @@ import { useStartJob } from "@/hooks/useStartJob";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
+import { ProtectedBadge } from "@/ui/ProtectedBadge";
 import { Tooltip } from "@/ui/Tooltip";
 
 const ALL_TARGETS: Target[] = ["opencode", "claude-code", "codex", "kiro", "agents-md"];
@@ -32,7 +33,38 @@ function normalizeTier(raw: unknown): ModelTier {
   return TIER_ALIASES[s] ?? "inherit";
 }
 
+// Read-only targets/tier view for system bundles (agent-smith). No editable
+// controls — the server 403s the config PUT, so we don't tease the action.
+// Split into its own component so the editable form below can use hooks
+// unconditionally (rules-of-hooks).
+function ProtectedTargetsView({ agent }: { agent: AgentDetail }) {
+  const tier = normalizeTier((agent.config as Record<string, unknown>).modelTier);
+  return (
+    <Card>
+      <div className="mb-2 flex items-center gap-2">
+        <FieldHelp fieldId="agent.targets">targets</FieldHelp>
+        <ProtectedBadge />
+      </div>
+      <div className="space-y-1 mb-4 font-mono text-sm text-matrix-body">
+        {[...agent.targets].sort().map((p) => (
+          <div key={p}>• {p}</div>
+        ))}
+      </div>
+      <div className="mb-1 font-mono text-sm text-matrix-body">model tier: {tier}</div>
+      <p className="font-mono text-[10px] text-matrix-amber mt-3">
+        // this is a system bundle managed by smith — read-only. Refresh with{" "}
+        <code>smith update</code>.
+      </p>
+    </Card>
+  );
+}
+
 export function AgentTargetsForm({ agent }: { agent: AgentDetail }) {
+  if (agent.protected) return <ProtectedTargetsView agent={agent} />;
+  return <EditableTargetsForm agent={agent} />;
+}
+
+function EditableTargetsForm({ agent }: { agent: AgentDetail }) {
   const savedTargets = useMemo(() => [...agent.targets].sort(), [agent.targets]);
   const savedTier = normalizeTier((agent.config as Record<string, unknown>).modelTier);
 

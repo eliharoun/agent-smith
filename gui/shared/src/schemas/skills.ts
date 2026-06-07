@@ -28,6 +28,9 @@ export const SkillSummary = z.object({
   // catalogs installed via `smith skill install --from <url>`. Absent for
   // locally-authored skills.
   remote: RemoteBlock.optional(),
+  // True for bundled skills managed by smith (the-architect, the-keymaker).
+  // Server sets it via isProtectedSkill; absent reads as not-protected.
+  protected: z.boolean().optional(),
 });
 export type SkillSummary = z.infer<typeof SkillSummary>;
 
@@ -76,5 +79,8 @@ export const SkillDetail = z.object({
   // `smith skill install --from <url>`. Mirrors AgentDetail's coverage so
   // the SkillEditor chrome can render the drift chip + Sync now affordance.
   remote: RemoteBlock.optional(),
+  // True for bundled skills managed by smith; drives the SkillEditor's
+  // read-only mode. Mirrors SkillSummary.protected.
+  protected: z.boolean().optional(),
 });
 export type SkillDetail = z.infer<typeof SkillDetail>;

@@ -796,7 +796,12 @@ describe("Bug A: synthetic self-source visibility", () => {
     expect(body.path).toBe(bundlePath);
   });
 
-  it("PUT /api/agents/agent-smith/config writes to the synthetic source's bundle path (not user-global)", async () => {
+  // v1.15.0 protected-bundles: agent-smith is a system bundle. The config
+  // PUT is now refused (403 PROTECTED_BUNDLE) even though it resolves to the
+  // synthetic source — visibility is preserved (GET works above) but mutation
+  // is not. Previously this test asserted the write succeeded; that behavior
+  // is intentionally removed.
+  it("PUT /api/agents/agent-smith/config is refused with 403 PROTECTED_BUNDLE", async () => {
     const res = await appWith().request("/api/agents/agent-smith/config", {
       method: "PUT",
       headers: {
@@ -806,13 +811,11 @@ describe("Bug A: synthetic self-source visibility", () => {
       },
       body: JSON.stringify({ targets: ["opencode", "claude-code"], modelTier: "high" }),
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
-    const written = JSON.parse(
-      await readFile(join(bundlePath, "agent.config.json"), "utf8"),
-    );
-    expect(written.targets).toEqual(["opencode", "claude-code"]);
-    expect(written.modelTier).toBe("high");
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("PROTECTED_BUNDLE");
+    // The bundle's config must be untouched on disk.
+    const written = JSON.parse(await readFile(join(bundlePath, "agent.config.json"), "utf8"));
+    expect(written.targets).not.toEqual(["opencode", "claude-code"]);
   });
 });
 

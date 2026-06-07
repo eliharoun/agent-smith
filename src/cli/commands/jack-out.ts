@@ -5,12 +5,19 @@ import pc from "picocolors";
 import type { AgentBundle, InstallPaths } from "../../core/types";
 import { type InstalledSkillsFile, loadInstalledSkills } from "../../io/installed-skills";
 import type { Registry } from "../../io/registry";
+import { isProtectedAgent } from "../../core/protected-bundles";
+import type { KnowledgePaths } from "../../io/knowledge-paths";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { runtimeStateHome } from "../../io/runtime-state-home";
 import { uninstallSkill as defaultUninstallSkill } from "../../io/skill-installer";
-import { classifyPaths, planUninstallPaths } from "../../io/uninstaller";
+import {
+  classifyPaths,
+  planUninstallPaths,
+  removeBundle,
+  type UninstallerDeps,
+} from "../../io/uninstaller";
 import { EXIT_OK, EXIT_PARTIAL, EXIT_RUNTIME } from "../exit-codes";
-import { defaultInstallPaths } from "../install-paths";
+import { defaultInstallPaths, defaultKnowledgePaths } from "../install-paths";
 import { type LoadAllBundlesResult, loadAllBundles, warnAllLoadFailures } from "../load-all";
 import { readToken as defaultReadToken } from "../prompt";
 import {
@@ -40,6 +47,9 @@ export interface JackOutCliOptions {
   dryRun?: boolean;
   yes?: boolean;
   paths?: InstallPaths;
+  /** Knowledge-dir paths, threaded into removeBundle for agent-smith's
+   *  rendered-file cleanup. Tests override; production uses the default. */
+  knowledgePaths?: KnowledgePaths;
   configDir?: string;
   /**
    * Runtime state root (~/.local/state/agent-smith/ by default). Daemon
@@ -136,6 +146,7 @@ function isOwnedBundle(bundle: AgentBundle, configDir: string): boolean {
 
 export async function runJackOutCli(opts: JackOutCliOptions): Promise<number> {
   const paths = opts.paths ?? defaultInstallPaths();
+  const knowledgePaths = opts.knowledgePaths ?? defaultKnowledgePaths();
   const configDir = opts.configDir ?? join(homedir(), ".config", "agent-smith");
   const runtimeStateDir = opts.runtimeStateDir ?? runtimeStateHome();
   const homeDir = opts.homeDir;
@@ -160,13 +171,37 @@ export async function runJackOutCli(opts: JackOutCliOptions): Promise<number> {
   const loadResult = await loadBundles(registry);
   warnAllLoadFailures(loadResult.failures, print);
 
+  // jack-out is the nuclear, confirmation-gated "remove smith entirely"
+  // command: it deletes the source clone, the CLI symlink, the shell-rc
+  // wiring, config, runtime state, and every rendered agent/skill. The
+  // protected-bundles guards deliberately do NOT apply here — preserving
+  // agent-smith while deleting smith itself would only leave orphans behind.
+  //
+  // Bundles split three ways for removal:
+  //   - owned (source inside configDir): destroyed source-and-all via
+  //     `agent destroy` below.
+  //   - smith's own synthetic self-source (agent-smith): its rendered files
+  //     must be removed across every platform too (its source lives in the
+  //     clone, deleted separately). Routed through `removeBundle` (rendered-
+  //     only) rather than `agent destroy`, which refuses non-configDir / now
+  //     protected bundles.
+  //   - genuine user-external catalogs: PRESERVED (the user owns them; jack-out
+  //     only removes agent-smith's own footprint).
   const ownedBundles = loadResult.bundles.filter((b) => isOwnedBundle(b, configDir));
-  const skippedBundles = loadResult.bundles.filter((b) => !isOwnedBundle(b, configDir));
+  const notOwned = loadResult.bundles.filter((b) => !isOwnedBundle(b, configDir));
+  const smithRenderedBundles = notOwned.filter((b) => isProtectedAgent(b.config.name));
+  const skippedBundles = notOwned.filter((b) => !isProtectedAgent(b.config.name));
 
   const skillsFile = await loadSkills(homeDir ? { homeDir } : undefined);
   const installedSkills = skillsFile.installed;
 
-  const ownedAgentPaths = planUninstallPaths(ownedBundles, paths);
+  // Rendered-file removal covers owned bundles (full destroy) AND smith's
+  // synthetic self-source bundles (rendered-only) — both across all declared
+  // platforms via planUninstallPaths.
+  const ownedAgentPaths = planUninstallPaths(
+    [...ownedBundles, ...smithRenderedBundles],
+    paths,
+  );
   const classifiedAgents = await classifyPaths(ownedAgentPaths, opts.statFile);
 
   const skillPaths: string[] = [];
@@ -281,6 +316,37 @@ export async function runJackOutCli(opts: JackOutCliOptions): Promise<number> {
       destroyFailures.push(bundle.config.name);
       const msg = (err as Error)?.message ?? String(err);
       print(pc.red(`✗ agent destroy failed for: ${bundle.config.name} (${msg})`));
+    }
+  }
+
+  // Remove rendered files for smith's synthetic self-source bundles
+  // (agent-smith) across every declared platform. Rendered-only: the source
+  // tree lives in the clone and is removed wholesale below. `agent destroy`
+  // can't be used here (it refuses non-configDir bundles, and the protected-
+  // bundles guard now refuses agent-smith outright), so go straight to the
+  // uninstaller's removeBundle.
+  if (smithRenderedBundles.length > 0) {
+    const removeDeps: UninstallerDeps = {};
+    if (homeDir !== undefined) removeDeps.homeDir = homeDir;
+    if (opts.rmFile !== undefined) removeDeps.rmFile = opts.rmFile;
+    if (opts.rmDir !== undefined) removeDeps.rmDir = opts.rmDir;
+    if (opts.statFile !== undefined) removeDeps.statFn = opts.statFile;
+    for (const bundle of smithRenderedBundles) {
+      try {
+        const r = await removeBundle(bundle, paths, knowledgePaths, removeDeps);
+        if (r.errors.length > 0) {
+          destroyFailures.push(bundle.config.name);
+          for (const e of r.errors) {
+            print(pc.red(`✗ failed to remove ${bundle.config.name} file: ${e.path} (${e.message})`));
+          }
+        } else {
+          print(pc.green(`✓ removed rendered files for: ${bundle.config.name}`));
+        }
+      } catch (err) {
+        destroyFailures.push(bundle.config.name);
+        const msg = (err as Error)?.message ?? String(err);
+        print(pc.red(`✗ failed to remove rendered files for: ${bundle.config.name} (${msg})`));
+      }
     }
   }
 

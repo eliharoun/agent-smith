@@ -22,6 +22,10 @@ export const AgentSummary = z.object({
   // catalogs installed via `smith agent install --from <url>`. Absent for
   // locally-authored agents.
   remote: RemoteBlock.optional(),
+  // True for system bundles managed by smith (agent-smith). Server sets it
+  // explicitly via isProtectedAgent; absent reads as not-protected on the
+  // client, so older servers stay backward-compatible.
+  protected: z.boolean().optional(),
 });
 export type AgentSummary = z.infer<typeof AgentSummary>;
 

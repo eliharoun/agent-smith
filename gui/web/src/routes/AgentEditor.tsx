@@ -114,7 +114,7 @@ export function AgentEditor() {
               <Button variant="ghost" onClick={() => setExportOpen(true)}>
                 Export
               </Button>
-              <AgentDestroyButton name={a.name} />
+              <AgentDestroyButton name={a.name} protected={a.protected ?? false} />
             </>
           }
         />
@@ -133,6 +133,7 @@ export function AgentEditor() {
                 file="IDENTITY"
                 title="IDENTITY.md"
                 content={a.identity}
+                protected={a.protected ?? false}
               />
             ),
           },
@@ -146,6 +147,7 @@ export function AgentEditor() {
                 file="EXPERTISE"
                 title="EXPERTISE.md"
                 content={a.expertise}
+                protected={a.protected ?? false}
               />
             ),
           },
@@ -159,6 +161,7 @@ export function AgentEditor() {
                 file="SOUL"
                 title="SOUL.md"
                 content={a.soul}
+                protected={a.protected ?? false}
               />
             ),
           },
@@ -172,6 +175,7 @@ export function AgentEditor() {
                 file="USER"
                 title="USER.md"
                 content={a.user}
+                protected={a.protected ?? false}
               />
             ),
           },

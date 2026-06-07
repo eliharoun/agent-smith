@@ -10,6 +10,7 @@ import type {
 import type { McpSpawnFinding, McpSpawnSection } from "./check-mcp-spawn";
 import type { Finding as RefreshFinding, RefreshHooksReport } from "./check-refresh-hooks";
 import type { DuplicateCatalogsReport } from "./duplicate-catalogs";
+import type { ProtectedBundlesReport } from "./protected-bundles-section";
 import type { RemoteCatalogsReport } from "./remote-catalogs";
 import type { CapturedSectionSummary } from "./run-doctor";
 import type {
@@ -162,6 +163,10 @@ export function formatReport(report: DoctorReport): string {
   }
   if (report.duplicateCatalogs) {
     blocks.push(formatDuplicateCatalogsSection(report.duplicateCatalogs));
+    blocks.push("");
+  }
+  if (report.protectedBundles) {
+    blocks.push(formatProtectedBundlesSection(report.protectedBundles));
     blocks.push("");
   }
   if (report.knowledgeRefresh) {
@@ -323,6 +328,10 @@ function renderSectionDetail(
     case "duplicate-catalogs":
       return report.duplicateCatalogs
         ? formatDuplicateCatalogsSection(report.duplicateCatalogs)
+        : null;
+    case "protected-bundles":
+      return report.protectedBundles
+        ? formatProtectedBundlesSection(report.protectedBundles)
         : null;
     case "knowledge-refresh":
       return report.knowledgeRefresh
@@ -782,6 +791,30 @@ export function formatDuplicateCatalogsSection(r: DuplicateCatalogsReport): stri
     lines.push(
       `           → review and run \`smith <kind> unregister <label>\` to drop duplicates`,
     );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Render the protected-bundles transparency section. Lists the smith-managed
+ * entities present on the system (agent-smith, bundled skills) and a
+ * clone-mode note. Always informational — never an error/warn state.
+ */
+export function formatProtectedBundlesSection(r: ProtectedBundlesReport): string {
+  const lines: string[] = ["Protected bundles:"];
+  const entities = r.findings.filter((f) => f.kind !== "clone-mode");
+  if (entities.length === 0 && !r.cloneMode) {
+    lines.push("  Status: none present");
+    return lines.join("\n");
+  }
+  for (const f of entities) {
+    const where = f.sourcePath ? ` (${f.sourcePath})` : "";
+    lines.push(`  ${f.kind} '${f.name}' — managed by smith${where}`);
+  }
+  lines.push("  → refresh with `smith update`; these can't be edited or removed via smith");
+  if (r.cloneMode) {
+    const root = r.findings.find((f) => f.kind === "clone-mode")?.name ?? "<repo>";
+    lines.push(`  [clone-mode] running from ${root} — edits write to the repo source`);
   }
   return lines.join("\n");
 }

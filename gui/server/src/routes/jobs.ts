@@ -1,10 +1,68 @@
 import { JobRequest } from "gui-shared";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import {
+  isProtectedAgent,
+  isProtectedSkill,
+  type ProtectedVerb,
+  refusalMessage,
+} from "../../../../src/core/protected-bundles";
 import { buildArgv } from "../jobs/argv-builders";
 import type { JobManager } from "../jobs/job-manager";
 import { SseBroker } from "../jobs/sse-broker";
 import { HttpError } from "../middleware/error";
+
+// Mutating agent.* commands whose target (args.name) must be refused when the
+// agent is protected. Mirrors the CLI guards in src/cli/commands/*.
+const MUTATING_AGENT_COMMANDS = new Set([
+  "agent.uninstall",
+  "agent.destroy",
+  "agent.reconfigure",
+]);
+const MUTATING_KNOWLEDGE_COMMANDS = new Set([
+  "knowledge.add",
+  "knowledge.remove",
+]);
+
+/** Reject a mutating job that targets a protected agent or bundled skill. */
+function assertJobTargetNotProtected(data: JobRequest): void {
+  const command = data.command;
+  // agent.* mutations carry the agent name in `name`.
+  if (MUTATING_AGENT_COMMANDS.has(command)) {
+    const name = (data as { name?: string }).name;
+    if (name && isProtectedAgent(name)) {
+      const verb = command.split(".")[1] as ProtectedVerb;
+      throw new HttpError(
+        403,
+        "PROTECTED_BUNDLE",
+        refusalMessage({ entity: name, kind: "agent", verb }),
+      );
+    }
+  }
+  // knowledge.* mutations carry the agent name in `agent`.
+  if (MUTATING_KNOWLEDGE_COMMANDS.has(command)) {
+    const agent = (data as { agent?: string }).agent;
+    if (agent && isProtectedAgent(agent)) {
+      // command is "knowledge.add" / "knowledge.remove" — both valid verbs.
+      throw new HttpError(
+        403,
+        "PROTECTED_BUNDLE",
+        refusalMessage({ entity: agent, kind: "agent", verb: command as ProtectedVerb }),
+      );
+    }
+  }
+  // skill.uninstall carries the skill name in `name`.
+  if (command === "skill.uninstall") {
+    const name = (data as { name?: string }).name;
+    if (name && isProtectedSkill(name)) {
+      throw new HttpError(
+        403,
+        "PROTECTED_BUNDLE",
+        refusalMessage({ entity: name, kind: "skill", verb: "uninstall" }),
+      );
+    }
+  }
+}
 
 export function registerJobsRoutes(app: Hono, jobs: JobManager) {
   app.post("/api/jobs", async (c) => {
@@ -13,6 +71,7 @@ export function registerJobsRoutes(app: Hono, jobs: JobManager) {
     if (!parsed.success) {
       throw new HttpError(400, "BAD_REQUEST", parsed.error.message);
     }
+    assertJobTargetNotProtected(parsed.data);
     const built = buildArgv(parsed.data);
     try {
       const started = jobs.start({

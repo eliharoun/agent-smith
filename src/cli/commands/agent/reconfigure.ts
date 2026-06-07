@@ -49,6 +49,7 @@ import {
 } from "../../../io/opencode-plugin";
 import { PLATFORM_IDS, type PlatformId } from "../../../io/platform-detect";
 import { assertValidAgentName } from "../../agent-name";
+import { guardProtectedAgent } from "../protected-confirm";
 import { readToken } from "../../prompt";
 
 export interface ReconfigureOptions {
@@ -115,6 +116,7 @@ export async function reconfigureAgent(
   deps: ReconfigureDeps = {},
 ): Promise<void> {
   assertValidAgentName(agent);
+  await guardProtectedAgent(agent, "reconfigure", deps.prompt);
   const grant = opts.grant ?? [];
   const revoke = opts.revoke ?? [];
 
