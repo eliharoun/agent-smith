@@ -1,7 +1,10 @@
 {
   "name": "@eliharoun/agent-smith",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "workspaces": [
     "gui/server",
     "gui/web",
