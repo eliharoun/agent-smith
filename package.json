@@ -2,12 +2,19 @@
   "name": "agent-smith",
   "version": "1.14.1",
   "license": "MIT",
-  "workspaces": ["gui/server", "gui/web", "gui/shared"],
+  "workspaces": [
+    "gui/server",
+    "gui/web",
+    "gui/shared"
+  ],
   "description": "Lifecycle manager for persona-driven AI coding agents",
-  "repository": "github:eliharoun/agent-smith",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eliharoun/agent-smith.git"
+  },
   "type": "module",
   "bin": {
-    "smith": "./bin/smith.js"
+    "smith": "bin/smith.js"
   },
   "scripts": {
     "test": "bun test",
