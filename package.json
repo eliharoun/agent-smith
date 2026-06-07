@@ -1,6 +1,6 @@
 {
-  "name": "agent-smith-cli",
-  "version": "1.14.2",
+  "name": "@eliharoun/agent-smith",
+  "version": "1.14.3",
   "license": "MIT",
   "workspaces": [
     "gui/server",

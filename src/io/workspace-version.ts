@@ -26,8 +26,10 @@ export async function pathExists(p: string): Promise<boolean> {
  */
 // Both names are recognized: source clones / dev installs use "agent-smith"
 // (the original git-tree package.json), npm-published tarballs use
-// "agent-smith-cli" (the npm registry name; the CLI binary is still "smith").
-const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "agent-smith-cli"]);
+// "@eliharoun/agent-smith" (the npm registry name; the CLI binary is
+// still "smith"). The npm scoped name avoids npm's name-similarity check
+// against an existing unscoped `agentsmith` package.
+const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "@eliharoun/agent-smith"]);
 
 /**
  * Walk up from a source file path looking for a package.json whose `name`

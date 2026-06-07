@@ -34,7 +34,7 @@ For concepts, narrative, and design rationale see [`GUIDE.md`](./GUIDE.md).
 **Requires [Bun](https://bun.sh) >= 1.1.0** (the runtime; not just for install).
 
 ```bash
-npm install -g agent-smith-cli                           # install the CLI from npm
+npm install -g @eliharoun/agent-smith                           # install the CLI from npm
 smith init                                           # create ~/.config/agent-smith and registry
 smith init-user                                      # edit ~/.config/agent-smith/USER.md ($EDITOR)
 smith agent init my-agent --description "Reviews PRs for style and bugs"
@@ -48,10 +48,10 @@ smith doctor                                         # verify installation healt
 
 | Step | Command | Notes |
 |---|---|---|
-| Install (recommended) | `npm install -g agent-smith-cli` | Ships the CLI plus the bundled skills. Postinstall hook copies `the-architect` + `the-keymaker` into per-platform skill dirs when `bun` is on PATH; otherwise prints a hint and exits cleanly. **Requires `bun >= 1.1.0`** at runtime. |
+| Install (recommended) | `npm install -g @eliharoun/agent-smith` | Ships the CLI plus the bundled skills. Postinstall hook copies `the-architect` + `the-keymaker` into per-platform skill dirs when `bun` is on PATH; otherwise prints a hint and exits cleanly. **Requires `bun >= 1.1.0`** at runtime. |
 | Install (from source — for the GUI or contributing) | `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` | Clones to `~/.agent-smith/`, runs `bun install` (which fires `scripts/bootstrap.ts` postinstall to install bundled skills), installs the `agent-smith` persona, builds the GUI SPA bundle, and symlinks `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`. Required if you want `smith gui`. Also requires `gh` (or substitute `git clone`). |
 | First-time setup | `smith init && smith init-user` | `smith init` creates `~/.config/agent-smith/` and the registry. `smith init-user` opens `USER.md` in `$EDITOR`. Both are idempotent. |
-| Update (npm install) | `npm update -g agent-smith-cli` | Standard npm update. Re-runs the postinstall hook. |
+| Update (npm install) | `npm update -g @eliharoun/agent-smith` | Standard npm update. Re-runs the postinstall hook. |
 | Update (from source) | `smith update` | `git pull --ff-only` + `bun install` + `gui:build` + `agent-smith` reinstall + `doctor`. Equivalent to re-running `bash ~/.agent-smith/bin/install`. |
 | Re-install bundled skills | `smith skill bootstrap` | Re-installs `the-architect` + `the-keymaker` skills (normally fired by the postinstall hook). |
 | Re-install agent-smith persona | `smith agent install agent-smith` | Re-installs the companion agent (normally part of the from-source `bin/install` and `smith update`). |
