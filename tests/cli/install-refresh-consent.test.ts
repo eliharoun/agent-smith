@@ -69,6 +69,8 @@ describe("install refresh consent", () => {
       name: "test-agent",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       prompt: async () => "y",
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({
@@ -95,6 +97,8 @@ describe("install refresh consent", () => {
       name: "test-agent",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       prompt: async () => "n",
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({
@@ -117,6 +121,8 @@ describe("install refresh consent", () => {
       name: "test-agent",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       refreshConsent: { kind: "scalar", value: "yes" },
       prompt: async () => {
         promptCalled = true;
@@ -144,6 +150,8 @@ describe("install refresh consent", () => {
       name: "test-agent",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       noRefreshHooks: true,
       prompt: async () => {
         promptCalled = true;
@@ -206,6 +214,8 @@ describe("install refresh consent", () => {
       name: "orphan-hook-check",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       noRefreshHooks: true,
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({ bundles: [bundle], failures: [] }),
@@ -245,6 +255,8 @@ describe("install refresh consent", () => {
       name: "declined-hook-check",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       prompt: async () => "n",
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({ bundles: [bundle], failures: [] }),
@@ -298,6 +310,7 @@ describe("install refresh consent", () => {
       name: "multi-target",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
       // Claude-only detection. opencode/codex/kiro are NOT on PATH.
       detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       // Force TTY so the consent loop reaches the prompt branch (the
@@ -339,6 +352,8 @@ describe("install refresh consent", () => {
       name: "approved-hook-check",
       paths: fakePaths,
       skillMode: "no-skills",
+      allowMissingCli: true,
+      detectInstalledPlatforms: async () => new Set(["claude-code"] as const),
       prompt: async () => "y",
       loadRegistry: async () => fakeRegistry,
       loadAllBundles: async () => ({ bundles: [bundle], failures: [] }),
