@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { NotificationCenter } from "./ui/NotificationCenter";
 
 describe("App", () => {
   it("renders the smith breadcrumb", async () => {
@@ -21,7 +22,9 @@ describe("App", () => {
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <App />
+          <NotificationCenter>
+            <App />
+          </NotificationCenter>
         </MemoryRouter>
       </QueryClientProvider>,
     );
