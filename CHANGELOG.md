@@ -4,28 +4,45 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.3] — 2026-06-07
+
+Second rename to a scoped npm package name: `agent-smith-cli` →
+`@eliharoun/agent-smith`. npm rejected `agent-smith-cli` for the same
+similarity-check reason (this time matching an existing `agentsmith-cli`
+package). Scoped names (`@user/name`) bypass the unscoped-name
+similarity check entirely, so this is the publish-stable name. The
+project, brand, GitHub repo, and CLI binary (`smith`) are unchanged.
+
+### Changed
+
+- npm package name: `agent-smith-cli` → `@eliharoun/agent-smith`.
+  Install with `npm install -g @eliharoun/agent-smith`. The `smith`
+  command on PATH is unchanged.
+- `WORKSPACE_PKG_NAMES` now accepts `agent-smith` (source clones) and
+  `@eliharoun/agent-smith` (npm tarballs). The transient
+  `agent-smith-cli` entry from v1.14.2 was never published, so it's
+  removed from the set.
+
 ## [1.14.2] — 2026-06-07
 
 Renamed the npm package from `agent-smith` to `agent-smith-cli` because
 npm refused the original name as too similar to an existing `agentsmith`
-package. The project, brand, GitHub repo, and CLI binary (`smith`) stay
-unchanged — only the install command differs.
+package. (Superseded by v1.14.3 — this rename was rejected too and
+never made it onto the registry.)
 
 ### Changed
 
-- npm package name: `agent-smith` → `agent-smith-cli`. Install with
-  `npm install -g agent-smith-cli`. The `smith` command on PATH is
-  unchanged.
+- npm package name: `agent-smith` → `agent-smith-cli` (rejected by npm,
+  see v1.14.3 for the final scoped name).
 - `WORKSPACE_PKG_NAMES` (in `src/io/workspace-version.ts` and
   `gui/server/src/services/self-source.ts`) now accepts both names so
   source-clone installs (where `package.json:name` is still
-  `agent-smith`) and npm installs (where it's `agent-smith-cli`)
-  resolve self-source correctly.
+  `agent-smith`) and npm installs resolve self-source correctly.
 
 ## [1.14.1] — 2026-06-06
 
 Publish-readiness pass: smith is now installable via `npm install -g
-agent-smith-cli` (after installing bun from https://bun.sh).
+@eliharoun/agent-smith` (after installing bun from https://bun.sh).
 
 ### Fixed
 
@@ -48,7 +65,8 @@ agent-smith-cli` (after installing bun from https://bun.sh).
 ### Added
 
 - `bin` field in package.json mapping `smith` to `./bin/smith.js`. After
-  `npm install -g agent-smith`, the `smith` command is available on PATH.
+  `npm install -g @eliharoun/agent-smith`, the `smith` command is
+  available on PATH.
 - `license: "MIT"` metadata in package.json (the LICENSE file already
   existed; this just declares the metadata).
 

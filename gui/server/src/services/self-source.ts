@@ -23,9 +23,9 @@ import { fileURLToPath } from "node:url";
 export const SELF_SOURCE_LABEL = "agent-smith-self";
 
 // Source clones / dev installs use "agent-smith"; npm-published tarballs
-// use "agent-smith-cli". Accept both so self-source discovery works in
-// either runtime context.
-const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "agent-smith-cli"]);
+// use "@eliharoun/agent-smith". Accept both so self-source discovery
+// works in either runtime context.
+const WORKSPACE_PKG_NAMES = new Set(["agent-smith", "@eliharoun/agent-smith"]);
 
 export interface SelfSource {
   kind: "registered";
