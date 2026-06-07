@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitVerify } from "@/hooks/useGitVerify";
 import { useStartJob } from "@/hooks/useStartJob";
+import { classifySource } from "@/panels/AddAgentModal/classifySource";
 import { previewFor } from "@/lib/argv-preview";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/ui/Button";
@@ -182,12 +183,30 @@ export function CatalogRegisterForm({ initialRegistry = "agent", lockRegistry, o
 
       <FormField
         label="path"
+        fieldId="catalog.path"
+        placeholder="~/my-agents  or  /abs/path/to/repo"
         value={path}
         onChange={(e) => {
           setPath(e.target.value);
           setVerifyResult(null);
         }}
       />
+      {/* The path field wants a LOCAL folder. If the user pastes a URL or
+          archive, point them at the Install flow before they hit a confusing
+          "not a git repo" verification error. */}
+      {(() => {
+        const looksRemote = classifySource(path) === "git-url" || classifySource(path) === "archive";
+        if (!looksRemote) return null;
+        return (
+          <div className="mt-1 flex items-center gap-2" role="note">
+            <Chip tone="amber">looks like a URL</Chip>
+            <span className="font-mono text-[10px] text-matrix-green-muted">
+              this field registers a folder already on disk. To pull from a URL or archive, use
+              “Install from URL” instead.
+            </span>
+          </div>
+        );
+      })()}
 
       <div className="mt-3 flex flex-col gap-1">
         <FieldHelp fieldId="catalog.kind" htmlFor="f-kind-group">
@@ -234,12 +253,13 @@ export function CatalogRegisterForm({ initialRegistry = "agent", lockRegistry, o
       <div className="mt-3">
         <FormField
           label="git remote"
+          fieldId="catalog.gitRemote"
           value={gitRemote}
           onChange={(e) => {
             setGitRemote(e.target.value);
             setVerifyResult(null);
           }}
-          placeholder="https://github.com/owner/repo"
+          placeholder="https://github.com/owner/repo  (optional — auto-detected)"
         />
       </div>
 

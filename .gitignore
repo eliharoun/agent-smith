@@ -38,3 +38,7 @@ Thumbs.db
 
 # Superpowers brainstorm session artifacts (mockups, state)
 .superpowers/
+
+# Internal docs / design + plan scaffolding — not user-facing, never published.
+# Operational runbooks live in ops/ instead (committed).
+docs/

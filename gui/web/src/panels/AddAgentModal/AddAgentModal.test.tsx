@@ -243,7 +243,7 @@ describe("sub-form rendering", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "https://github.com/acme/repo" } });
     await act(async () => { vi.advanceTimersByTime(400); });
     vi.useRealTimers();
-    const sourceField = screen.getByLabelText(/where is the agent/i) as HTMLInputElement;
+    const sourceField = screen.getByLabelText(/where is the agent/i, { selector: "input" }) as HTMLInputElement;
     expect(sourceField.value).toBe("https://github.com/acme/repo");
   });
 

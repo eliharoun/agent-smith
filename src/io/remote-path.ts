@@ -28,6 +28,7 @@
 
 import { createHash } from "node:crypto";
 import { basename, resolve, sep } from "node:path";
+import { SmithError } from "../core/smith-error";
 
 const URL_PATTERNS = [/^https:\/\//i, /^git@/i, /^ssh:\/\//i, /^file:\/\//i];
 
@@ -38,7 +39,12 @@ export function isLikelyGitUrl(s: string): boolean {
 
 export function deriveRemotePath(url: string, remoteRoot: string): string {
   if (!isLikelyGitUrl(url)) {
-    throw new Error(`not a recognized git url: ${url}`);
+    throw new SmithError({
+      code: "usage-error",
+      message: `"${url}" is not a recognized git URL.`,
+      suggestedCommand:
+        "Use https://github.com/owner/repo, git@github.com:owner/repo, or a local path.",
+    });
   }
 
   // file:// → _local/<hash>-<basename>
@@ -67,10 +73,19 @@ export function deriveRemotePath(url: string, remoteRoot: string): string {
   // Reject '..' segments before they can escape via path.resolve.
   const rawParts = s.split("/").filter(Boolean);
   if (rawParts.some((p) => p === "..")) {
-    throw new Error(`url contains '..' segment: ${url}`);
+    throw new SmithError({
+      code: "validation-failed",
+      what: "git URL",
+      reasons: [`URL contains a '..' path segment: ${url}`],
+    });
   }
   if (rawParts.length < 3) {
-    throw new Error(`url did not contain host/owner/repo: ${url}`);
+    throw new SmithError({
+      code: "usage-error",
+      message: `"${url}" doesn't look like a full repo URL (need host/owner/repo).`,
+      suggestedCommand:
+        "Use the repository root, e.g. https://github.com/owner/repo — not a sub-path or file link.",
+    });
   }
 
   // Option-injection guard: reject any segment starting with '-'. Git treats
@@ -78,7 +93,11 @@ export function deriveRemotePath(url: string, remoteRoot: string): string {
   // or git@h:-evil/r could be smuggled into a later `git clone <url>` call.
   const dashPart = rawParts.find((p) => p.startsWith("-"));
   if (dashPart) {
-    throw new Error(`url segment starts with '-' (option injection): ${dashPart}`);
+    throw new SmithError({
+      code: "validation-failed",
+      what: "git URL",
+      reasons: [`URL segment starts with '-' (rejected as option-injection guard): ${dashPart}`],
+    });
   }
 
   // Lowercase the first 3 segments (host, owner, repo); preserve deeper
@@ -91,7 +110,11 @@ export function deriveRemotePath(url: string, remoteRoot: string): string {
   // Defense-in-depth: segment-aware containment check.
   const rootWithSep = resolvedRoot.endsWith(sep) ? resolvedRoot : resolvedRoot + sep;
   if (candidate !== resolvedRoot && !candidate.startsWith(rootWithSep)) {
-    throw new Error(`derived path escapes remoteRoot: ${candidate} not within ${resolvedRoot}`);
+    throw new SmithError({
+      code: "validation-failed",
+      what: "git URL",
+      reasons: [`derived path escapes the remote-clones root (${candidate} not within ${resolvedRoot})`],
+    });
   }
 
   return candidate;
@@ -112,7 +135,11 @@ function deriveLocalPath(url: string, remoteRoot: string): string {
   // Containment check (same defense-in-depth as the URL branch).
   const rootWithSep = resolvedRoot.endsWith(sep) ? resolvedRoot : resolvedRoot + sep;
   if (!candidate.startsWith(rootWithSep)) {
-    throw new Error(`derived path escapes remoteRoot: ${candidate} not within ${resolvedRoot}`);
+    throw new SmithError({
+      code: "validation-failed",
+      what: "git URL",
+      reasons: [`derived path escapes the remote-clones root (${candidate} not within ${resolvedRoot})`],
+    });
   }
   return candidate;
 }

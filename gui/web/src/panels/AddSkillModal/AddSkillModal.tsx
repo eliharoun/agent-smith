@@ -2,6 +2,7 @@ import type { JobRequest } from "gui-shared";
 import { useEffect, useRef, useState } from "react";
 import { classifySkillSource, type SkillSourceKind } from "./classifySkillSource";
 import { useDebounced } from "@/lib/use-debounced";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { InstallExistingForm } from "@/panels/InstallExistingForm";
 import { CatalogRegisterForm } from "@/panels/CatalogRegisterForm";
 
@@ -147,15 +148,18 @@ export function AddSkillModal({ open, onClose, onDispatch, initialView }: Props)
         {view === "menu" && (
           <div className="flex flex-col gap-4">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-1">
-                paste a URL, file path, archive, or catalog/name…
-              </label>
+              <div className="mb-1">
+                <FieldHelp fieldId="install.skillSmartInput" htmlFor="add-skill-smart-input">
+                  paste a URL, file path, archive, or catalog/name…
+                </FieldHelp>
+              </div>
               <input
+                id="add-skill-smart-input"
                 type="text"
                 autoFocus
                 value={smartInput}
                 onChange={(e) => setSmartInput(e.target.value)}
-                placeholder="default/tdd  or  git@github.com:acme/skills.git"
+                placeholder="default/tdd  ·  https://github.com/acme/skills  ·  ~/my-skills  ·  bundle.tgz"
                 className="w-full bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green"
               />
               {liveKind !== "unknown" && (

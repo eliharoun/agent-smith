@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SmithError } from "../../src/core/smith-error";
 import { deriveRemotePath, isLikelyGitUrl } from "../../src/io/remote-path";
 
 describe("deriveRemotePath", () => {
@@ -49,24 +50,43 @@ describe("deriveRemotePath security hardening (C4.0.1)", () => {
     );
   });
 
+  // These now throw a structured SmithError (validation-failed). The headline
+  // is "git URL validation failed"; the option-injection detail lives in
+  // `payload.reasons`. Assert on the payload so the security contract is
+  // explicit and not coupled to headline wording.
+  function injectionReason(fn: () => unknown): string {
+    try {
+      fn();
+    } catch (err) {
+      const p = (err as SmithError).payload;
+      if (p?.code === "validation-failed") return p.reasons.join(" ");
+      return (err as Error).message;
+    }
+    throw new Error("expected deriveRemotePath to throw");
+  }
+
   test("rejects host starting with - (option injection)", () => {
-    expect(() => deriveRemotePath("https://-evil/o/r.git", root)).toThrow(/starts with '-'/i);
+    expect(injectionReason(() => deriveRemotePath("https://-evil/o/r.git", root))).toMatch(
+      /starts with '-'/i,
+    );
   });
 
   test("rejects owner segment starting with -", () => {
-    expect(() => deriveRemotePath("https://h.example/-evil/r.git", root)).toThrow(
+    expect(injectionReason(() => deriveRemotePath("https://h.example/-evil/r.git", root))).toMatch(
       /starts with '-'/i,
     );
   });
 
   test("rejects repo segment starting with -", () => {
-    expect(() => deriveRemotePath("https://h.example/o/-evil.git", root)).toThrow(
+    expect(injectionReason(() => deriveRemotePath("https://h.example/o/-evil.git", root))).toMatch(
       /starts with '-'/i,
     );
   });
 
   test("rejects SSH-form with - prefix on owner", () => {
-    expect(() => deriveRemotePath("git@h.example:-evil/r.git", root)).toThrow(/starts with '-'/i);
+    expect(injectionReason(() => deriveRemotePath("git@h.example:-evil/r.git", root))).toMatch(
+      /starts with '-'/i,
+    );
   });
 });
 

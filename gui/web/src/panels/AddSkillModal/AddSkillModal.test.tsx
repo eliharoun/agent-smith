@@ -282,7 +282,7 @@ describe("sub-form rendering", () => {
     await act(async () => { vi.advanceTimersByTime(400); });
     vi.useRealTimers();
     // InstallExistingForm's URL field should be pre-seeded with the smart input value
-    const sourceField = screen.getByLabelText(/where is the skill/i) as HTMLInputElement;
+    const sourceField = screen.getByLabelText(/where is the skill/i, { selector: "input" }) as HTMLInputElement;
     expect(sourceField.value).toBe("https://github.com/acme/skills");
   });
 });
