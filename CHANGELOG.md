@@ -4,6 +4,22 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.4] — 2026-06-07
+
+Pin `publishConfig.access: "public"` in `package.json` so scoped-package
+publishes default to public access. Without it, `npm publish` errored
+with `402 Payment Required — You must sign up for private packages`,
+because npm defaults scoped packages to private (a paid feature).
+
+This is the smallest possible fix to make `npm publish` work without
+the `--access public` flag on every release. v1.14.3 was tagged but
+never reached the registry; v1.14.4 is the first version actually
+published to npm.
+
+### Changed
+
+- `package.json` adds `"publishConfig": {"access": "public"}`.
+
 ## [1.14.3] — 2026-06-07
 
 Second rename to a scoped npm package name: `agent-smith-cli` →
