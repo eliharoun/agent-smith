@@ -57,6 +57,20 @@ function renderForm(agent: AgentDetail = baseAgent) {
 }
 
 describe("AgentTargetsForm", () => {
+  it("renders read-only (no checkboxes, no Save) for a protected bundle", () => {
+    renderForm({
+      ...baseAgent,
+      name: "agent-smith",
+      protected: true,
+      config: { ...baseAgent.config, name: "agent-smith" },
+    });
+    // Read-only view: targets listed as text, no checkboxes, no save button.
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull();
+    expect(screen.getByText(/system bundle managed by smith/i)).toBeInTheDocument();
+    expect(screen.getByText(/model tier: balanced/i)).toBeInTheDocument();
+  });
+
   it("saving an added target PUTs a config patch including the new target", async () => {
     const putSpy = vi.fn();
     server.use(

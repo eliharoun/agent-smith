@@ -106,6 +106,8 @@ describe("discoverSkills", () => {
         description: "a test skill",
         catalogLabel: "L",
         path: join(dir, "my-skill"),
+        // v1.15.0: every summary now carries `protected` (false for user skills).
+        protected: false,
       },
     ]);
   });

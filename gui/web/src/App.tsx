@@ -4,6 +4,8 @@ import { JobCompletionListener } from "@/panels/JobCompletionListener/JobComplet
 import { useDetectPlatformCli } from "@/hooks/useDetectPlatformCli";
 import { useDaemonRestartToast } from "@/hooks/useDaemonRestartToast";
 import { useDaemonStalenessToast } from "@/hooks/useDaemonStalenessToast";
+import { useStatus } from "@/hooks/useStatus";
+import { CloneModeBanner } from "@/ui/CloneModeBanner";
 import { JobStreamModal } from "@/panels/JobStreamModal/JobStreamModal";
 import { captureToken } from "./api/client";
 import { AgentEditor } from "./routes/AgentEditor";
@@ -56,6 +58,13 @@ function PlatformCliWatcher() {
   return null;
 }
 
+// Top-of-page banner shown only when the GUI server runs from a maintainer's
+// clone (/api/status → cloneMode). Reads the same status query as TopBar.
+function CloneModeBannerHost() {
+  const status = useStatus();
+  return <CloneModeBanner active={status.data?.cloneMode ?? false} />;
+}
+
 export function App() {
   useEffect(() => {
     captureToken();
@@ -68,6 +77,7 @@ export function App() {
         <DaemonRestartWatcher />
         <PlatformCliWatcher />
         <JobStreamModal />
+        <CloneModeBannerHost />
         <TopBar />
         <div className="flex flex-1">
           <AppNav />

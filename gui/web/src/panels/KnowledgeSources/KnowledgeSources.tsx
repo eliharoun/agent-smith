@@ -11,6 +11,7 @@ import { useJobToast } from "@/hooks/useJobToast";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
 import { FieldHelp } from "@/ui/FieldHelp";
+import { ProtectedBadge } from "@/ui/ProtectedBadge";
 import { Toggle } from "@/ui/Toggle";
 import { ConfirmModal } from "@/ui/ConfirmModal";
 import { AddKnowledgeSourceModal } from "./AddKnowledgeSourceModal";
@@ -96,6 +97,10 @@ export function KnowledgeSources({ agent }: Props) {
   // already includes per-source `delivery` etc., but not the surrounding
   // bundle-level fields, so we pull from /api/agents/:name here.
   const detail = useAgent(agent);
+  // System bundles (agent-smith) are read-only: hide add/edit/remove controls
+  // and surface a "Bundled" badge. The server also 403s these mutations, so
+  // this is purely UX (don't tease an action that won't work).
+  const isProtected = detail.data?.protected ?? false;
   const start = useStartJob();
   const grantConsent = useGrantRefreshConsent(agent);
   const detected = useDetectedPlatforms();
@@ -365,7 +370,7 @@ export function KnowledgeSources({ agent }: Props) {
           <Button variant="ghost" disabled={empty} onClick={() => setRefreshAllConfirm(true)}>
             refresh all
           </Button>
-          <Button onClick={() => setAddOpen(true)}>+ add source</Button>
+          {isProtected ? <ProtectedBadge /> : <Button onClick={() => setAddOpen(true)}>+ add source</Button>}
         </div>
       }
     >
@@ -447,6 +452,7 @@ export function KnowledgeSources({ agent }: Props) {
             <li key={joined.source.id}>
               <KnowledgeSourceRow
                 agent={agent}
+                protected={isProtected}
                 source={joined.source}
                 refreshCache={joined.refreshCache}
                 onRefresh={() =>

@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { type SkillCatalog, SkillFrontmatter, type SkillSummary } from "gui-shared";
 import * as yaml from "js-yaml";
+import { isProtectedSkill } from "../../../../src/core/protected-bundles";
 
 const SKILL_NAME_RE = /^[a-z][a-z0-9-]*$/;
 
@@ -148,6 +149,7 @@ export async function discoverSkills(catalog: SkillCatalog): Promise<SkillSummar
           description: parsed.data.description.slice(0, 1000),
           catalogLabel: catalog.label,
           path: entryPath,
+          protected: isProtectedSkill(parsed.data.name),
         });
         // Do NOT descend into skill directories.
       } else {

@@ -421,3 +421,29 @@ describe("SmithError network-error variant", () => {
     }
   });
 });
+
+describe("protected-bundle SmithError", () => {
+  test("renders the provided message verbatim as the headline", () => {
+    const err = new SmithError({
+      code: "protected-bundle",
+      message: 'Cannot uninstall agent "agent-smith": this is a system agent.',
+    });
+    expect(err.message).toContain('Cannot uninstall agent "agent-smith"');
+    expect(err.code).toBe("protected-bundle");
+  });
+  test("has no remediation block", () => {
+    expect(
+      formatRemediation({ code: "protected-bundle", message: "x" }),
+    ).toBe("");
+  });
+});
+
+describe("user-aborted SmithError", () => {
+  test("renders the cancellation reason", () => {
+    const err = new SmithError({ code: "user-aborted", what: "uninstall" });
+    expect(err.message).toBe("uninstall cancelled by user.");
+  });
+  test("has no remediation block", () => {
+    expect(formatRemediation({ code: "user-aborted", what: "uninstall" })).toBe("");
+  });
+});

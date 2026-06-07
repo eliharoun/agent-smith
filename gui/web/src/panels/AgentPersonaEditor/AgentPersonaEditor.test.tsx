@@ -67,6 +67,24 @@ describe("AgentPersonaEditor", () => {
     expect(before).toBeDefined();
   });
 
+  it("renders read-only with a refresh hint and no Save for a protected bundle", () => {
+    sessionStorage.setItem("smith.gui.token", "t");
+    renderWithClient(
+      <AgentPersonaEditor
+        name="agent-smith"
+        file="IDENTITY"
+        title="IDENTITY.md"
+        content="hello"
+        protected
+      />,
+    );
+    const textarea = screen.getByLabelText(/IDENTITY\.md content/i) as HTMLTextAreaElement;
+    expect(textarea).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
+    expect(screen.getByText(/system bundle managed by smith/i)).toBeInTheDocument();
+    expect(screen.getByText(/smith update/i)).toBeInTheDocument();
+  });
+
   it("shows an inline error message when save fails", async () => {
     sessionStorage.setItem("smith.gui.token", "t");
     global.fetch = vi.fn(() =>

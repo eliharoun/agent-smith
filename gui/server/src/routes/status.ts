@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { isLocalSmithClone } from "../../../../src/core/protected-bundles";
 import { parseRegistry } from "../services/parse-registry";
 
 export interface StatusDeps {
@@ -19,6 +20,9 @@ export function registerStatusRoute(app: Hono, deps: StatusDeps) {
     return c.json({
       agentCount,
       smithVersion,
+      // True when the GUI server runs from a maintainer's clone — drives the
+      // client's clone-mode banner. End-users (npm-installed) get false.
+      cloneMode: isLocalSmithClone(),
     });
   });
 }

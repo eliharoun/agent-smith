@@ -310,6 +310,13 @@ export interface DoctorReport {
    */
   duplicateCatalogs?: import("./duplicate-catalogs").DuplicateCatalogsReport;
   /**
+   * Optional protected-bundles transparency section. Lists smith-managed
+   * entities present on the system (agent-smith, bundled skills) plus a
+   * clone-mode flag. Informational only — never affects
+   * {@link DoctorReport.exitCode}.
+   */
+  protectedBundles?: import("./protected-bundles-section").ProtectedBundlesReport;
+  /**
    * Optional knowledge-prompt-disk-consistency report. Undefined when the
    * caller doesn't request the check. Informational only — never affects
    * {@link DoctorReport.exitCode}.

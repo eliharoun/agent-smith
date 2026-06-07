@@ -17,6 +17,7 @@ import {
   type LoadAllBundlesResult,
   warnUnrelatedLoadFailures,
 } from "../load-all";
+import { guardProtectedAgent } from "./protected-confirm";
 
 export interface UninstallCliOptions {
   name: string;
@@ -52,9 +53,12 @@ export interface UninstallCliOptions {
    * "platform not installed" from "file just missing" in the print loop.
    */
   detectInstalledPlatforms?: () => Promise<Set<PlatformId>>;
+  /** DI seam for the clone-mode confirmation prompt. Defaults to readToken. */
+  confirmFn?: (question: string) => Promise<string>;
 }
 
 export async function runUninstallCli(opts: UninstallCliOptions): Promise<number> {
+  await guardProtectedAgent(opts.name, "uninstall", opts.confirmFn);
   const paths = opts.paths ?? defaultInstallPaths();
   const knowledgePaths = opts.knowledgePaths ?? defaultKnowledgePaths();
   const loadReg = opts.loadRegistry ?? loadRegistry;

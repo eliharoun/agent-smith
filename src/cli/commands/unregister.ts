@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import pc from "picocolors";
+import { isProtectedCatalog, refusalMessage } from "../../core/protected-bundles";
 import { SmithError } from "../../core/smith-error";
 import { assertSafeToPurgeClone } from "../../io/clone-purge-guard";
 import { canonicalRegistryPath, loadRegistry, removeSource, saveRegistry } from "../../io/registry";
@@ -56,6 +57,15 @@ export async function unregister(
   pathOrLabel: string,
   paths: UnregisterPaths = {},
 ): Promise<number> {
+  // Refuse protected catalogs (agent-smith-self) up front, before the registry
+  // lookup — otherwise the synthetic source's absence from registry.json would
+  // surface as an incidental not-found rather than an explicit refusal.
+  if (isProtectedCatalog(pathOrLabel)) {
+    throw new SmithError({
+      code: "protected-bundle",
+      message: refusalMessage({ entity: pathOrLabel, kind: "catalog", verb: "unregister" }),
+    });
+  }
   const registryPath = paths.registryPath ?? canonicalRegistryPath();
   const before = await loadRegistry(registryPath);
   // DW-8: label-first resolution so 'owner/repo'-shaped labels (the

@@ -25,6 +25,7 @@ import {
   saveSkillRegistry,
 } from "../../../io/skill-registry";
 import { type WrapDeps, wrap } from "../../wrap";
+import { guardProtectedSkill } from "../protected-confirm";
 import { promptMultiSelect } from "../../multi-select";
 import type { DiscoveredBundle } from "../../../core/install-from-url";
 
@@ -356,6 +357,7 @@ export function registerSkillInstallCommands(
       wrap(
         "skill uninstall",
         async (name: string): Promise<number> => {
+          await guardProtectedSkill(name, "uninstall");
           const r = await uninstallSkill(name, home ? { homeDir: home } : undefined);
           if (!r.ok) {
             throw new SmithError({

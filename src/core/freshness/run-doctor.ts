@@ -81,6 +81,10 @@ import {
 } from "./check-url-routing";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
+import {
+  checkProtectedBundles,
+  type ProtectedBundlesReport,
+} from "./protected-bundles-section";
 import type { InstalledModelsPaths } from "./installed-models";
 import { scanInstalledModels } from "./installed-models";
 import { checkRemoteCatalogs, type RemoteCatalogsReport } from "./remote-catalogs";
@@ -125,6 +129,7 @@ export type DoctorSectionId =
   | "registry-hygiene"
   | "remote-catalogs"
   | "duplicate-catalogs"
+  | "protected-bundles"
   | "knowledge-refresh"
   | "knowledge-compile"
   | "mcp-spawn-commands"
@@ -339,6 +344,18 @@ export interface RunDoctorInput {
   duplicateCatalogs?: {
     registryPath: string;
     skillRegistryPath: string;
+  };
+  /**
+   * Optional protected-bundles transparency section. When provided, lists
+   * the smith-managed entities present on the system (agent-smith, the
+   * bundled skills) plus a clone-mode note. Informational only — never
+   * affects {@link DoctorReport.exitCode}. Offline-safe.
+   */
+  protectedBundles?: {
+    /** Agent names present in the registry (already loaded by the caller). */
+    agentNames: Set<string>;
+    /** Installed skills → first installed path (any platform). */
+    installedSkillPaths: Map<string, string | undefined>;
   };
   /**
    * Optional knowledge-refresh detection. When provided, runs the
@@ -588,6 +605,18 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let protectedBundles: ProtectedBundlesReport | undefined;
+  if (input.protectedBundles) {
+    emitStart(input, "protected-bundles", "Protected bundles");
+    protectedBundles = checkProtectedBundles(input.protectedBundles);
+    emitDone(
+      input,
+      "protected-bundles",
+      "ok",
+      protectedBundlesSummary(protectedBundles),
+    );
+  }
+
   let knowledgeRefresh: RefreshHooksReport | undefined;
   if (input.knowledgeRefresh) {
     emitStart(input, "knowledge-refresh", "Knowledge refresh");
@@ -707,6 +736,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(registryHygiene ? { registryHygiene } : {}),
     ...(remoteCatalogs ? { remoteCatalogs } : {}),
     ...(duplicateCatalogs ? { duplicateCatalogs } : {}),
+    ...(protectedBundles ? { protectedBundles } : {}),
     ...(knowledgeRefresh ? { knowledgeRefresh } : {}),
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
     ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
@@ -1552,6 +1582,12 @@ function duplicateCatalogsSummary(r: DuplicateCatalogsReport): string {
   if (r.clusters.length === 0) return "Duplicate catalogs: ok";
   const totalDupes = r.clusters.reduce((sum, c) => sum + c.members.length, 0);
   return `Duplicate catalogs: ${r.clusters.length} cluster${r.clusters.length === 1 ? "" : "s"} (${totalDupes} entries)`;
+}
+
+function protectedBundlesSummary(r: ProtectedBundlesReport): string {
+  const n = r.findings.filter((f) => f.kind !== "clone-mode").length;
+  const cloneNote = r.cloneMode ? " (clone mode)" : "";
+  return `Protected bundles: ${n} system entit${n === 1 ? "y" : "ies"} managed by smith${cloneNote}`;
 }
 
 export function mcpSpawnEventStatus(r: McpSpawnSection): DoctorSectionDoneEvent["status"] {

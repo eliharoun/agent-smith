@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import pc from "picocolors";
+import { isProtectedCatalog, refusalMessage } from "../../../core/protected-bundles";
 import { SmithError } from "../../../core/smith-error";
 import { assertSafeToPurgeClone } from "../../../io/clone-purge-guard";
 import {
@@ -48,6 +49,14 @@ export async function skillUnregister(
   pathOrLabel: string,
   paths: SkillUnregisterPaths = {},
 ): Promise<number> {
+  // Refuse protected catalogs (agent-smith-self) up front — the synthetic
+  // bundled-skill source covers both axes — before the incidental not-found.
+  if (isProtectedCatalog(pathOrLabel)) {
+    throw new SmithError({
+      code: "protected-bundle",
+      message: refusalMessage({ entity: pathOrLabel, kind: "catalog", verb: "unregister" }),
+    });
+  }
   const registryPath = paths.registryPath ?? canonicalSkillRegistryPath();
   const before = await loadSkillRegistry(registryPath);
   const { key: lookupKey, how } = resolveLookupKey(pathOrLabel, before.catalogs);

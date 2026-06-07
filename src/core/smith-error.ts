@@ -62,6 +62,13 @@ export type SmithErrorPayload =
   // catalogs. Headline conveys the issue; no Try line because there is no
   // recovery — the catalog is intentionally protected.
   | { code: "protected-catalog"; name: string }
+  // Agent/skill bundle is part of the smith product surface — refuse mutation.
+  // `message` is the full pre-formatted refusal (from refusalMessage() in
+  // src/core/protected-bundles.ts) and is rendered verbatim as the headline.
+  | { code: "protected-bundle"; message: string }
+  // Clone-mode confirmation declined by the user. Rendered as a plain
+  // cancellation, not a red error.
+  | { code: "user-aborted"; what: string }
   // Skill registry JSON parse failure — mirrors registry-corrupt-json on
   // the agent-registry side.
   | {
@@ -159,6 +166,10 @@ export function formatHeadline(payload: SmithErrorPayload): string {
       return `${payload.what} already exists: ${payload.identifier}`;
     case "protected-catalog":
       return `cannot unregister protected catalog '${payload.name}'`;
+    case "protected-bundle":
+      return payload.message;
+    case "user-aborted":
+      return `${payload.what} cancelled by user.`;
     case "skill-registry-corrupt-json":
       return "skill catalog file is corrupt";
     case "skill-registry-corrupt-shape":
@@ -237,6 +248,12 @@ export function formatRemediation(payload: SmithErrorPayload): string {
     case "protected-catalog":
       // Intentionally no remediation — protected catalogs are protected
       // exactly because there's no user-facing recovery path.
+      return "";
+    case "protected-bundle":
+      // The headline already carries the full refusal + the legitimate path.
+      return "";
+    case "user-aborted":
+      // Plain cancellation — nothing to remediate.
       return "";
     case "skill-registry-corrupt-json":
       return [

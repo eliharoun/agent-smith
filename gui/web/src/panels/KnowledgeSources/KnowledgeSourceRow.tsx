@@ -10,6 +10,9 @@ interface Props {
   onRefresh: () => void;
   onRemove: () => void;
   onEdit: () => void;
+  /** When true (system bundle), the mutating edit/remove controls are hidden;
+   *  refresh (read-only) stays available. */
+  protected?: boolean;
 }
 
 /**
@@ -17,7 +20,14 @@ interface Props {
  * chip + status lamp + actions. The summary string is type-specific
  * (path/url/space/jql/…) so users can identify sources without expanding.
  */
-export function KnowledgeSourceRow({ source, refreshCache, onRefresh, onRemove, onEdit }: Props) {
+export function KnowledgeSourceRow({
+  source,
+  refreshCache,
+  onRefresh,
+  onRemove,
+  onEdit,
+  protected: isProtected,
+}: Props) {
   const lastRefreshLabel = relativeTime(refreshCache?.last_refreshed_at);
   const status = refreshCache?.last_error
     ? ("error" as const)
@@ -45,15 +55,19 @@ export function KnowledgeSourceRow({ source, refreshCache, onRefresh, onRemove, 
         {status === "ok" ? "ok" : status === "error" ? "err" : "—"}
       </Chip>
       <div className="flex gap-1">
-        <Button variant="ghost" onClick={onEdit}>
-          edit
-        </Button>
+        {!isProtected && (
+          <Button variant="ghost" onClick={onEdit}>
+            edit
+          </Button>
+        )}
         <Button variant="ghost" onClick={onRefresh}>
           refresh
         </Button>
-        <Button variant="danger" onClick={onRemove}>
-          remove
-        </Button>
+        {!isProtected && (
+          <Button variant="danger" onClick={onRemove}>
+            remove
+          </Button>
+        )}
       </div>
     </div>
   );

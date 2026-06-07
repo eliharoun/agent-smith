@@ -4,6 +4,56 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] — 2026-06-07
+
+Protects `agent-smith` (the agent), `agent-smith-self` (the synthetic
+catalog), and the bundled skills (`the-architect`, `the-keymaker`) from
+accidental deletion or mutation. These are part of the smith product
+surface; uninstall / destroy / reconfigure / edit now refuse with a
+friendly message pointing at `smith update` (to refresh) or your package
+manager (to remove smith entirely).
+
+Maintainers running smith from a local clone of its own repo get a
+confirmation prompt instead of a hard refusal, so smith's own development
+workflow still works (set `SMITH_CLONE_CONFIRM_ALL=1` to auto-confirm).
+
+### Added
+
+- `smith doctor` lists protected entities under a new `protected-bundles`
+  section (agent-smith + bundled skills, with their installed paths and a
+  clone-mode note).
+- GUI: a "Bundled" badge marks protected agents and skills.
+- GUI: a clone-mode banner appears on a maintainer's machine, dismissable
+  per session.
+- GUI: `/api/status` now reports `cloneMode`.
+
+### Changed
+
+- `smith agent uninstall|destroy|reconfigure agent-smith`,
+  `smith knowledge add|remove` on agent-smith, and
+  `smith skill uninstall the-architect|the-keymaker` now refuse on user
+  machines (confirmation prompt in clone mode).
+- GUI: `PUT /api/agents/:name/persona/:file` and
+  `PUT /api/agents/:name/config` return HTTP 403 (`PROTECTED_BUNDLE`) for
+  protected agents.
+- GUI: `POST /api/jobs` rejects mutating commands targeting protected names
+  with HTTP 403.
+- GUI: persona + targets/model editors render read-only for protected
+  bundles; destroy / add-source / edit / remove controls are hidden (not
+  disabled).
+
+### Fixed
+
+- `smith agent unregister agent-smith-self` (and the skill equivalent) now
+  refuse with an explicit protected error instead of failing incidentally
+  with `not-found`.
+- `smith jack-out` now removes agent-smith's rendered files on every
+  installed platform. They were previously orphaned: agent-smith's
+  synthetic source lives outside `configDir`, so the rendered files were
+  left behind pointing at a smith that jack-out had just deleted. (jack-out
+  remains the deliberate "remove everything" command — protection guards do
+  not apply to it.)
+
 ## [1.14.4] — 2026-06-07
 
 Pin `publishConfig.access: "public"` in `package.json` so scoped-package

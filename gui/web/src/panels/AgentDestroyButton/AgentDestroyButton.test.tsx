@@ -25,4 +25,17 @@ describe("AgentDestroyButton", () => {
     expect(screen.getByPlaceholderText("foo")).toBeInTheDocument();
     expect(screen.getByText(/dangling agent definitions/i)).toBeInTheDocument();
   });
+
+  it("renders nothing for a protected agent (system bundle)", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <AgentDestroyButton name="agent-smith" protected />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(container.querySelector("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /destroy/i })).toBeNull();
+  });
 });

@@ -174,6 +174,10 @@ function bodyFor(payload: SmithErrorPayload): string {
     case "protected-catalog":
       // Headline already conveys the issue; body is empty.
       return "";
+    case "protected-bundle":
+    case "user-aborted":
+      // Headline carries the full message; no extra body.
+      return "";
     case "skill-registry-corrupt-json":
       return `${payload.path}: ${payload.parseError}`;
     case "skill-registry-corrupt-shape":

@@ -673,4 +673,47 @@ describe("KnowledgeSources", () => {
       expect(screen.getByRole("button", { name: new RegExp(`^${t}\\b`, "i") })).toBeInTheDocument();
     }
   });
+
+  it("for a protected agent: no '+ add source' button, a Bundled badge, and rows hide edit/remove", async () => {
+    globalThis.fetch = mockFetch(
+      () => ({
+        agent: "agent-smith",
+        sources: [{ source: { id: "guide", type: "file", path: "/x/guide.md" } }],
+      }),
+      calls,
+      () => ({
+        name: "agent-smith",
+        description: "",
+        catalog: "agent-smith-self",
+        path: "/x",
+        targets: ["claude-code"],
+        identity: "I",
+        expertise: "E",
+        soul: "S",
+        user: "U",
+        protected: true,
+        config: { name: "agent-smith", description: "", targets: ["claude-code"] },
+      }),
+    ) as unknown as typeof fetch;
+    render(
+      <MemoryRouter>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <NotificationCenter>
+            <KnowledgeSources agent="agent-smith" />
+          </NotificationCenter>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    // The knowledge source row renders once loaded.
+    await waitFor(() => expect(screen.getByText("guide")).toBeInTheDocument());
+    // No add control; a Bundled badge appears instead.
+    expect(screen.queryByRole("button", { name: /\+ add source/i })).toBeNull();
+    expect(screen.getByText(/bundled/i)).toBeInTheDocument();
+    // Row's mutating controls are hidden; read-only refresh remains.
+    expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^remove$/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /^refresh$/i })).toBeInTheDocument();
+  });
 });

@@ -5,10 +5,13 @@ import { parseConfig } from "../../../core/config-schema";
 import type { KnowledgeBlock } from "../../../core/knowledge/types";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
+import { guardProtectedAgent } from "../protected-confirm";
 
 export interface KnowledgeRemoveOptions {
   bundleDir: string;
   sourceId: string;
+  /** DI seam for the clone-mode confirmation prompt. Defaults to readToken. */
+  confirmFn?: (question: string) => Promise<string>;
 }
 
 /**
@@ -27,6 +30,7 @@ export interface KnowledgeRemoveOptions {
  * `--no-install` is passed.
  */
 export async function knowledgeRemove(opts: KnowledgeRemoveOptions): Promise<number> {
+  await guardProtectedAgent(basename(opts.bundleDir), "knowledge.remove", opts.confirmFn);
   const cfgPath = join(opts.bundleDir, "agent.config.json");
   let raw: string;
   try {

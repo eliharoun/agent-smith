@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { CatalogEntry, CatalogKindAny, CatalogList, CatalogMode } from "gui-shared";
 import type { Hono } from "hono";
+import { isProtectedCatalog } from "../../../../src/core/protected-bundles";
 import { parseRegistrySources } from "../services/parse-registry";
 import { discoverSkills, loadSkillCatalogs } from "../services/scan-skill-catalogs";
 
@@ -45,6 +46,9 @@ export function registerCatalogsRoute(app: Hono, deps: CatalogsRouteDeps): void 
           health: { exists, bundleCount },
           ...(src.gitRemote !== undefined ? { gitRemote: src.gitRemote } : {}),
           ...(src.remote !== undefined ? { remote: src.remote } : {}),
+          // Surface the synthetic agent-smith-self source as a protected,
+          // read-only catalog row (CatalogList already gates on `protected`).
+          ...(isProtectedCatalog(src.label) ? { protected: true } : {}),
         };
         out.push(entry);
       }

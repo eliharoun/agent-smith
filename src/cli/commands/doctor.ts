@@ -703,6 +703,20 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       registryPath: opts.registryPath ?? canonicalRegistryPath(),
       skillRegistryPath: opts.skillRegistryPath ?? canonicalSkillRegistryPath(),
     },
+    protectedBundles: {
+      // v1.15.0 transparency section. Reuses already-loaded bundle +
+      // installed-skills data; always informational.
+      agentNames: new Set(bundleResult.bundles.map((b) => b.config.name)),
+      installedSkillPaths: new Map(
+        (await loadInstalledSkills()).installed.map((s) => [
+          s.name,
+          s.installedPaths.claudeCode ??
+            s.installedPaths.opencode ??
+            s.installedPaths.codex ??
+            s.installedPaths.kiro,
+        ]),
+      ),
+    },
     knowledgeRefresh: knowledgeRefreshInput,
     knowledgeCompile: knowledgeCompileInput,
     mcpDeps: {
