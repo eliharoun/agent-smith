@@ -36,7 +36,7 @@ registered catalogs             ├─ smith agent destroy <name>  → remove ON
 
 ## `smith update`
 
-Updates the agent-smith source clone in place. Equivalent to running `bash ~/.agent-smith/bin/install` in update mode, but invokable from anywhere on PATH.
+Updates the agent-smith source clone in place. Specific to the from-source install (`bash bin/install`); equivalent to re-running `bash ~/.agent-smith/bin/install` in update mode, but invokable from anywhere on PATH. If you installed via `npm install -g agent-smith`, use `npm update -g agent-smith` instead — `smith update` exits `1` with a hint when no source workspace is found.
 
 What it does:
 

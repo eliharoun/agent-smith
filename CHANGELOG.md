@@ -4,6 +4,40 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] — 2026-06-06
+
+Publish-readiness pass: smith is now installable via `npm install -g
+agent-smith` (after installing bun from https://bun.sh).
+
+### Fixed
+
+- `data/` and `guide/` directories now ship in the npm tarball. Without
+  them, every `smith` command crashed at module-load (the data files
+  are statically imported by translators) and `smith agent install
+  agent-smith` failed because the bundled persona's knowledge source
+  pointed at a missing path.
+- The `npm install` postinstall step now does a node-compatible bun
+  preflight instead of hard-failing for users without bun. When bun
+  isn't on PATH, smith prints a one-line hint pointing at https://bun.sh
+  and exits 0 so the install succeeds. Set `AGENT_SMITH_SKIP_POSTINSTALL=1`
+  to skip the bootstrap entirely.
+- The postinstall now detects transitive-dependency installs and skips
+  silently. Previously, any package that depended on `agent-smith`
+  would trigger smith's full bootstrap (skill copies, daemon restart)
+  during its consumer's `npm install` — now reserved for the user's
+  own explicit global install.
+
+### Added
+
+- `bin` field in package.json mapping `smith` to `./bin/smith.js`. After
+  `npm install -g agent-smith`, the `smith` command is available on PATH.
+- `license: "MIT"` metadata in package.json (the LICENSE file already
+  existed; this just declares the metadata).
+
+### Removed
+
+- `*.test.ts` files no longer ship in the npm tarball.
+
 ## [1.14.0] — 2026-06-06
 
 ### GUI

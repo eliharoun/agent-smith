@@ -103,10 +103,12 @@ describe("McpWiringModal", () => {
     render(
       <McpWiringModal agent="foo" enable={false} onCancel={() => {}} onConfirm={() => {}} />,
     );
+    // Wait on the button label itself — it transitions from the disabled
+    // "Unwire 0 platforms" loading-state to "Unwire 1 platform" after the
+    // fetch resolves. Waiting on the heading alone races the fetch.
     await waitFor(() =>
-      expect(screen.getByText(/unwire knowledge mcp server for foo/i)).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /^unwire 1 platform/i })).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: /^unwire 1 platform/i })).toBeInTheDocument();
   });
 
   it("calls onConfirm with the targeted platform names", async () => {

@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#what-you-can-build">Examples</a> ·
   <a href="#agents-vs-skills">Agents vs skills</a> ·
@@ -40,21 +41,49 @@ A fifth target, `agents-md`, emits a single `AGENTS.md` — the cross-tool stand
 
 ---
 
-## Quick start
+## Install
+
+### Quickstart (recommended)
+
+**Requires [Bun](https://bun.sh) >= 1.1.0.** `agent-smith` runs on the Bun runtime; it does not work under Node.
 
 ```bash
-gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install
+# Install bun if you don't have it (https://bun.sh)
+curl -fsSL https://bun.sh/install | bash
+
+# Install agent-smith from npm
+npm install -g agent-smith
+
+# Initialize state and verify
+smith init
+smith status
 ```
 
-Requires bash (the installer itself is a bash script and offers to install [Bun](https://bun.sh) if it's missing). [`gh`](https://cli.github.com/) is a convenience for the clone above — you can substitute `git clone https://github.com/eliharoun/agent-smith ~/.agent-smith` if you prefer.
+The `npm install` postinstall runs a brief bootstrap that copies the bundled `the-architect` and `the-keymaker` skills into the per-platform skill directories (set `AGENT_SMITH_SKIP_POSTINSTALL=1` to skip). When `bun` is not on your PATH, the postinstall prints a one-line hint and exits cleanly — the package installs but doesn't bootstrap until bun is available.
 
-After install, open a new shell and verify:
+After install, verify:
 
 ```bash
 smith doctor
 ```
 
-Then launch the companion agent and tell it what you want to build:
+### From source (for the GUI or contributing)
+
+The npm install ships the CLI only. To run `smith gui` (the local browser control panel) or to develop against `agent-smith`, clone and bootstrap from source:
+
+```bash
+gh repo clone eliharoun/agent-smith
+cd agent-smith
+bash bin/install
+```
+
+`bin/install` clones to `~/.agent-smith/`, runs `bun install`, builds the GUI SPA bundle, symlinks `~/.local/bin/smith`, and adds `~/.local/bin` to your PATH via a marker block in your shell rc. The same `smith` command works afterwards — but with the GUI server source available. [`gh`](https://cli.github.com/) is a convenience for the clone — substitute `git clone https://github.com/eliharoun/agent-smith` if you prefer.
+
+---
+
+## Quick start
+
+After installing, launch the companion agent and tell it what you want to build:
 
 ```bash
 opencode --agent agent-smith     # or: claude --agent agent-smith

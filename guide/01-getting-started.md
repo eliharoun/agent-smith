@@ -14,7 +14,7 @@ The CLI binary is named `smith`. Throughout this guide every command starts with
 
 You need:
 
-- **[Bun](https://bun.sh) >= 1.1.** Smith runs on the Bun runtime; it does not work under Node. Verify with `bun --version`. Source: `package.json:24-26`.
+- **[Bun](https://bun.sh) >= 1.1.0.** Smith runs on the Bun runtime; it does not work under Node. Verify with `bun --version`. Source: `package.json:24-26`. The npm postinstall and the from-source `bin/install` both expect bun on PATH; the npm postinstall prints a hint and exits cleanly when bun is missing so the package install itself succeeds.
 - **At least one of the four runtime platform CLIs (the fifth target, `agents-md`, requires no CLI).** Smith targets OpenCode (`~/.config/opencode/`), Claude Code (`~/.claude/`), Codex (`~/.codex/` and `~/.agents/`), and Kiro (`~/.kiro/`). You do not need all four — bundles can declare any subset of `opencode`, `claude-code`, `codex`, `kiro` in their `targets` field. Platforms whose install directories don't exist are skipped silently.
 - **Write access to your home directory.** Smith owns `~/.config/agent-smith/` for its registry, source bundles, and USER.md. Daemon runtime files live under `~/.local/state/agent-smith/`. It writes per-platform agent files into the directories above and skill files into `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`, and `~/.kiro/skills/`.
 
@@ -22,15 +22,44 @@ If you intend to use Atlassian-backed knowledge sources (Confluence, Jira) or th
 
 ## Installing the `smith` CLI
 
-Smith installs into a single canonical location: source under `~/.agent-smith/`, binary symlinked at `~/.local/bin/smith`. The installer is bundled with the source.
+There are two supported install paths:
 
-### Prerequisites
+- **From npm (recommended).** `npm install -g agent-smith` ships the CLI plus the bundled skills. Fastest way to start using `smith`.
+- **From source.** A `git clone` + `bash bin/install` flow. Pick this if you want `smith gui` (the local browser control panel) or you intend to develop against `agent-smith`.
 
-- [`gh`](https://cli.github.com/) CLI, authenticated. Verify with `gh auth status`.
+Both paths land at the same `smith` command on your PATH.
+
+### Quickstart (recommended): from npm
+
+**Requires [Bun](https://bun.sh) >= 1.1.0.** `agent-smith` runs on the Bun runtime; it does not work under Node. Verify with `bun --version`.
+
+```bash
+# Install bun if you don't have it
+curl -fsSL https://bun.sh/install | bash
+
+# Install agent-smith from npm
+npm install -g agent-smith
+
+# Initialize state and verify
+smith init
+smith status
+```
+
+The npm package's postinstall hook copies the bundled skills (`the-architect`, `the-keymaker`) into the per-platform skill directories. When `bun` is not on your PATH at install time, the hook prints a one-line hint and exits cleanly — the package installs but doesn't bootstrap until bun is available, after which you can run `smith skill bootstrap` manually. Set `AGENT_SMITH_SKIP_POSTINSTALL=1` to skip the hook entirely.
+
+The npm install does **not** include the GUI server source. Running `smith gui` after an npm install prints a hint pointing you at the from-source path below.
+
+### From source (for the GUI or contributing)
+
+Use this path if you want `smith gui`, want to hack on the `agent-smith` source, or need full control over the install layout.
+
+**Prerequisites**
+
+- [`gh`](https://cli.github.com/) CLI, authenticated. Verify with `gh auth status`. (Or substitute `git clone`.)
 - Bash 3.2+ (macOS system bash is fine).
-- The installer will offer to install [Bun](https://bun.sh) (>= 1.1) if missing.
+- The installer will offer to install [Bun](https://bun.sh) (>= 1.1.0) if missing.
 
-### Install
+**Install**
 
 ```bash
 gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install
@@ -58,16 +87,25 @@ smith doctor
 
 This runs the health check, auto-filtered to the platform CLIs on your `PATH` (`opencode`, `claude`, `codex`, `kiro`/`kiro-cli`): schema-drift checks for whichever of those you have installed, plus cross-cutting sections (atlassian auth, agent-required-skills audit, etc.). A clean run exits `0`. If you haven't yet installed any of the four platform CLIs, doctor refuses to run and exits `2` with install one-liners — install at least one platform CLI and re-run. See [Doctor](./10-doctor.md) for full details.
 
-> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
+> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. The GUI server source ships only with the from-source install — running `smith gui` after an `npm install -g agent-smith` prints a hint pointing you at the from-source path. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
 
 ### What got installed where
+
+From an `npm install -g agent-smith`:
+
+- `<npm prefix>/lib/node_modules/agent-smith/` — package source (managed by npm).
+- `<npm prefix>/bin/smith` — entry point on your PATH.
+- `~/.config/agent-smith/` — runtime config (registry, knowledge state, etc.). Created on first `smith init`.
+- Bundled skills (`the-architect`, `the-keymaker`) materialized into the per-platform skill dirs by the postinstall hook (when `bun` is on PATH).
+
+From the source path (`bash bin/install`):
 
 - `~/.agent-smith/` — source clone (your dev workspace if you contribute).
 - `~/.local/bin/smith` — symlink to `~/.agent-smith/src/index.ts`.
 - `~/.config/agent-smith/` — runtime config (registry, knowledge state, etc).
 - `~/.local/bin` on PATH — added via the marker block in your shell rc.
 
-### Re-running the installer
+### Re-running the installer (from-source path)
 
 `bash ~/.agent-smith/bin/install` is idempotent. Re-running it on an existing install switches to update mode: `git pull` + `bun install`. The PATH wiring is checked and skipped if already present.
 

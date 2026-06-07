@@ -169,6 +169,19 @@ export function createGuiCommand(): Command {
       // so users who ran a raw `git pull` don't trip the fail-fast guard.
       await maybeRebuildGuiBundle({ repoRoot: resolveRepoRoot() });
 
+      // Pre-flight: bail out cleanly if `gui/server/src/` is absent (npm-tarball
+      // installs don't ship the GUI source today; a raw `git clone` does).
+      // Without this guard, the dynamic import below throws MODULE_NOT_FOUND
+      // and the user sees a stack trace.
+      const { existsSync } = await import("node:fs");
+      const guiServerEntry = join(resolveRepoRoot(), "gui", "server", "src", "index.ts");
+      if (!existsSync(guiServerEntry)) {
+        console.error(
+          "agent-smith: smith gui requires a source install. Clone https://github.com/eliharoun/agent-smith and run bash bin/install.",
+        );
+        process.exit(1);
+      }
+
       // dynamic import keeps the GUI server out of CLI startup cost
       const { startGuiServer } = await import("../../../gui/server/src/index");
       const started = await startGuiServer({
