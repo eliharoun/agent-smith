@@ -76,11 +76,14 @@ describe("install: lazy URL sources end-to-end", () => {
   });
 
   // Inject a deterministic model-resolution env so the install never tries
-  // to spawn `opencode` or probe live providers.
+  // to spawn `opencode` or probe live providers. `allowMissingCli: true`
+  // ensures the resolver emits a static tier literal instead of throwing
+  // PlatformUnavailableError when the platform CLI is absent (CI / clean env).
   const modelResolutionEnv: ModelResolutionEnv = {
     getOpenCodeModels: async () => undefined,
     warnings: { push() {} },
     detectAuthenticatedProviders: async () => ["github-copilot"],
+    allowMissingCli: true,
   };
 
   it(
@@ -165,6 +168,9 @@ describe("install: lazy URL sources end-to-end", () => {
         saveRouteCache: async () => {},
         skillMode: "no-skills",
         noRefreshHooks: true,
+        allowMissingCli: true,
+        detectInstalledPlatforms: async () =>
+          new Set(["opencode", "claude-code", "codex", "kiro"] as const),
         agentSmithHome,
         print: () => {},
         printErr: () => {},

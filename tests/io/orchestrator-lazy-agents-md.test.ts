@@ -62,10 +62,16 @@ describe("orchestrator: agents-md lazy section", () => {
     }
   });
 
+  // `allowMissingCli: true` ensures the resolver emits a static tier literal
+  // instead of throwing PlatformUnavailableError when the platform CLI is
+  // absent (CI / clean env). Required because the orchestrator merges
+  // allowMissingCli into the fallback modelEnv only when no injected env is
+  // provided — so tests that inject modelResolutionEnv must set it explicitly.
   const modelResolutionEnv: ModelResolutionEnv = {
     getOpenCodeModels: async () => undefined,
     warnings: { push() {} },
     detectAuthenticatedProviders: async () => ["github-copilot"],
+    allowMissingCli: true,
   };
 
   it(
@@ -112,6 +118,7 @@ describe("orchestrator: agents-md lazy section", () => {
         cacheRoot,
         homeDir: agentSmithHome,
         fetchFn,
+        allowMissingCli: true,
       });
 
       expect(result.errors).toEqual([]);
