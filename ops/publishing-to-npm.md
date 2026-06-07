@@ -2,6 +2,20 @@
 
 This runbook walks the full publish flow for a new version of the `@eliharoun/agent-smith` npm package to npmjs.com.
 
+> **Automated publish (preferred).** `.github/workflows/publish.yml` publishes
+> automatically when a version tag is pushed. The normal release is now:
+> bump the version (package.json + src/index.ts + CHANGELOG) → merge to main →
+> `git tag vX.Y.Z && git push origin vX.Y.Z`. CI then runs the full test
+> gauntlet, verifies the tag matches package.json, skips if the version is
+> already on npm, and publishes via **npm Trusted Publishing (OIDC)** — no
+> token, with build provenance. The manual steps below remain as a fallback
+> and for understanding what CI does.
+>
+> **One-time setup on npmjs.com:** Package → Settings → "Trusted Publisher" →
+> add this GitHub repo (`eliharoun/agent-smith`) and workflow (`publish.yml`).
+> Until that link exists, the CI publish step will fail auth — fall back to a
+> manual `npm publish`.
+
 > **Naming note.** The project is `agent-smith` (GitHub repo, brand, CLI command); the npm package is `@eliharoun/agent-smith` because npm rejected the unscoped `agent-smith` name as too similar to an existing `agentsmith` package. The CLI binary stays `smith` regardless. References below use whichever name applies in context.
 
 ## Prerequisites (one-time)
