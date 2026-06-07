@@ -91,6 +91,32 @@ export interface DiscoverFromUrlResult {
 
 const DEFAULT_REF = "HEAD";
 
+/**
+ * Normalize a GitHub (or GitHub-like) "web" URL into a cloneable repo URL.
+ *
+ * Users routinely copy the browser address bar, which for a branch/subdir is
+ * `https://github.com/owner/repo/tree/<branch>/<subpath>/`. That is NOT a
+ * cloneable git remote — passing it to `git clone` fails. We strip the
+ * `/tree/<branch>/<subpath>` suffix to recover `https://github.com/owner/repo`
+ * and surface the branch so callers can use it as the ref when the user
+ * didn't pass an explicit `--git-ref`.
+ *
+ * Also handles the `/blob/<branch>/<file>` (file-view) shape and a bare
+ * trailing slash. Non-matching URLs (already-clean repo URLs, SSH, file://)
+ * are returned unchanged with no extracted ref.
+ */
+export function normalizeGitWebUrl(url: string): { url: string; ref?: string } {
+  const trimmed = url.trim().replace(/\/+$/, "");
+  // https://host/owner/repo/(tree|blob)/<ref>/<optional subpath...>
+  const m = trimmed.match(
+    /^(https?:\/\/[^/]+\/[^/]+\/[^/]+)\/(?:tree|blob)\/([^/]+)(?:\/.*)?$/i,
+  );
+  if (!m) return { url };
+  const base = m[1] as string;
+  const ref = m[2] as string;
+  return { url: base, ref };
+}
+
 // C4.0.2: option-injection guard for refs passed into `git clone --branch`
 // / `git fetch <ref>`. A ref starting with '-' would be parsed as a git
 // flag (e.g. --upload-pack=evil); shell metacharacters would only matter
@@ -103,26 +129,43 @@ const FORBIDDEN_REF_CHARS = /[;|`$\n\r\u0000-\u001f\u007f]/;
 
 export function validateRef(ref: string): void {
   if (ref.startsWith("-")) {
-    throw new Error(`ref starts with '-' (option injection): ${ref}`);
+    throw new SmithError({
+      code: "usage-error",
+      message: `Invalid git ref "${ref}": must not start with '-'.`,
+      suggestedCommand: "Pass a branch, tag, or commit SHA, e.g. --git-ref main",
+    });
   }
   if (FORBIDDEN_REF_CHARS.test(ref)) {
-    throw new Error(`ref contains forbidden character: ${JSON.stringify(ref)}`);
+    throw new SmithError({
+      code: "usage-error",
+      message: `Invalid git ref ${JSON.stringify(ref)}: contains a forbidden character.`,
+      suggestedCommand: "Pass a branch, tag, or commit SHA, e.g. --git-ref v1.2.3",
+    });
   }
 }
 
 interface CloneOnlyResult { targetDir: string; sha: string; }
 
-async function cloneOnly(url: string, ref: string, remoteRoot?: string): Promise<CloneOnlyResult> {
+async function cloneOnly(
+  url: string,
+  ref: string,
+  remoteRoot?: string,
+  kind: "agent" | "skill" = "agent",
+): Promise<CloneOnlyResult> {
   validateRef(ref);
   const root = remoteRoot ?? defaultRemoteRoot();
   const targetDir = deriveRemotePath(url, root);
-  await checkCollision(targetDir, url);
+  await checkCollision(targetDir, url, kind);
   const cloneResult = await cloneOrFetch({ url, ref, targetDir });
   return { targetDir, sha: cloneResult.sha };
 }
 
 export async function installFromUrl(opts: InstallFromUrlOptions): Promise<InstallFromUrlResult> {
-  const ref = opts.ref ?? DEFAULT_REF;
+  // Normalize GitHub web URLs (…/tree/<branch>/<subpath>) → cloneable repo URL.
+  // An extracted branch becomes the ref only when the caller didn't pass one.
+  const web = normalizeGitWebUrl(opts.url);
+  opts = { ...opts, url: web.url };
+  const ref = opts.ref ?? web.ref ?? DEFAULT_REF;
   const remoteRoot = opts.remoteRoot ?? defaultRemoteRoot();
   const targetDir = deriveRemotePath(opts.url, remoteRoot);
 
@@ -139,7 +182,7 @@ export async function installFromUrl(opts: InstallFromUrlOptions): Promise<Insta
   await checkDuplicateUrl(opts.url, opts.kind, targetDir, opts.registryPath);
 
   // targetDir already computed above for checkDuplicateUrl; cloneOnly reuses the same path.
-  const { sha } = await cloneOnly(opts.url, ref, opts.remoteRoot);
+  const { sha } = await cloneOnly(opts.url, ref, opts.remoteRoot, opts.kind);
 
   const bundles = await scanBundleNames(targetDir, opts.kind);
 
@@ -236,7 +279,11 @@ async function checkDuplicateUrl(
   }
 }
 
-async function checkCollision(targetDir: string, url: string): Promise<void> {
+async function checkCollision(
+  targetDir: string,
+  url: string,
+  kind: "agent" | "skill" = "agent",
+): Promise<void> {
   const gitConfigPath = join(targetDir, ".git", "config");
   let cfg: string;
   try {
@@ -255,10 +302,13 @@ async function checkCollision(targetDir: string, url: string): Promise<void> {
   // SSH `:` vs `/` separator) so the collision check matches what
   // duplicate-URL detection elsewhere in the install pipeline uses.
   if (!sameGitRemote(existingUrl, url)) {
-    throw new Error(
-      `${targetDir} exists with different origin (${existingUrl}). ` +
-        `Use 'smith agent catalog unregister ${targetDir} --purge-clone' first.`,
-    );
+    const verb = kind === "skill" ? "skill" : "agent";
+    throw new SmithError({
+      code: "already-exists",
+      what: "clone directory",
+      identifier: `${targetDir} already exists but points at a different origin (${existingUrl}).`,
+      suggestedCommand: `smith ${verb} catalog unregister ${targetDir} --purge-clone`,
+    });
   }
 }
 
@@ -340,8 +390,11 @@ export function deriveLabel(url: string): string {
 }
 
 export async function discoverFromUrl(opts: DiscoverFromUrlOptions): Promise<DiscoverFromUrlResult> {
-  const ref = opts.ref ?? DEFAULT_REF;
-  const { targetDir, sha } = await cloneOnly(opts.url, ref, opts.remoteRoot);
+  // Normalize GitHub web URLs (…/tree/<branch>/<subpath>) → cloneable repo URL.
+  const web = normalizeGitWebUrl(opts.url);
+  opts = { ...opts, url: web.url };
+  const ref = opts.ref ?? web.ref ?? DEFAULT_REF;
+  const { targetDir, sha } = await cloneOnly(opts.url, ref, opts.remoteRoot, opts.kind);
   const suggestedLabel = deriveLabel(opts.url);
   let bundles: DiscoveredBundle[];
   if (opts.kind === "skill") {

@@ -294,9 +294,10 @@ export function InstallExistingForm({ kind, open, onClose, onDispatch, initialUr
             <DropZone onUploaded={(path) => setUrl(path)} />
             <FormField
               label={kind === "agent" ? "where is the agent?" : "where is the skill?"}
+              fieldId="install.source"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://… or git@host:… or path to .smith-bundle.tgz"
+              placeholder="https://github.com/owner/repo  ·  git@github.com:owner/repo  ·  ~/my-agents  ·  bundle.tgz"
             />
             {kind_ !== "unknown" && (
               <span className="text-[10px] font-mono text-matrix-green-muted -mt-2">
@@ -306,9 +307,10 @@ export function InstallExistingForm({ kind, open, onClose, onDispatch, initialUr
             {kind_ === "git-url" && (
               <FormField
                 label="git ref (branch / tag / sha)"
+                fieldId="install.gitRef"
                 value={ref}
                 onChange={(e) => setRef(e.target.value)}
-                placeholder="default: HEAD"
+                placeholder="main  ·  v1.2.3  ·  a1b2c3d  (blank = default branch)"
               />
             )}
             {error && (

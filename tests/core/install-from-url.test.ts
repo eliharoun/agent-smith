@@ -253,7 +253,9 @@ describe("installFromUrl ref validation (C4.0.2)", () => {
           url: "https://example.test/owner/repo.git",
           ref,
         }),
-      ).rejects.toThrow(/ref (starts with '-'|contains forbidden character)/);
+        // Friendly SmithError (usage-error) — headline IS the message. Both
+        // the leading-dash and forbidden-char guards still reject.
+      ).rejects.toThrow(/Invalid git ref .*(must not start with '-'|forbidden character)/);
     });
   }
 });

@@ -4,6 +4,33 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] — 2026-06-07
+
+Fixes a class of confusing failures when installing agents or skills from a
+URL, and clarifies the install/register forms.
+
+### Fixed
+
+- `smith {agent,skill} install --from <url>` (and the GUI "Install from URL"
+  discover flow) no longer crash with the generic "This is a bug in
+  agent-smith" message on foreseeable bad input. Bad/unreachable URLs, missing
+  branches, malformed URLs, and clone-directory collisions now produce a
+  friendly, actionable error (network / not-found / usage) across every agent
+  and skill install/discover/sync path.
+- GitHub "web" URLs like `https://github.com/owner/repo/tree/<branch>/<subpath>`
+  (what you get by copying the browser address bar) now work: smith strips the
+  `/tree|blob/<branch>/<subpath>` suffix to the cloneable repo URL and uses the
+  branch as the ref when one isn't supplied.
+
+### Changed
+
+- GUI: install/register/create inputs now show concrete example placeholders
+  (e.g. `https://github.com/owner/repo`, `~/my-agents`, `bundle.tgz`) and an
+  info `(?)` tooltip explaining what each field accepts.
+- GUI: the "register catalog" form now detects a pasted URL/archive in its
+  local-path field and points you at "Install from URL" instead of the
+  confusing "not a git repo" message.
+
 ## [1.15.0] — 2026-06-07
 
 Protects `agent-smith` (the agent), `agent-smith-self` (the synthetic

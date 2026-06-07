@@ -13,6 +13,8 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { gitOperationError } from "../core/git-error-mapper";
+import { SmithError } from "../core/smith-error";
 import { withFileLock } from "./git-lock";
 
 export interface GitSpawnResult {
@@ -94,7 +96,7 @@ async function cloneOrFetchInner(opts: CloneOrFetchOptions): Promise<CloneOrFetc
       opts.targetDir,
     );
     if (fetchRes.code !== 0) {
-      throw new Error(`git fetch origin ${opts.ref} failed: ${fetchRes.stderr}`);
+      throw new SmithError(gitOperationError("fetch updates", opts.url, fetchRes.stderr));
     }
     // DW-7: choose the reset target based on the ref kind.
     //
@@ -122,12 +124,12 @@ async function cloneOrFetchInner(opts: CloneOrFetchOptions): Promise<CloneOrFetc
       // SHA / tag refs aren't qualified with origin/<ref>; retry as plain ref.
       const retry = await spawner("git", ["reset", "--hard", opts.ref], opts.targetDir);
       if (retry.code !== 0) {
-        throw new Error(`git reset --hard ${opts.ref} failed: ${retry.stderr}`);
+        throw new SmithError(gitOperationError(`reset to ${opts.ref}`, opts.url, retry.stderr));
       }
     }
     const head = await spawner("git", ["rev-parse", "HEAD"], opts.targetDir);
     if (head.code !== 0) {
-      throw new Error(`git rev-parse HEAD failed: ${head.stderr}`);
+      throw new SmithError(gitOperationError("resolve commit", opts.url, head.stderr));
     }
     return { sha: head.stdout.trim(), fetched: true };
   }
@@ -148,16 +150,18 @@ async function cloneOrFetchInner(opts: CloneOrFetchOptions): Promise<CloneOrFetc
       dirname(opts.targetDir),
     );
     if (fallback.code !== 0) {
-      throw new Error(`git clone ${opts.url} failed: ${cloneRes.stderr || fallback.stderr}`);
+      throw new SmithError(
+        gitOperationError("clone repository", opts.url, cloneRes.stderr || fallback.stderr),
+      );
     }
     const co = await spawner("git", ["checkout", opts.ref], opts.targetDir);
     if (co.code !== 0) {
-      throw new Error(`git checkout ${opts.ref} failed: ${co.stderr}`);
+      throw new SmithError(gitOperationError(`checkout ${opts.ref}`, opts.url, co.stderr));
     }
   }
   const head = await spawner("git", ["rev-parse", "HEAD"], opts.targetDir);
   if (head.code !== 0) {
-    throw new Error(`git rev-parse HEAD failed: ${head.stderr}`);
+    throw new SmithError(gitOperationError("resolve commit", opts.url, head.stderr));
   }
   return { sha: head.stdout.trim(), fetched: false };
 }
@@ -187,12 +191,14 @@ export async function lsRemoteHead(opts: {
     process.cwd(),
   );
   if (res.code !== 0) {
-    throw new Error(`git ls-remote ${opts.url} ${opts.ref} failed: ${res.stderr}`);
+    throw new SmithError(gitOperationError("query remote", opts.url, res.stderr));
   }
   const firstLine = res.stdout.split("\n")[0] ?? "";
   const sha = firstLine.split(/\s+/)[0] ?? "";
   if (!/^[0-9a-f]{40}$/i.test(sha)) {
-    throw new Error(`git ls-remote returned malformed sha for ${opts.url}: ${sha || "(empty)"}`);
+    throw new SmithError(
+      gitOperationError("query remote", opts.url, `malformed sha: ${sha || "(empty)"}`),
+    );
   }
   return sha;
 }

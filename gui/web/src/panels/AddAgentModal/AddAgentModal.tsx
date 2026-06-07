@@ -2,6 +2,7 @@ import type { JobRequest } from "gui-shared";
 import { useEffect, useRef, useState } from "react";
 import { classifySource, type SourceKind } from "./classifySource";
 import { useDebounced } from "@/lib/use-debounced";
+import { FieldHelp } from "@/ui/FieldHelp";
 import { AgentCreateWizard } from "@/panels/AgentCreateWizard";
 import { InstallExistingForm } from "@/panels/InstallExistingForm";
 import { CatalogRegisterForm } from "@/panels/CatalogRegisterForm";
@@ -125,15 +126,18 @@ export function AddAgentModal({ open, onClose, onDispatch, onAgentCreated, initi
         {view === "menu" && (
           <div className="flex flex-col gap-4">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-1">
-                paste a URL, file path, or archive…
-              </label>
+              <div className="mb-1">
+                <FieldHelp fieldId="install.smartInput" htmlFor="add-agent-smart-input">
+                  paste a URL, file path, or archive…
+                </FieldHelp>
+              </div>
               <input
+                id="add-agent-smart-input"
                 type="text"
                 autoFocus
                 value={smartInput}
                 onChange={(e) => setSmartInput(e.target.value)}
-                placeholder="git@github.com:acme/team-agents.git"
+                placeholder="https://github.com/acme/team-agents  ·  ~/my-agents  ·  bundle.tgz"
                 className="w-full bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green"
               />
               {liveKind !== "unknown" && (

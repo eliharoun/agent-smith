@@ -24,7 +24,7 @@ beforeEach(() => {
 describe("InstallExistingForm (multi)", () => {
   test("resets to the URL step when closed and reopened", async () => {
     const { rerender } = render(<InstallExistingForm kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
-    fireEvent.change(screen.getByLabelText(/where is the skill/i), { target: { value: "https://github.com/o/r" } });
+    fireEvent.change(screen.getByLabelText(/where is the skill/i, { selector: "input" }), { target: { value: "https://github.com/o/r" } });
     fireEvent.click(screen.getByRole("button", { name: /discover/i }));
     await waitFor(() => screen.getByText("alpha"));
     // Close then reopen
@@ -37,7 +37,7 @@ describe("InstallExistingForm (multi)", () => {
 
   test("discovers, lets the user pick a subset, and dispatches one install job", async () => {
     render(<InstallExistingForm kind="skill" open onClose={() => {}} onDispatch={onDispatch} />);
-    fireEvent.change(screen.getByLabelText(/where is the skill/i), { target: { value: "https://github.com/o/r" } });
+    fireEvent.change(screen.getByLabelText(/where is the skill/i, { selector: "input" }), { target: { value: "https://github.com/o/r" } });
     fireEvent.click(screen.getByRole("button", { name: /discover/i }));
     await waitFor(() => screen.getByText("alpha"));
     fireEvent.click(screen.getByLabelText("alpha"));
