@@ -188,6 +188,97 @@ describe("AddKnowledgeSourceModal — routing dropdown", () => {
     expect(brokenOption?.textContent).toMatch(/unavailable/);
   });
 
+  it("re-probes the MCP servers when the refresh control is clicked", async () => {
+    globalThis.fetch = mockFetch(calls, {
+      picker: {
+        servers: [{ name: "alpha-mcp", source: "bundle" }],
+        toolsByServer: {
+          "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }],
+        },
+      },
+    }) as unknown as typeof fetch;
+    wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
+    await chooseUrlType();
+    fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/p" },
+    });
+    // Wait for the initial probe to resolve (dropdown enabled).
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => expect(select).not.toBeDisabled());
+
+    const pickerCalls = () => calls.filter((c) => c.url.endsWith("/mcp-servers-and-tools")).length;
+    const before = pickerCalls();
+    expect(before).toBeGreaterThanOrEqual(1);
+
+    // The refresh control re-runs the probe (bypassing React Query staleTime).
+    const refresh = screen.getByRole("button", { name: /refresh MCP servers/i });
+    fireEvent.click(refresh);
+
+    await waitFor(() => expect(pickerCalls()).toBe(before + 1));
+  });
+
+  it("shows a refresh control after a failed probe and recovers on click", async () => {
+    // First probe fails (500); the refresh re-probe succeeds. This is the
+    // transient-spawn-failure recovery path the refresh control exists for.
+    let probeAttempts = 0;
+    const ok: McpServerAndToolsView = {
+      servers: [{ name: "alpha-mcp", source: "bundle" }],
+      toolsByServer: { "alpha-mcp": [{ name: "fetch", urlParam: { kind: "string", key: "url" } }] },
+    };
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push({ url, init });
+      if (url.endsWith("/mcp-servers-and-tools")) {
+        probeAttempts += 1;
+        return probeAttempts === 1
+          ? new Response("boom", { status: 500 })
+          : new Response(JSON.stringify(ok), { status: 200 });
+      }
+      if (url.match(/\/api\/agents\/[^/]+$/) && (!init?.method || init.method === "GET")) {
+        return new Response(
+          JSON.stringify({
+            name: "a1",
+            description: "test",
+            catalog: "x",
+            path: "/p",
+            targets: [],
+            identity: "",
+            expertise: "",
+            soul: "",
+            user: "",
+            config: {},
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+    wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
+    await chooseUrlType();
+    fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+      target: { value: "https://example.com/p" },
+    });
+
+    // Wait for the first probe to FAIL and settle (so the click triggers a
+    // fresh refetch rather than a no-op against an in-flight query). The error
+    // line proves the early-return didn't swallow the failure.
+    await screen.findByText(/failed to load MCP servers/i);
+    expect(probeAttempts).toBe(1);
+
+    // After the failed probe, the refresh control must be reachable.
+    const refresh = screen.getByRole("button", { name: /refresh MCP servers/i });
+    fireEvent.click(refresh);
+
+    // The successful re-probe populates the dropdown with the recovered server.
+    const select = await screen.findByRole("combobox", { name: /route through MCP server/i });
+    await waitFor(() => {
+      const texts = Array.from(select.querySelectorAll("option")).map((o) => o.textContent ?? "");
+      expect(texts.some((t) => t.includes("alpha-mcp"))).toBe(true);
+    });
+  });
+
   it("PUTs the via:-tagged source via /config when a route is picked", async () => {
     globalThis.fetch = mockFetch(calls, {
       picker: {

@@ -113,8 +113,7 @@ export function RoutingPicker({
       // or revert to direct HTTP. The badge already warns them.
       routingError = undefined;
     } else if (tools.length === 0) {
-      routingError =
-        "no URL-shaped tools on this server (pick a different one or use Direct HTTP)";
+      routingError = "no URL-shaped tools on this server (pick a different one or use Direct HTTP)";
     } else if (tools.length > 1 && !tool) routingError = "pick a tool to route through";
   }
 
@@ -133,7 +132,15 @@ export function RoutingPicker({
   };
 
   // No candidates at all (and no preselected ghost): direct-HTTP-only hint.
-  if (!picker.isLoading && !ghostServer && (picker.data?.servers.length ?? 0) === 0) {
+  // Skip this on error — a failed probe leaves `data` undefined, and we must
+  // fall through to the main view so the user gets the refresh control and the
+  // "failed to load" line instead of a misleading "no servers declared" note.
+  if (
+    !picker.isLoading &&
+    !picker.isError &&
+    !ghostServer &&
+    (picker.data?.servers.length ?? 0) === 0
+  ) {
     return (
       <div
         className="font-mono text-[10px] text-matrix-green-muted border border-matrix-line px-2 py-1"
@@ -147,8 +154,26 @@ export function RoutingPicker({
 
   return (
     <div className="flex flex-col gap-2 border border-matrix-line p-2">
-      <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted">
-        // route through MCP server
+      <div className="flex items-center justify-between">
+        <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted">
+          // route through MCP server
+        </div>
+        {/* Re-probe the servers. Spawning each MCP server can fail transiently
+            (spawn race, timeout), so a server may be missing or flagged
+            unavailable; refetch re-runs the probe, bypassing the hook's
+            staleTime. */}
+        <button
+          type="button"
+          aria-label="refresh MCP servers"
+          title="refresh MCP servers"
+          onClick={() => picker.refetch()}
+          disabled={picker.isFetching}
+          className="font-mono text-sm text-matrix-green-muted hover:text-matrix-green focus:outline-none focus:text-matrix-green disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span aria-hidden className={picker.isFetching ? "inline-block animate-spin" : ""}>
+            ↻
+          </span>
+        </button>
       </div>
       <select
         aria-label="route through MCP server"
@@ -160,8 +185,7 @@ export function RoutingPicker({
         <option value="">{picker.isLoading ? "loading…" : "(none — direct HTTP)"}</option>
         {ghostServer && (
           <option value={ghostServer}>
-            {ghostServer}{" "}
-            {declaredButMissing ? "[not configured]" : "[not in available servers]"}
+            {ghostServer} {declaredButMissing ? "[not configured]" : "[not in available servers]"}
           </option>
         )}
         {picker.data?.servers.map((s) => (
