@@ -5,12 +5,25 @@
 // boot `smith gui`, and assert it serves the SPA + an API route. Exit non-zero
 // on any failure. All resources (temp dir, .tgz, child process) are released in
 // `finally` so a failed assertion can't leak a running server or an artifact.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const REPO = process.cwd();
 const installDir = mkdtempSync(join(tmpdir(), "smith-tarball-"));
+
+/**
+ * The tarball name `npm pack` writes is deterministic from the manifest:
+ * a leading `@` is dropped and every `/` becomes `-`, then `-<version>.tgz`.
+ * We compute it rather than parse `npm pack --json`, because the `prepack`
+ * build streams its own output to stdout ahead of the JSON payload — there is
+ * no reliable, npm-version-independent way to slice the JSON back out.
+ */
+function tarballName(): string {
+  const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
+  const base = String(pkg.name).replace(/^@/, "").replace(/\//g, "-");
+  return `${base}-${pkg.version}.tgz`;
+}
 
 function run(cmd: string[], cwd: string, env: Record<string, string> = {}) {
   const p = Bun.spawnSync(cmd, { cwd, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
@@ -28,15 +41,15 @@ let failed = false;
 let killServer: (() => void) | undefined;
 let tgzPath: string | undefined;
 try {
-  // 1. Pack (runs prepack build+prune, postpack restore).
-  //    npm streams the prepack build's output to stdout ahead of the --json
-  //    payload, so slice out the trailing JSON array before parsing.
-  const packOut = run(["npm", "pack", "--json"], REPO);
-  const jsonStart = packOut.indexOf("[");
-  const jsonEnd = packOut.lastIndexOf("]");
-  if (jsonStart === -1 || jsonEnd === -1) throw new Error(`npm pack --json produced no JSON array:\n${packOut}`);
-  const tgz = JSON.parse(packOut.slice(jsonStart, jsonEnd + 1))[0].filename as string;
-  tgzPath = join(REPO, tgz);
+  // 1. Pack (runs prepack build+prune, postpack restore). The filename is
+  //    computed from the manifest (see tarballName) rather than scraped from
+  //    npm's stdout, which the prepack build pollutes. Pack into REPO so the
+  //    deterministic name lands where we expect it.
+  tgzPath = join(REPO, tarballName());
+  run(["npm", "pack"], REPO);
+  if (!existsSync(tgzPath)) {
+    throw new Error(`expected tarball not found at ${tgzPath} after npm pack — name convention may have changed`);
+  }
 
   // 2. Tarball-content assertions on the real artifact.
   const list = run(["tar", "-tf", tgzPath], REPO);
