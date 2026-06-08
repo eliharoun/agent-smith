@@ -16,7 +16,7 @@
 //     to a 5xx — when the registry is wedged.
 
 import { readFile } from "node:fs/promises";
-import { RemoteBlock, type RemoteBlock as RemoteBlockType } from "gui-shared";
+import { RemoteBlock, type RemoteBlock as RemoteBlockType } from "../../../shared/src/index";
 
 export type RemoteLookup = Map<string, RemoteBlockType>;
 

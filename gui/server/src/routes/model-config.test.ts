@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelConfig } from "gui-shared";
+import type { ModelConfig } from "../../../shared/src/index";
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import { errorHandler, errorMiddleware } from "../middleware/error";

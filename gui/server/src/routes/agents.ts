@@ -6,7 +6,7 @@ import {
   PersonaContent,
   PersonaFile,
   type Platform,
-} from "gui-shared";
+} from "../../../shared/src/index";
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { KnowledgeBlockSchema } from "../../../../src/core/knowledge/schema";

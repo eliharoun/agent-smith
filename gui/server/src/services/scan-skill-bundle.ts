@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { type Platform, type SkillDetail, SkillFrontmatter, type SkillResource } from "gui-shared";
+import { type Platform, type SkillDetail, SkillFrontmatter, type SkillResource } from "../../../shared/src/index";
 import * as yaml from "js-yaml";
 
 export interface ScanSkillBundleInput {

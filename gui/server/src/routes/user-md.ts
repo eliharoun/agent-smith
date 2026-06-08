@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { UserMdContent } from "gui-shared";
+import { UserMdContent } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 

@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { JobHistoryEntry } from "gui-shared";
+import { JobHistoryEntry } from "../../../shared/src/index";
 
 /** Max per-job `.log` files retained on disk. Older logs are pruned by mtime. */
 export const OUTPUT_FILES_KEEP = 50;

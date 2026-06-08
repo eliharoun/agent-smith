@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AgentDetail, Target } from "gui-shared";
+import { AgentDetail, Target } from "../../../shared/src/index";
 import { z } from "zod";
 
 const ConfigSchema = z

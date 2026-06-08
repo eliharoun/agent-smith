@@ -1,7 +1,7 @@
 import { lstat, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { InstalledStatus, Platform } from "gui-shared";
+import type { InstalledStatus, Platform } from "../../../shared/src/index";
 
 /**
  * Mirror of the smith CLI's per-platform install layout. Source of truth:

@@ -1,4 +1,4 @@
-import { GuiStatePatch } from "gui-shared";
+import { GuiStatePatch } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 import { loadGuiState, saveGuiState } from "../services/gui-state";

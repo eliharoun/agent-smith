@@ -5,7 +5,7 @@
 // each skill catalog can contain many skills, and they all share the
 // catalog's remote block.
 
-import type { SkillSummary } from "gui-shared";
+import type { SkillSummary } from "../../../shared/src/index";
 import { findRemoteForPath, type RemoteLookup } from "./remote-lookup";
 
 export function skillWithRemote(summary: SkillSummary, remotes: RemoteLookup): SkillSummary {

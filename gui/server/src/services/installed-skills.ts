@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { InstalledSkill } from "gui-shared";
+import type { InstalledSkill } from "../../../shared/src/index";
 
 export interface InstalledSkillsDeps {
   /** Absolute path to ~/.config/agent-smith/installed-skills.json */

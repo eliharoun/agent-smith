@@ -1,4 +1,4 @@
-import { JackOutDryRun } from "gui-shared";
+import { JackOutDryRun } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { smithBinaryPath } from "../services/smith-binary";
 

@@ -1,4 +1,4 @@
-import type { JobRequest } from "gui-shared";
+import type { JobRequest } from "../../../../shared/src/index";
 import { buildAgentCatalogRename } from "./agent-catalog-rename";
 import { buildAgentCatalogs } from "./agent-catalogs";
 import { buildAgentDestroy } from "./agent-destroy";

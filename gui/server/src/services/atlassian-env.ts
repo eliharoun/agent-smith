@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AtlassianEnvStatus, AtlassianEnvUpdate } from "gui-shared";
+import type { AtlassianEnvStatus, AtlassianEnvUpdate } from "../../../shared/src/index";
 import { bridgeAtlassianAuthToPerProductEnv } from "../../../../src/io/atlassian-bridge";
 import { parseEnvFile, upsertEnvLines } from "./dotenv-roundtrip";
 

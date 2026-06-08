@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { KnowledgeSource } from "gui-shared";
+import { KnowledgeSource } from "../../../shared/src/index";
 import { z } from "zod";
 
 const ConfigShape = z

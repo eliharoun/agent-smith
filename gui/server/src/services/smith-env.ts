@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { SmithEnv } from "gui-shared";
+import type { SmithEnv } from "../../../shared/src/index";
 import { parseEnvFile, upsertEnvLines } from "./dotenv-roundtrip";
 
 /**

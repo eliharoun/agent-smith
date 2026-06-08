@@ -61,6 +61,9 @@ jobs:
         working-directory: gui/web
         run: node node_modules/vitest/vitest.mjs run
 
+      - name: Tarball smoke test (pack + clean-room install + boot)
+        run: bun run verify:tarball
+
       # --- Safety: the tag must match package.json, and the version must be new ---
       - name: Verify tag matches package.json version
         run: |

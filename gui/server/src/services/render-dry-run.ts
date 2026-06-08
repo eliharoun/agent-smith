@@ -32,7 +32,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../shared/src/index";
 import { defaultKnowledgePaths } from "../../../../src/cli/install-paths";
 import { assembleBody } from "../../../../src/core/assembler";
 import { loadAndMergeKnowledge } from "../../../../src/core/knowledge/sidecar";

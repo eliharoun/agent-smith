@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { McpServerAndToolsView, McpUrlShapedTool } from "gui-shared";
+import type { McpServerAndToolsView, McpUrlShapedTool } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { detectUrlParam } from "../../../../src/core/knowledge/probe-route";
 import { McpClientPool } from "../../../../src/io/mcp-client-pool";

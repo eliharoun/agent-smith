@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { CatalogEntry, CatalogKindAny, CatalogList, CatalogMode } from "gui-shared";
+import type { CatalogEntry, CatalogKindAny, CatalogList, CatalogMode } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { isProtectedCatalog } from "../../../../src/core/protected-bundles";
 import { parseRegistrySources } from "../services/parse-registry";

@@ -6,7 +6,7 @@
 // rootPath→remote lookup.
 
 import { describe, expect, it } from "bun:test";
-import type { AgentSummary } from "gui-shared";
+import type { AgentSummary } from "../../../shared/src/index";
 import { agentWithRemote } from "./agent-with-remote";
 
 const baseSummary: AgentSummary = {

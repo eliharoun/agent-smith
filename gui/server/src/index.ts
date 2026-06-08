@@ -15,6 +15,13 @@ export interface StartGuiOptions {
   bind: string;
   token: string;
   smithVersion?: string;
+  /**
+   * Absolute path to the prebuilt SPA directory. When omitted, defaults to the
+   * `import.meta.url`-derived `builtWebRoot` (correct for source/dev layout).
+   * The CLI injects this in packaged installs so the path never depends on the
+   * server module's own location.
+   */
+  staticRoot?: string;
 }
 
 export interface StartedGui {
@@ -66,7 +73,7 @@ export async function startGuiServer(opts: StartGuiOptions): Promise<StartedGui>
   const app = createApp({
     token: opts.token,
     jobs,
-    staticRoot: builtWebRoot,
+    staticRoot: opts.staticRoot ?? builtWebRoot,
     allowedOrigin: () => `http://${displayHost(opts.bind)}:${resolvedPort}`,
     ...(opts.smithVersion !== undefined ? { smithVersion: opts.smithVersion } : {}),
   });

@@ -4,7 +4,7 @@
 // into an AgentSummary. The lookup map is keyed by catalog rootPath and
 // built by the wiring step (C4.1.4) from the registry's source list.
 
-import type { AgentSummary } from "gui-shared";
+import type { AgentSummary } from "../../../shared/src/index";
 import { findRemoteForPath, type RemoteLookup } from "./remote-lookup";
 
 export function agentWithRemote(summary: AgentSummary, remotes: RemoteLookup): AgentSummary {

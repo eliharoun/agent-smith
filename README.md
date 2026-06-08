@@ -67,9 +67,9 @@ After install, verify:
 smith doctor
 ```
 
-### From source (for the GUI or contributing)
+### From source (for development)
 
-The npm install ships the CLI only. To run `smith gui` (the local browser control panel) or to develop against `agent-smith`, clone and bootstrap from source:
+`npm install -g @eliharoun/agent-smith` gives you both the CLI and `smith gui` (the local browser control panel) — the GUI ships in the package (Bun is required at runtime, as for the rest of the CLI). The from-source path is for developing `agent-smith` itself or hacking on the GUI source. Clone and bootstrap:
 
 ```bash
 gh repo clone eliharoun/agent-smith
@@ -77,7 +77,7 @@ cd agent-smith
 bash bin/install
 ```
 
-`bin/install` clones to `~/.agent-smith/`, runs `bun install`, builds the GUI SPA bundle, symlinks `~/.local/bin/smith`, and adds `~/.local/bin` to your PATH via a marker block in your shell rc. The same `smith` command works afterwards — but with the GUI server source available. [`gh`](https://cli.github.com/) is a convenience for the clone — substitute `git clone https://github.com/eliharoun/agent-smith` if you prefer.
+`bin/install` clones to `~/.agent-smith/`, runs `bun install`, builds the GUI SPA bundle, symlinks `~/.local/bin/smith`, and adds `~/.local/bin` to your PATH via a marker block in your shell rc. The same `smith` command works afterwards — with editable GUI/CLI source available and auto-rebuild on `git pull`. [`gh`](https://cli.github.com/) is a convenience for the clone — substitute `git clone https://github.com/eliharoun/agent-smith` if you prefer.
 
 ---
 

@@ -1,5 +1,5 @@
-import type { GitVerifyResult } from "gui-shared";
-import { normalizeGitUrl } from "gui-shared";
+import type { GitVerifyResult } from "../../../shared/src/index";
+import { normalizeGitUrl } from "../../../shared/src/index";
 
 export interface GitVerifyDeps {
   /** Inject for tests; default uses Bun.spawn. */

@@ -1,6 +1,6 @@
 {
   "name": "@eliharoun/agent-smith",
-  "version": "1.15.1",
+  "version": "1.16.0",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -29,8 +29,11 @@
     "lint": "biome lint .",
     "check": "biome check --write .",
     "postinstall": "node scripts/postinstall-preflight.cjs",
+    "prepack": "bun run --filter gui-web build:bundle && bun run scripts/gui-pack-prune.ts",
+    "postpack": "git checkout -- gui/server/src gui/shared/src gui/README.md",
     "refresh-schemas": "bun run scripts/refresh-schemas.ts",
     "check-drift": "bun run scripts/check-drift.ts",
+    "verify:tarball": "bun run scripts/verify-tarball.ts",
     "gui:dev": "bun run --filter gui-web dev",
     "gui:build": "bun run --filter gui-web build && bun run --filter gui-server build",
     "gui:test": "bun test gui/",
@@ -48,6 +51,9 @@
     "data",
     "guide",
     "bin",
+    "gui/server/src",
+    "gui/shared/src",
+    "gui/web/dist",
     "scripts/bootstrap.ts",
     "scripts/postinstall-preflight.cjs",
     "README.md",
@@ -62,6 +68,7 @@
     "dotenv": "^17.4.2",
     "gpt-tokenizer": "^3.4.0",
     "gray-matter": "^4.0.3",
+    "hono": "^4.6.0",
     "js-yaml": "^4.1.1",
     "jsdom": "^29.1.1",
     "microdiff": "^1.5.0",

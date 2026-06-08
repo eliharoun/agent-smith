@@ -4,7 +4,7 @@
 // `remote{}` block. See agents-shape.test.ts for the parallel agent test.
 
 import { describe, expect, it } from "bun:test";
-import { SkillSummary } from "gui-shared";
+import { SkillSummary } from "../../shared/src/index";
 
 const minimalLocal = {
   name: "beta",

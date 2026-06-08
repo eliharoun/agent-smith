@@ -1,4 +1,4 @@
-import type { JobCommand } from "gui-shared";
+import type { JobCommand } from "../../../shared/src/index";
 
 export type JobStatus = "pending" | "running" | "succeeded" | "failed" | "evicted";
 

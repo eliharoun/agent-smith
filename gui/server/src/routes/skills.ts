@@ -1,4 +1,4 @@
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { HttpError } from "../middleware/error";

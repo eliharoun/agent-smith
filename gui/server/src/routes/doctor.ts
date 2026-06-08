@@ -1,4 +1,4 @@
-import { DoctorResponse } from "gui-shared";
+import { DoctorResponse } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import type { JobManager } from "../jobs/job-manager";
 import { HttpError } from "../middleware/error";

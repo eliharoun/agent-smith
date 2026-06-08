@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { RefreshConsentManifest } from "gui-shared";
+import { RefreshConsentManifest } from "../../../shared/src/index";
 import { refreshManifestPathFor } from "./cache-paths";
 
 export async function loadRefreshConsent(

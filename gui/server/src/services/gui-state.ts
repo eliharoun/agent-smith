@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { GuiState, type GuiStatePatch } from "gui-shared";
+import { GuiState, type GuiStatePatch } from "../../../shared/src/index";
 
 export interface LoadOptions {
   path: string;

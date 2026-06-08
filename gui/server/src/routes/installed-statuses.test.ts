@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../shared/src/index";
 import { createApp } from "../app";
 
 let root: string;

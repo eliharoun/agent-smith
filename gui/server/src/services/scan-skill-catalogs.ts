@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type SkillCatalog, SkillFrontmatter, type SkillSummary } from "gui-shared";
+import { type SkillCatalog, SkillFrontmatter, type SkillSummary } from "../../../shared/src/index";
 import * as yaml from "js-yaml";
 import { isProtectedSkill } from "../../../../src/core/protected-bundles";
 

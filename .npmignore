@@ -9,8 +9,12 @@ src/cli/commands/skill/install-cmd.test.ts
 src/cli/commands/skill/validate.test.ts
 src/cli/parse-platforms.test.ts
 
+# NOTE: the dev-only `gui/README.md` is NOT excluded here — npm force-includes
+# README* files regardless of .npmignore (verified: /gui/README.md, gui/*.md,
+# README.md patterns all fail to suppress it). It is removed at `prepack`
+# instead (scripts/gui-pack-prune.ts) and restored by `postpack`.
+
 tests
-gui
 docs
 .claude
 .yolo-sisyphus

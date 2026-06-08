@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { DaemonStatus } from "gui-shared";
+import type { DaemonStatus } from "../../../shared/src/index";
 
 // Keep in sync with src/cli/commands/daemon.ts heartbeatStaleMs default.
 export const HEARTBEAT_STALE_MS = 7_000;

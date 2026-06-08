@@ -245,6 +245,12 @@ eval "$bun_install_deps_cmd"
 # gui:build`. Building here closes the loop: after `bin/install`, both
 # the CLI AND the GUI work without further setup.
 #
+# Note: the GUI now also ships prebuilt via the npm package (the dist
+# bundle is included in the tarball), so `smith gui` works from an npm
+# install with no source clone. This source build remains for the
+# from-source/development path — it gives you live, editable GUI source
+# and a rebuild on `git pull` (via `smith update`).
+#
 # Warn-and-continue on failure: a transient registry hiccup or a node
 # version mismatch in the GUI workspace shouldn't block the CLI install.
 # The user gets a working `smith` binary either way and can retry the

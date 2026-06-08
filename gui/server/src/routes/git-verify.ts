@@ -1,4 +1,4 @@
-import { GitVerifyRequest } from "gui-shared";
+import { GitVerifyRequest } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 import { type GitVerifyDeps, verifyGitRemote } from "../services/git-verify";

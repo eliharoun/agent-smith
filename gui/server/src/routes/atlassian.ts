@@ -1,4 +1,4 @@
-import { AtlassianEnvUpdate } from "gui-shared";
+import { AtlassianEnvUpdate } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 import { buildAffectedSources } from "../services/atlassian-affected-sources";

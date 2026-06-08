@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentKnowledgeView, SourceJoined } from "gui-shared";
+import type { AgentKnowledgeView, SourceJoined } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { z } from "zod";
 import { writeRefreshManifest } from "../../../../src/core/knowledge/refresh-manifest";

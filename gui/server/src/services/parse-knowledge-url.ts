@@ -9,7 +9,7 @@
  *   - Dispatch order is load-bearing — page/blog MUST come before space.
  */
 
-import type { ParsedKnowledgeUrl } from "gui-shared";
+import type { ParsedKnowledgeUrl } from "../../../shared/src/index";
 
 const CONFLUENCE_PAGE_RE = /^\/wiki\/spaces\/([^/]+)\/pages\/(\d+)(?:\/(.+))?$/;
 const CONFLUENCE_BLOG_RE = /^\/wiki\/spaces\/([^/]+)\/blog\/\d+\/\d+\/\d+\/(\d+)(?:\/(.+))?$/;

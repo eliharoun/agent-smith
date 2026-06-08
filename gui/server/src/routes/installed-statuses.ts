@@ -1,4 +1,4 @@
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { computeInstalledStatus } from "../services/installed-status";
 import { parseRegistry } from "../services/parse-registry";

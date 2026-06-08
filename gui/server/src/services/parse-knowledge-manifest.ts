@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { KnowledgeManifest, RefreshCacheEntry } from "gui-shared";
+import { KnowledgeManifest, RefreshCacheEntry } from "../../../shared/src/index";
 import { knowledgeManifestPathFor, refreshCacheDirFor } from "./cache-paths";
 
 export async function loadKnowledgeManifest(

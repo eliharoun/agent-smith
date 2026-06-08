@@ -1,4 +1,4 @@
-import { PutModelConfigBodySchema } from "gui-shared";
+import { PutModelConfigBodySchema } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 import { type ModelConfigDeps, readModelConfig, writeModelConfig } from "../services/model-config";

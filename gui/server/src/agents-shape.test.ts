@@ -6,7 +6,7 @@
 // builders do. Pure parse-level test; no Hono harness needed.
 
 import { describe, expect, it } from "bun:test";
-import { AgentSummary } from "gui-shared";
+import { AgentSummary } from "../../shared/src/index";
 
 const minimalLocal = {
   name: "alpha",

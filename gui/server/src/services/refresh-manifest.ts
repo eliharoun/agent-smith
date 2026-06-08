@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Platform } from "gui-shared";
+import { Platform } from "../../../shared/src/index";
 
 /**
  * Mirror of `defaultAgentSmithHome()` from `src/cli/install-paths.ts`.

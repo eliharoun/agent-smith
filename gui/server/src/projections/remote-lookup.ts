@@ -9,7 +9,7 @@
 // This prevents '/a' from spuriously matching '/abc' when both could in
 // principle be registered.
 
-import type { RemoteBlock } from "gui-shared";
+import type { RemoteBlock } from "../../../shared/src/index";
 
 export type RemoteLookup = ReadonlyMap<string, RemoteBlock>;
 

@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AtlassianEnvStatus } from "gui-shared";
+import type { AtlassianEnvStatus } from "../../../shared/src/index";
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import { errorHandler, errorMiddleware } from "../middleware/error";

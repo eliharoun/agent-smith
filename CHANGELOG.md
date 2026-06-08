@@ -4,6 +4,16 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] — 2026-06-08
+
+### Added
+
+- `smith gui` now works from npm installs. The prebuilt GUI bundle and the
+  raw-TypeScript GUI server ship in the package, so launching the local
+  browser control panel no longer requires cloning from source (Bun is still
+  required, as for the rest of the CLI). Source installs are unaffected —
+  they continue to provide editable GUI source and auto-rebuild on `git pull`.
+
 ## [1.15.1] — 2026-06-07
 
 Fixes a class of confusing failures when installing agents or skills from a

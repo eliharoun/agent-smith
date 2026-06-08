@@ -1,4 +1,4 @@
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../../shared/src/index";
 import type { BuiltArgv } from "./types";
 import { previewOf } from "./types";
 

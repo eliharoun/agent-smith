@@ -1,4 +1,4 @@
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { HttpError } from "../middleware/error";
 import { type DryRunDeps, type DryRunOutput, renderDryRun } from "../services/render-dry-run";

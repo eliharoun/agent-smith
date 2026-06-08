@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { JobHistorySearchHit } from "gui-shared";
+import type { JobHistorySearchHit } from "../../../shared/src/index";
 
 export interface LogSearchDeps {
   outputDir: string;

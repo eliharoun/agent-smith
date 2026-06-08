@@ -10,7 +10,7 @@
 // (z.object().refine()) members; the latter wrap shape in _def.innerType.
 
 import { describe, expect, it } from "bun:test";
-import { JobRequest } from "gui-shared";
+import { JobRequest } from "../../../../shared/src/index";
 
 function extractCommandLiteral(opt: unknown): string {
   const o = opt as {

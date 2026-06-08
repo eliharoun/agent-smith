@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { McpServerAndToolsView } from "gui-shared";
+import type { McpServerAndToolsView } from "../../../shared/src/index";
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import { errorHandler, errorMiddleware } from "../middleware/error";

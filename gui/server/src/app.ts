@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Platform } from "gui-shared";
+import type { Platform } from "../../shared/src/index";
 import { Hono } from "hono";
 import { createBunSpawner } from "./jobs/bun-spawner";
 import { createJobHistoryWriter, sweepOldEntries } from "./jobs/job-history";

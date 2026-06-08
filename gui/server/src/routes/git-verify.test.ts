@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import type { GitVerifyResult } from "gui-shared";
+import type { GitVerifyResult } from "../../../shared/src/index";
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import { errorHandler, errorMiddleware } from "../middleware/error";

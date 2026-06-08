@@ -14,7 +14,7 @@
 
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { RefreshSummary } from "gui-shared";
+import type { RefreshSummary } from "../../../shared/src/index";
 import { parseKnowledgeConfig } from "./parse-knowledge-config";
 import { loadRefreshCacheEntries } from "./parse-knowledge-manifest";
 import { parseRegistrySources } from "./parse-registry";

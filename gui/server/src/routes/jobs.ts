@@ -1,4 +1,4 @@
-import { JobRequest } from "gui-shared";
+import { JobRequest } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {

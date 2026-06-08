@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JobCommand } from "gui-shared";
+import type { JobCommand } from "../../../shared/src/index";
 import type { JobHistoryWriter, JobOutputSink } from "./job-history";
 import type { JobEvent, JobRecord } from "./job-types";
 import { LockManager } from "./lock-manager";

@@ -1,4 +1,4 @@
-import { SmithEnv } from "gui-shared";
+import { SmithEnv } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { FileTailBroker } from "../jobs/file-tail-broker";

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { ModelConfig, Platform, PutModelConfigBody } from "gui-shared";
+import type { ModelConfig, Platform, PutModelConfigBody } from "../../../shared/src/index";
 import {
   OPENCODE_PROVIDER_PRECEDENCE,
   sortByOpenCodePrecedence,

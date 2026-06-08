@@ -6,7 +6,7 @@
 // can contain many skills.
 
 import { describe, expect, it } from "bun:test";
-import type { SkillSummary } from "gui-shared";
+import type { SkillSummary } from "../../../shared/src/index";
 import { skillWithRemote } from "./skill-with-remote";
 
 const baseSummary: SkillSummary = {

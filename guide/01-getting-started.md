@@ -25,7 +25,7 @@ If you intend to use Atlassian-backed knowledge sources (Confluence, Jira) or th
 There are two supported install paths:
 
 - **From npm (recommended).** `npm install -g @eliharoun/agent-smith` ships the CLI plus the bundled skills. Fastest way to start using `smith`.
-- **From source.** A `git clone` + `bash bin/install` flow. Pick this if you want `smith gui` (the local browser control panel) or you intend to develop against `agent-smith`.
+- **From source.** A `git clone` + `bash bin/install` flow. Pick this if you intend to develop `agent-smith` itself or hack on the GUI source.
 
 Both paths land at the same `smith` command on your PATH.
 
@@ -47,11 +47,11 @@ smith status
 
 The npm package's postinstall hook copies the bundled skills (`the-architect`, `the-keymaker`) into the per-platform skill directories. When `bun` is not on your PATH at install time, the hook prints a one-line hint and exits cleanly — the package installs but doesn't bootstrap until bun is available, after which you can run `smith skill bootstrap` manually. Set `AGENT_SMITH_SKIP_POSTINSTALL=1` to skip the hook entirely.
 
-The npm install does **not** include the GUI server source. Running `smith gui` after an npm install prints a hint pointing you at the from-source path below.
+The npm install **includes** the GUI — the prebuilt SPA bundle and the raw-TypeScript GUI server both ship in the package, so `smith gui` works out of the box (Bun is required at runtime, as for the rest of the CLI). The from-source path below adds nothing for running the GUI; it only gives you editable GUI source and auto-rebuild on `git pull`.
 
-### From source (for the GUI or contributing)
+### From source (for development)
 
-Use this path if you want `smith gui`, want to hack on the `agent-smith` source, or need full control over the install layout.
+Use this path if you want to develop `agent-smith` itself, hack on the GUI source (editable source + auto-rebuild), or need full control over the install layout.
 
 **Prerequisites**
 
@@ -87,7 +87,7 @@ smith doctor
 
 This runs the health check, auto-filtered to the platform CLIs on your `PATH` (`opencode`, `claude`, `codex`, `kiro`/`kiro-cli`): schema-drift checks for whichever of those you have installed, plus cross-cutting sections (atlassian auth, agent-required-skills audit, etc.). A clean run exits `0`. If you haven't yet installed any of the four platform CLIs, doctor refuses to run and exits `2` with install one-liners — install at least one platform CLI and re-run. See [Doctor](./10-doctor.md) for full details.
 
-> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. The GUI server source ships only with the from-source install — running `smith gui` after an `npm install -g @eliharoun/agent-smith` prints a hint pointing you at the from-source path. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
+> **Tip — browser GUI.** `smith gui` launches a local browser interface that wraps every command in this guide (`smith init`, `smith init-user`, `smith agent install`, `smith doctor`, etc.) plus a guided first-run onboarding flow. It works straight from an `npm install -g @eliharoun/agent-smith` — the GUI ships in the package (Bun required at runtime). See [README → Browser GUI](../README.md#browser-gui-smith-gui).
 
 ### What got installed where
 

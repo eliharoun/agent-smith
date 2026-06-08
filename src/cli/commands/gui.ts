@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { type Dirent, readdirSync, statSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
@@ -151,6 +151,11 @@ function resolveRepoRoot(): string {
   return join(dirname(here), "..", "..", "..");
 }
 
+/** True when the prebuilt SPA bundle is present — works for both install modes. */
+export function guiBundlePresent(repoRoot: string): boolean {
+  return existsSync(join(repoRoot, "gui", "web", "dist", "index.html"));
+}
+
 export function createGuiCommand(): Command {
   return new Command("gui")
     .description("Launch the smith browser GUI")
@@ -165,19 +170,21 @@ export function createGuiCommand(): Command {
       // CLI entry and e2e/test code.
       const token = process.env.SMITH_GUI_DEV_TOKEN ?? generateToken();
 
-      // Pre-flight: rebuild stale `gui/web/dist/` BEFORE importing the server,
-      // so users who ran a raw `git pull` don't trip the fail-fast guard.
-      await maybeRebuildGuiBundle({ repoRoot: resolveRepoRoot() });
+      const repoRoot = resolveRepoRoot();
 
-      // Pre-flight: bail out cleanly if `gui/server/src/` is absent (npm-tarball
-      // installs don't ship the GUI source today; a raw `git clone` does).
-      // Without this guard, the dynamic import below throws MODULE_NOT_FOUND
-      // and the user sees a stack trace.
-      const { existsSync } = await import("node:fs");
-      const guiServerEntry = join(resolveRepoRoot(), "gui", "server", "src", "index.ts");
-      if (!existsSync(guiServerEntry)) {
+      // Pre-flight: rebuild a stale `gui/web/dist/` for SOURCE installs before
+      // importing the server (no-ops in packaged installs — gui/web/src absent).
+      await maybeRebuildGuiBundle({ repoRoot });
+
+      // Pre-flight: the GUI cannot run without the built SPA. In packaged
+      // installs `prepack` always ships it; this guard turns a missing/empty
+      // bundle into a friendly message instead of a raw assertBundleFresh throw.
+      if (!guiBundlePresent(repoRoot)) {
         console.error(
-          "agent-smith: smith gui requires a source install. Clone https://github.com/eliharoun/agent-smith and run bash bin/install.",
+          "agent-smith: GUI bundle not found at " +
+            join(repoRoot, "gui", "web", "dist", "index.html") +
+            "\n  - npm install: reinstall with `npm i -g @eliharoun/agent-smith`." +
+            "\n  - source install: run `bun run gui:build` from the repo root.",
         );
         process.exit(1);
       }
@@ -189,6 +196,7 @@ export function createGuiCommand(): Command {
         bind: args.bind,
         token,
         smithVersion: packageJson.version,
+        staticRoot: join(repoRoot, "gui", "web", "dist"),
       });
       console.log(`smith gui ready at ${started.url}`);
       if (args.open) {
