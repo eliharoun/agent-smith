@@ -1,9 +1,10 @@
-import { dirname, join } from "node:path";
 import { stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDebug } from "../cli/debug-flag";
 import type { GitDeps, Runner } from "./git";
 import { lsRemote, revListCount, revParse } from "./git";
+import type { PackageManager } from "./install-type";
 
 export async function pathExists(p: string): Promise<boolean> {
   try {
@@ -78,6 +79,12 @@ export type WorkspaceVersionStatus =
         | "non-git"
         | "no-workspace"
         | "offline-skipped";
+    }
+  | {
+      status: "unknown";
+      reason: "packaged";
+      packageManager: PackageManager;
+      updateCommand: string;
     };
 
 /**

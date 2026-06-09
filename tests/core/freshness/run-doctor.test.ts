@@ -4,7 +4,11 @@ import type {
   DoctorSectionDoneEvent,
   DoctorSectionStartEvent,
 } from "../../../src/core/freshness/run-doctor";
-import { modelResolutionEventStatus, runDoctor, agentDriftEventStatus } from "../../../src/core/freshness/run-doctor";
+import {
+  agentDriftEventStatus,
+  modelResolutionEventStatus,
+  runDoctor,
+} from "../../../src/core/freshness/run-doctor";
 import type {
   AgentDriftReport,
   DoctorDeps,
@@ -500,6 +504,107 @@ describe("runDoctor streaming callbacks", () => {
     expect(report.exitCode).toBe(0);
   });
 
+  // --- packaged-install enrichment of a non-git workspace (D1) ---
+  const nonGit: WorkspaceVersionStatus = { status: "unknown", reason: "non-git" };
+
+  test("non-git + detectInstall packaged → workspace promoted to reason 'packaged'", async () => {
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      workspace: {
+        importMetaUrl: import.meta.url,
+        offline: false,
+        resolve: async () => "/fake/packaged",
+        check: async () => nonGit,
+        detectInstall: async () => ({
+          kind: "packaged",
+          packageManager: "npm",
+          workspacePath: "/fake/packaged",
+          updateCommand: "npm install -g @eliharoun/agent-smith",
+          canGitUpdate: false,
+        }),
+      },
+    });
+    expect(report.workspace).toEqual({
+      status: "unknown",
+      reason: "packaged",
+      packageManager: "npm",
+      updateCommand: "npm install -g @eliharoun/agent-smith",
+    });
+    expect(report.exitCode).toBe(0); // packaged is healthy/skipped
+  });
+
+  test("non-git + detectInstall source → stays non-git", async () => {
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      workspace: {
+        importMetaUrl: import.meta.url,
+        offline: false,
+        resolve: async () => "/fake/x",
+        check: async () => nonGit,
+        detectInstall: async () => ({
+          kind: "source",
+          packageManager: "unknown",
+          workspacePath: "/fake/x",
+          updateCommand: "smith update",
+          canGitUpdate: true,
+        }),
+      },
+    });
+    expect(report.workspace).toEqual(nonGit);
+  });
+
+  test("non-git + detectInstall throws → fail-soft, stays non-git", async () => {
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      workspace: {
+        importMetaUrl: import.meta.url,
+        offline: false,
+        resolve: async () => "/fake/x",
+        check: async () => nonGit,
+        detectInstall: async () => {
+          throw new Error("boom");
+        },
+      },
+    });
+    expect(report.workspace).toEqual(nonGit);
+  });
+
+  test("non-git + detectInstall unknown → stays non-git (no updateCommand)", async () => {
+    const report = await runDoctor({
+      vendoredSchema,
+      schemaMeta,
+      claudeMeta,
+      codexMeta,
+      deps: deps(),
+      workspace: {
+        importMetaUrl: import.meta.url,
+        offline: false,
+        resolve: async () => "/fake/x",
+        check: async () => nonGit,
+        detectInstall: async () => ({
+          kind: "unknown",
+          packageManager: "unknown",
+          workspacePath: null,
+          updateCommand: null,
+          canGitUpdate: false,
+        }),
+      },
+    });
+    expect(report.workspace).toEqual(nonGit);
+  });
+
   test("does not fire any callbacks when callbacks are omitted (back-compat)", async () => {
     // No-op test: just ensure the call succeeds without callbacks and
     // produces the same shape as before.
@@ -935,18 +1040,14 @@ describe("modelResolutionEventStatus (actionable-only)", () => {
 
   test("fallback drift WITH an installed opencode agent → still ok (drift is not actionable)", () => {
     const r = mr({
-      installedAgents: [
-        { platform: "opencode", agent: "a", model: "p/opus", inLiveList: true },
-      ],
+      installedAgents: [{ platform: "opencode", agent: "a", model: "p/opus", inLiveList: true }],
     });
     expect(modelResolutionEventStatus(r)).toBe("ok");
   });
 
   test("stale installed opencode agent → warn", () => {
     const r = mr({
-      installedAgents: [
-        { platform: "opencode", agent: "a", model: "p/x", inLiveList: false },
-      ],
+      installedAgents: [{ platform: "opencode", agent: "a", model: "p/x", inLiveList: false }],
       hasStale: true,
     });
     expect(modelResolutionEventStatus(r)).toBe("warn");
@@ -954,9 +1055,7 @@ describe("modelResolutionEventStatus (actionable-only)", () => {
 
   test("installed agent on an unauthenticated platform → warn", () => {
     const r = mr({
-      installedAgents: [
-        { platform: "codex", agent: "a", model: "gpt-5", inLiveList: null },
-      ],
+      installedAgents: [{ platform: "codex", agent: "a", model: "gpt-5", inLiveList: null }],
       platforms: {
         opencode: { cliInstalled: true, status: "authenticated" },
         "claude-code": { cliInstalled: true, status: "authenticated" },
@@ -990,7 +1089,9 @@ describe("runDoctor exit code (fallback drift no longer bumps)", () => {
         readEnvFile: () => ({}),
       },
     });
-    expect(report.modelResolution?.curatedFallbacks.every((f) => f.inLiveList === false)).toBe(true);
+    expect(report.modelResolution?.curatedFallbacks.every((f) => f.inLiveList === false)).toBe(
+      true,
+    );
     expect(report.exitCode).toBe(0);
   });
 });
@@ -1035,7 +1136,14 @@ describe("agentDriftEventStatus", () => {
   const drift: AgentDriftReport = {
     entries: [
       { name: "a", platform: "claude-code", status: "ok", path: "/p" },
-      { name: "b", platform: "codex", status: "drift", path: "/q", recordedHash: "sha256:1", currentHash: "sha256:2" },
+      {
+        name: "b",
+        platform: "codex",
+        status: "drift",
+        path: "/q",
+        recordedHash: "sha256:1",
+        currentHash: "sha256:2",
+      },
     ],
   };
   test("all ok → ok", () => expect(agentDriftEventStatus(ok)).toBe("ok"));
@@ -1049,9 +1157,27 @@ describe("checkAgentDrift via runDoctor", () => {
     const installed = {
       schemaVersion: 1 as const,
       installed: [
-        { name: "ok-agent", platform: "claude-code", path: "/x/ok", contentHash: "sha256:OK", installedAt: "t" },
-        { name: "drift-agent", platform: "codex", path: "/x/drift", contentHash: "sha256:OLD", installedAt: "t" },
-        { name: "gone-agent", platform: "kiro", path: "/x/gone", contentHash: "sha256:G", installedAt: "t" },
+        {
+          name: "ok-agent",
+          platform: "claude-code",
+          path: "/x/ok",
+          contentHash: "sha256:OK",
+          installedAt: "t",
+        },
+        {
+          name: "drift-agent",
+          platform: "codex",
+          path: "/x/drift",
+          contentHash: "sha256:OLD",
+          installedAt: "t",
+        },
+        {
+          name: "gone-agent",
+          platform: "kiro",
+          path: "/x/gone",
+          contentHash: "sha256:G",
+          installedAt: "t",
+        },
       ],
     };
     const report = await runDoctor({

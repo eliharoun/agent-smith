@@ -32,11 +32,11 @@ registered catalogs             ├─ smith agent destroy <name>  → remove ON
 
 `smith agent destroy` is the only single-bundle command that touches the source side of the diagram — it's the inverse of `smith agent init`. `smith agent uninstall` only removes the rendered output; the source bundle survives and a follow-up `smith agent install <name>` rebuilds the rendered files. `smith agent destroy` removes the source itself, so it cannot be undone with `smith agent install`.
 
-`smith update` is different in kind — it doesn't touch installed agent files at all. It updates the agent-smith source workspace at `~/.agent-smith/` (the git clone the installer created), reinstalls dependencies, then runs doctor to verify the result. See `src/cli/commands/update.ts` for the pipeline.
+`smith update` is different in kind — it doesn't touch installed agent files at all. It updates the agent-smith source workspace at `~/.agent-smith/` (the git clone the installer created), reinstalls dependencies, then runs doctor to verify the result. See `src/cli/commands/update.ts` for the pipeline. (That describes the source-install path; a packaged install upgrades via its package manager instead, then runs doctor.)
 
 ## `smith update`
 
-Updates the agent-smith source clone in place. Specific to the from-source install (`bash bin/install`); equivalent to re-running `bash ~/.agent-smith/bin/install` in update mode, but invokable from anywhere on PATH. If you installed via `npm install -g @eliharoun/agent-smith`, use `npm update -g @eliharoun/agent-smith` instead — `smith update` exits `1` with a hint when no source workspace is found.
+Updates agent-smith in place for BOTH install methods, auto-detecting which one you have. From a source install (`bash bin/install`): equivalent to re-running `bash ~/.agent-smith/bin/install` in update mode — git pull + `bun install` + `gui:build` + persona/knowledge reinstall + doctor. From a packaged install (`npm install -g @eliharoun/agent-smith`, or the bun/pnpm equivalents): runs the matching global upgrade, then refreshes agent-smith's knowledge and runs doctor. If the install manager can't be determined, it prints the command to run instead of guessing. Invokable from anywhere on PATH.
 
 What it does:
 

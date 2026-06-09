@@ -4,6 +4,26 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] — 2026-06-08
+
+### Fixed
+
+- agent-smith installed from a package manager (`npm`/`bun`/`pnpm i -g
+  @eliharoun/agent-smith`) is now fully supported alongside source installs.
+  `smith update` is the single upgrade command for either install type:
+  - from a source checkout it runs the git pipeline (pull + `bun install` +
+    GUI rebuild + knowledge refresh + doctor) exactly as before; from a global
+    install it runs the matching package-manager upgrade (`npm`/`bun`/`pnpm`),
+    then refreshes and verifies — no more cryptic "fatal: not a git repository".
+    If the package manager can't be determined, it prints the command to run
+    instead of guessing.
+  - the `smith` binary now resolves `bun` by absolute path, so it works when
+    launched from MCP clients, Spotlight/dock, cron, and launchd (previously
+    failed with `env: bun: No such file or directory`). Global installs also get
+    the hardened `~/.local/bin/smith` launcher written at install time.
+  - `smith doctor` and the GUI Update page recognize a packaged install and
+    point you at `smith update` instead of showing a bare "not a git checkout".
+
 ## [1.17.0] — 2026-06-08
 
 ### Fixed

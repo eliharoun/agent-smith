@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import packageJson from "../../../package.json" with { type: "json" };
+import type { InstallInfo } from "../../io/install-type";
 
 export interface GuiArgs {
   port: number;
@@ -80,9 +81,7 @@ export interface MaybeRebuildOptions {
  * `assertBundleFresh` in gui-server stays as defense-in-depth in case the
  * server library is booted without going through this CLI command.
  */
-export async function maybeRebuildGuiBundle(
-  opts: MaybeRebuildOptions,
-): Promise<void> {
+export async function maybeRebuildGuiBundle(opts: MaybeRebuildOptions): Promise<void> {
   const { repoRoot } = opts;
   const log = opts.log ?? ((s: string) => process.stderr.write(`${s}\n`));
   const runBuild = opts.runBuild ?? defaultRunGuiBuild;
@@ -156,6 +155,35 @@ export function guiBundlePresent(repoRoot: string): boolean {
   return existsSync(join(repoRoot, "gui", "web", "dist", "index.html"));
 }
 
+/**
+ * Build the "GUI bundle missing" error message, suggesting the upgrade command
+ * appropriate to how smith was installed (npm/bun/pnpm). Detection is injectable
+ * for tests; production uses the install-type detector. Falls back to a static
+ * npm command if detection fails.
+ */
+export async function missingBundleMessage(
+  binPath: string,
+  detect?: (url: string) => Promise<InstallInfo>,
+): Promise<string> {
+  const { getInstallInfoForRunningModule } = await import("../../io/install-type");
+  const detectFn = detect ?? getInstallInfoForRunningModule;
+  let cmd = "npm i -g @eliharoun/agent-smith";
+  try {
+    const info = await detectFn(import.meta.url);
+    if (info.updateCommand) cmd = info.updateCommand;
+  } catch {
+    /* fall back to static cmd */
+  }
+  return (
+    "agent-smith: GUI bundle not found at " +
+    binPath +
+    "\n  - packaged install: reinstall with `" +
+    cmd +
+    "`." +
+    "\n  - source install: run `bun run gui:build` from the repo root."
+  );
+}
+
 export function createGuiCommand(): Command {
   return new Command("gui")
     .description("Launch the smith browser GUI")
@@ -181,10 +209,7 @@ export function createGuiCommand(): Command {
       // bundle into a friendly message instead of a raw assertBundleFresh throw.
       if (!guiBundlePresent(repoRoot)) {
         console.error(
-          "agent-smith: GUI bundle not found at " +
-            join(repoRoot, "gui", "web", "dist", "index.html") +
-            "\n  - npm install: reinstall with `npm i -g @eliharoun/agent-smith`." +
-            "\n  - source install: run `bun run gui:build` from the repo root.",
+          await missingBundleMessage(join(repoRoot, "gui", "web", "dist", "index.html")),
         );
         process.exit(1);
       }

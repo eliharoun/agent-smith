@@ -319,6 +319,23 @@ describe("formatWorkspaceSection", () => {
     expect(out).toMatch(/skipped/i);
     expect(out).toMatch(/not a git checkout/i);
   });
+
+  test("formatWorkspaceSection: packaged reason shows upgrade hint", () => {
+    const out = formatWorkspaceSection({
+      status: "unknown",
+      reason: "packaged",
+      packageManager: "npm",
+      updateCommand: "npm install -g @eliharoun/agent-smith",
+    });
+    expect(out).toContain("Packaged install");
+    expect(out).toContain("smith update"); // unified upgrade command recommended first
+    expect(out).toContain("npm install -g @eliharoun/agent-smith"); // shown as the underlying action
+  });
+
+  test("formatWorkspaceSection: non-git still renders the old skipped message", () => {
+    const out = formatWorkspaceSection({ status: "unknown", reason: "non-git" });
+    expect(out).toContain("not a git checkout");
+  });
 });
 
 describe("formatReport: atlassianAuth section", () => {

@@ -8,17 +8,20 @@ import {
   resolveAtlassianBaseUrl as defaultResolveAtlassianBaseUrl,
 } from "../../io/atlassian-auth";
 import { detectBridgeDrift } from "../../io/atlassian-bridge";
+import { detectAllPlatforms } from "../../io/auth";
+import type { PlatformAuth, PlatformAuthMatrix } from "../../io/auth/types";
+import {
+  hashContent as defaultHashContent,
+  loadInstalledAgents as defaultLoadInstalledAgents,
+  type InstalledAgentsFile,
+} from "../../io/installed-agents";
 import {
   hashSkillDir as defaultHashSkillDir,
   loadInstalledSkills as defaultLoadInstalledSkills,
   type InstalledSkill,
   type InstalledSkillsFile,
 } from "../../io/installed-skills";
-import {
-  hashContent as defaultHashContent,
-  loadInstalledAgents as defaultLoadInstalledAgents,
-  type InstalledAgentsFile,
-} from "../../io/installed-agents";
+import { detectAuthenticatedProviders as defaultDetectAuthProviders } from "../../io/opencode-auth";
 import {
   detectPython as defaultDetectPython,
   type PythonRuntimeStatus,
@@ -32,61 +35,47 @@ import {
   resolveWorkspacePath as defaultResolveWorkspacePath,
   type WorkspaceVersionStatus,
 } from "../../io/workspace-version";
-import { redactSecrets } from "../redact";
-import { SmithError } from "../smith-error";
-import { resolveOpenCodeModel } from "../model-resolution/opencode";
-import { sortByOpenCodePrecedence } from "../model-resolution/provider-table";
-import { detectAllPlatforms } from "../../io/auth";
-import type { PlatformAuth, PlatformAuthMatrix } from "../../io/auth/types";
-import { detectAuthenticatedProviders as defaultDetectAuthProviders } from "../../io/opencode-auth";
 import { resolveClaudeCodeModel } from "../model-resolution/claude-code";
 import { resolveCodexModel } from "../model-resolution/codex";
 import { resolveKiroModel } from "../model-resolution/kiro";
+import { resolveOpenCodeModel } from "../model-resolution/opencode";
+import { sortByOpenCodePrecedence } from "../model-resolution/provider-table";
+import { redactSecrets } from "../redact";
+import { SmithError } from "../smith-error";
 import { toMessage } from "../to-message";
 import { isCacheFresh } from "./cache";
-import {
-  type CheckKnowledgeConsistencyInput,
-  checkKnowledgeConsistency,
-  type KnowledgeConsistencyReport,
-} from "./check-knowledge-consistency";
-import {
-  type CheckRefreshHooksInput,
-  checkRefreshHooks,
-  type RefreshHooksReport,
-} from "./check-refresh-hooks";
 import {
   type CheckKnowledgeCompileInput,
   checkKnowledgeCompile,
   type KnowledgeCompileReport,
 } from "./check-knowledge-compile";
 import {
-  checkMcpSpawnCommands,
+  type CheckKnowledgeConsistencyInput,
+  checkKnowledgeConsistency,
+  type KnowledgeConsistencyReport,
+} from "./check-knowledge-consistency";
+import { type CheckLazyFetchOpts, checkLazyFetch, type LazyFetchFinding } from "./check-lazy-fetch";
+import { type CheckMcpDepsOpts, checkMcpDeps, type McpDepFinding } from "./check-mcp-deps";
+import {
   type CheckMcpSpawnInput,
+  checkMcpSpawnCommands,
   type McpSpawnSection,
 } from "./check-mcp-spawn";
 import {
-  checkMcpDeps,
-  type CheckMcpDepsOpts,
-  type McpDepFinding,
-} from "./check-mcp-deps";
+  type CheckRefreshHooksInput,
+  checkRefreshHooks,
+  type RefreshHooksReport,
+} from "./check-refresh-hooks";
 import {
-  checkLazyFetch,
-  type CheckLazyFetchOpts,
-  type LazyFetchFinding,
-} from "./check-lazy-fetch";
-import {
-  checkUrlRouting,
   type CheckUrlRoutingOpts,
   type CheckUrlRoutingResult,
+  checkUrlRouting,
 } from "./check-url-routing";
 import { diffSchemas } from "./diff";
 import { checkDuplicateCatalogs, type DuplicateCatalogsReport } from "./duplicate-catalogs";
-import {
-  checkProtectedBundles,
-  type ProtectedBundlesReport,
-} from "./protected-bundles-section";
 import type { InstalledModelsPaths } from "./installed-models";
 import { scanInstalledModels } from "./installed-models";
+import { checkProtectedBundles, type ProtectedBundlesReport } from "./protected-bundles-section";
 import { checkRemoteCatalogs, type RemoteCatalogsReport } from "./remote-catalogs";
 import type {
   AgentDriftEntry,
@@ -222,6 +211,8 @@ export interface RunDoctorInput {
     check?: (cwd: string) => Promise<WorkspaceVersionStatus>;
     /** Optional override for testing; defaults to the real resolveWorkspacePath. */
     resolve?: (importMetaUrl: string) => Promise<string | null>;
+    /** For testing: override install-type detection (D1). */
+    detectInstall?: (importMetaUrl: string) => Promise<import("../../io/install-type").InstallInfo>;
   };
   /**
    * Optional. If omitted, defaults to the real resolver. Tests inject a stub.
@@ -510,6 +501,24 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
       workspace = { status: "unknown", reason: "offline-skipped" };
     } else {
       workspace = await check(path);
+      if (workspace.status === "unknown" && workspace.reason === "non-git") {
+        const detect =
+          input.workspace.detectInstall ??
+          (await import("../../io/install-type")).getInstallInfoForRunningModule;
+        try {
+          const info = await detect(input.workspace.importMetaUrl);
+          if (info.kind === "packaged" && info.updateCommand) {
+            workspace = {
+              status: "unknown",
+              reason: "packaged",
+              packageManager: info.packageManager,
+              updateCommand: info.updateCommand,
+            };
+          }
+        } catch {
+          /* fail-soft: keep non-git */
+        }
+      }
     }
     emitDone(input, "workspace", workspaceEventStatus(workspace), workspaceSummary(workspace));
   }
@@ -539,7 +548,12 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   if (input.agentDrift) {
     emitStart(input, "agent-drift", "Installed agents");
     agentDrift = await checkAgentDrift(input.agentDrift);
-    emitDone(input, "agent-drift", agentDriftEventStatus(agentDrift), agentDriftSummary(agentDrift));
+    emitDone(
+      input,
+      "agent-drift",
+      agentDriftEventStatus(agentDrift),
+      agentDriftSummary(agentDrift),
+    );
   }
 
   let agentRequiredSkills: AgentRequiredSkillsReport | undefined;
@@ -609,12 +623,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   if (input.protectedBundles) {
     emitStart(input, "protected-bundles", "Protected bundles");
     protectedBundles = checkProtectedBundles(input.protectedBundles);
-    emitDone(
-      input,
-      "protected-bundles",
-      "ok",
-      protectedBundlesSummary(protectedBundles),
-    );
+    emitDone(input, "protected-bundles", "ok", protectedBundlesSummary(protectedBundles));
   }
 
   let knowledgeRefresh: RefreshHooksReport | undefined;
@@ -688,7 +697,12 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
   if (input.urlRouting) {
     emitStart(input, "url-routing", "URL routing");
     urlRouting = await checkUrlRouting(input.urlRouting);
-    emitDone(input, "url-routing", urlRoutingEventStatus(urlRouting), urlRoutingSummary(urlRouting));
+    emitDone(
+      input,
+      "url-routing",
+      urlRoutingEventStatus(urlRouting),
+      urlRoutingSummary(urlRouting),
+    );
   }
 
   let knowledgeConsistency: KnowledgeConsistencyReport | undefined;
@@ -790,7 +804,9 @@ function opencodeSummary(oc: Extract<DoctorPlatformReport, { platform: "opencode
   }
 }
 
-export function modelResolutionEventStatus(mr: ModelResolutionReport): DoctorSectionDoneEvent["status"] {
+export function modelResolutionEventStatus(
+  mr: ModelResolutionReport,
+): DoctorSectionDoneEvent["status"] {
   // warn only on user-actionable conditions: an installed agent on a
   // platform that can't run it, or a stale installed agent. Curated-
   // fallback drift is a maintainer concern (the constants ship in the
@@ -840,6 +856,8 @@ function workspaceEventStatus(ws: WorkspaceVersionStatus): DoctorSectionDoneEven
         case "non-git":
         case "no-workspace":
           return "skipped";
+        case "packaged":
+          return "skipped"; // healthy; exit code stays 0
         case "network-error":
         case "empty-remote":
           return "error";
@@ -879,6 +897,8 @@ function workspaceSummary(ws: WorkspaceVersionStatus): string {
         case "non-git":
         case "no-workspace":
           return "Workspace check skipped (not a git checkout)";
+        case "packaged":
+          return "Workspace check skipped (packaged install)";
       }
   }
 }
@@ -1137,8 +1157,7 @@ async function buildModelResolutionReport(
   const hasStale = installedAgents.some((a) => a.platform === "opencode" && a.inLiveList === false);
 
   // --- Per-platform auth matrix ---
-  const platformAuthMatrix: PlatformAuthMatrix =
-    cfg.platformAuth ?? (await detectAllPlatforms());
+  const platformAuthMatrix: PlatformAuthMatrix = cfg.platformAuth ?? (await detectAllPlatforms());
   const platforms: ModelResolutionReport["platforms"] = {
     opencode: summarize(platformAuthMatrix.opencode),
     "claude-code": summarize(platformAuthMatrix["claude-code"]),
@@ -1283,7 +1302,8 @@ async function resolvePerPlatformTier(
       resolveOpenCodeModel(fakeBundle("opencode"), {
         getOpenCodeModels: cfg.getOpenCodeModels,
         warnings: noop,
-        detectAuthenticatedProviders: cfg.detectAuthenticatedProviders ?? defaultDetectAuthProviders,
+        detectAuthenticatedProviders:
+          cfg.detectAuthenticatedProviders ?? defaultDetectAuthProviders,
         // Preview is a doctor-side surface; we already know the
         // matrix's opencode auth verdict. Pass it through so the
         // resolver's lazy fail-loud-with-cli-detection path
@@ -1292,10 +1312,23 @@ async function resolvePerPlatformTier(
       }),
     ),
     safeResolve(() =>
-      resolveClaudeCodeModel(fakeBundle("claude-code"), env(async () => matrix["claude-code"])),
+      resolveClaudeCodeModel(
+        fakeBundle("claude-code"),
+        env(async () => matrix["claude-code"]),
+      ),
     ),
-    safeResolve(() => resolveCodexModel(fakeBundle("codex"), env(async () => matrix.codex))),
-    safeResolve(() => resolveKiroModel(fakeBundle("kiro"), env(async () => matrix.kiro))),
+    safeResolve(() =>
+      resolveCodexModel(
+        fakeBundle("codex"),
+        env(async () => matrix.codex),
+      ),
+    ),
+    safeResolve(() =>
+      resolveKiroModel(
+        fakeBundle("kiro"),
+        env(async () => matrix.kiro),
+      ),
+    ),
   ]);
 
   return {
@@ -1536,7 +1569,9 @@ function remoteCatalogsSummary(r: RemoteCatalogsReport): string {
   return `Remote catalogs: ${parts.join(", ")}`;
 }
 
-export function knowledgeRefreshEventStatus(r: RefreshHooksReport): DoctorSectionDoneEvent["status"] {
+export function knowledgeRefreshEventStatus(
+  r: RefreshHooksReport,
+): DoctorSectionDoneEvent["status"] {
   // Detection layer never returns "error" today, but keep the mapping
   // exhaustive so future hard-failure findings propagate correctly.
   if (r.status === "error") return "error";
@@ -1615,7 +1650,9 @@ function mcpDepsSummary(r: { findings: McpDepFinding[] }): string {
   return `MCP dependencies: ${parts.join(", ")}`;
 }
 
-function lazyFetchEventStatus(r: { findings: LazyFetchFinding[] }): DoctorSectionDoneEvent["status"] {
+function lazyFetchEventStatus(r: {
+  findings: LazyFetchFinding[];
+}): DoctorSectionDoneEvent["status"] {
   if (r.findings.some((f) => f.severity === "error")) return "error";
   if (r.findings.length > 0) return "warn";
   return "ok";

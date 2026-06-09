@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import type { Runner } from "../../io/git";
 import { defaultRunner, pullIfClean, revListCount } from "../../io/git";
+import { getInstallInfoForRunningModule, type InstallInfo } from "../../io/install-type";
 import { writeLauncher } from "../../io/launcher";
 import { resolveWorkspacePath } from "../../io/workspace-version";
-import { fileURLToPath } from "node:url";
 import { EXIT_OK, EXIT_PARTIAL, EXIT_RUNTIME } from "../exit-codes";
 import { runDoctorCli } from "./doctor";
 
@@ -18,9 +19,7 @@ export interface UpdateCliOptions {
    */
   runner?: Runner;
   /** For testing: override the bun-install step. */
-  bunInstall?: (
-    cwd: string,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  bunInstall?: (cwd: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   /**
    * For testing: override the post-update doctor invocation. Defaults to
    * runDoctorCli({ offline: false, noCache: false, json: false }).
@@ -41,9 +40,7 @@ export interface UpdateCliOptions {
    * `bun install`. The default invokes `bun run gui:build` in the
    * workspace so `smith gui` keeps serving fresh SPA assets after pulls.
    */
-  runGuiBuild?: (
-    cwd: string,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  runGuiBuild?: (cwd: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   /**
    * For testing: override the launcher-rewrite step that runs between
    * the agent-smith reinstall and doctor. The default invokes
@@ -59,6 +56,16 @@ export interface UpdateCliOptions {
    * import.meta.url of update.ts (i.e. the running source file).
    */
   importMetaUrl?: string;
+  /** For testing: override install-type detection. */
+  getInstallInfo?: (importMetaUrl: string) => Promise<InstallInfo>;
+  /** For testing: override the package-manager global upgrade step. */
+  runPackageUpgrade?: (info: InstallInfo) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** For testing: override the post-upgrade knowledge refresh (fresh smith spawn). */
+  runPostUpgradeRefresh?: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** For testing: override the post-upgrade doctor (fresh smith spawn). */
+  runPostUpgradeDoctor?: () => Promise<number>;
+  /** For testing: override the packaged dry-run query. */
+  dryRunQuery?: (info: InstallInfo) => Promise<{ upToDate: boolean | null; message: string }>;
 }
 
 async function defaultBunInstall(
@@ -75,9 +82,7 @@ async function defaultBunInstall(
     stderr: "inherit",
   });
   const code = await proc.exited;
-  return code === 0
-    ? { ok: true }
-    : { ok: false, error: `bun install exited with code ${code}` };
+  return code === 0 ? { ok: true } : { ok: false, error: `bun install exited with code ${code}` };
 }
 
 async function defaultRunGuiBuild(
@@ -134,6 +139,117 @@ async function defaultRunReinstall(
   }
 }
 
+async function defaultRunPackageUpgrade(
+  info: InstallInfo,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const target = "@eliharoun/agent-smith@latest";
+  let cmd: string[];
+  switch (info.packageManager) {
+    case "npm":
+      cmd = ["npm", "install", "-g", target];
+      break;
+    case "bun":
+      cmd = ["bun", "add", "-g", target];
+      break;
+    case "pnpm":
+      cmd = ["pnpm", "add", "-g", target];
+      break;
+    default:
+      // Defensive only: runPackagedUpdate already returns EXIT_RUNTIME for an
+      // "unknown" manager before this default is ever reached.
+      return { ok: false, error: "unknown package manager" };
+  }
+  const bin = Bun.which(cmd[0]!) ?? cmd[0]!;
+  const proc = Bun.spawn([bin, ...cmd.slice(1)], { stdout: "inherit", stderr: "inherit" });
+  const code = await proc.exited;
+  return code === 0 ? { ok: true } : { ok: false, error: `${cmd[0]} exited with code ${code}` };
+}
+
+// Post-upgrade steps re-spawn a FRESH smith — the upgrade just overwrote this
+// process's own module files, so in-process calls would run half-old code.
+function spawnFreshSmith(args: string[]): Promise<number> {
+  const smith = Bun.which("smith") ?? "smith";
+  const proc = Bun.spawn([smith, ...args], { stdout: "inherit", stderr: "inherit" });
+  return proc.exited;
+}
+
+async function defaultRunPostUpgradeRefresh(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const code = await spawnFreshSmith(["agent", "install", "agent-smith"]);
+  return code === 0
+    ? { ok: true }
+    : { ok: false, error: `smith agent install agent-smith exited ${code}` };
+}
+
+async function defaultRunPostUpgradeDoctor(): Promise<number> {
+  return spawnFreshSmith(["doctor"]);
+}
+
+async function defaultDryRunQuery(
+  info: InstallInfo,
+): Promise<{ upToDate: boolean | null; message: string }> {
+  if (info.packageManager === "npm") {
+    const bin = Bun.which("npm") ?? "npm";
+    const proc = Bun.spawn([bin, "outdated", "-g", "@eliharoun/agent-smith"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const code = await proc.exited;
+    // npm outdated: exit 0 = up to date, exit 1 = update available (NOT an error).
+    if (code === 0) return { upToDate: true, message: "Already up to date." };
+    return { upToDate: false, message: `Update available. Upgrade with: ${info.updateCommand}` };
+  }
+  return { upToDate: null, message: `Run \`${info.updateCommand}\` to upgrade.` };
+}
+
+async function runPackagedUpdate(
+  opts: UpdateCliOptions,
+  info: InstallInfo,
+  print: (s: string) => void,
+): Promise<number> {
+  if (info.packageManager === "unknown") {
+    print("Packaged install detected, but the package manager could not be determined.");
+    print(`To upgrade: ${info.updateCommand}`);
+    return EXIT_RUNTIME;
+  }
+  if (opts.dryRun) {
+    const q = await (opts.dryRunQuery ?? defaultDryRunQuery)(info);
+    print(q.message);
+    return EXIT_OK;
+  }
+  print(`Upgrading via: ${info.updateCommand}`);
+  const up = await (opts.runPackageUpgrade ?? defaultRunPackageUpgrade)(info);
+  if (!up.ok) {
+    print(`Upgrade failed: ${up.error}`);
+    return EXIT_PARTIAL;
+  }
+  print("");
+  print("Refreshing agent-smith knowledge...");
+  const refresh = await (opts.runPostUpgradeRefresh ?? defaultRunPostUpgradeRefresh)();
+  if (!refresh.ok) {
+    print(`  (Re-run: smith agent install agent-smith — ${refresh.error})`);
+  }
+  print("");
+  print("Running smith doctor...");
+  const code = await (opts.runPostUpgradeDoctor ?? defaultRunPostUpgradeDoctor)();
+  if (!refresh.ok && code === EXIT_OK) return EXIT_PARTIAL;
+  return code;
+}
+
+export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
+  const print = opts.print ?? ((s: string) => console.log(s));
+  const detect = opts.getInstallInfo ?? getInstallInfoForRunningModule;
+  const info = await detect(import.meta.url);
+
+  // unknown (no workspace at all): defer to the source path's existing
+  // null-guard, which prints the reinstall pointer and exits.
+  if (info.kind === "packaged") {
+    return runPackagedUpdate(opts, info, print);
+  }
+  return runSourceUpdate(opts);
+}
+
 /**
  * Production wiring for `smith update`. Performs:
  *   1. Resolve workspace path from `import.meta.url`. If null (rare: the
@@ -150,7 +266,7 @@ async function defaultRunReinstall(
  * `--dry-run` skips steps 2-4 and instead runs `git fetch origin main` plus
  * `git rev-list --count HEAD..origin/main` to report what would change.
  */
-export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
+async function runSourceUpdate(opts: UpdateCliOptions): Promise<number> {
   const print = opts.print ?? ((s: string) => console.log(s));
   const importMetaUrl = opts.importMetaUrl ?? import.meta.url;
 
@@ -162,9 +278,7 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   if (workspacePath === null) {
     print("Error: could not resolve agent-smith workspace; please reinstall.");
     print("");
-    print(
-      "This usually means the running code is not located inside an agent-smith clone.",
-    );
+    print("This usually means the running code is not located inside an agent-smith clone.");
     print(
       "To reinstall, run: gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install",
     );
@@ -182,8 +296,7 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   // here so a future refactor doesn't "fix" it without context.
   const runDoctor =
     opts.runDoctor ??
-    ((_cwd: string) =>
-      runDoctorCli({ offline: false, noCache: false, json: false }));
+    ((_cwd: string) => runDoctorCli({ offline: false, noCache: false, json: false }));
 
   if (opts.dryRun) {
     const fetched = await runner(["fetch", "origin", "main"]);
@@ -191,15 +304,9 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
       print(`git fetch failed: ${fetched.stderr.trim() || "unknown error"}`);
       return EXIT_PARTIAL;
     }
-    const countRes = await revListCount(
-      workspacePath,
-      "HEAD..origin/main",
-      { runner },
-    );
+    const countRes = await revListCount(workspacePath, "HEAD..origin/main", { runner });
     if (!countRes.ok) {
-      print(
-        "Could not determine commit count; smith update would still attempt to pull.",
-      );
+      print("Could not determine commit count; smith update would still attempt to pull.");
     } else if (countRes.value === 0) {
       print("Already up to date with origin/main.");
     } else {
@@ -296,10 +403,7 @@ export async function runUpdateCli(opts: UpdateCliOptions): Promise<number> {
   // If launcher rewrite, reinstall, or GUI build failed but doctor passed,
   // surface the partial. Doctor drift (1) or network (2) take precedence —
   // they're more actionable than the soft-fails above.
-  if (
-    (!launcherResult.ok || !reinstallResult.ok || !guiBuildResult.ok) &&
-    doctorCode === EXIT_OK
-  ) {
+  if ((!launcherResult.ok || !reinstallResult.ok || !guiBuildResult.ok) && doctorCode === EXIT_OK) {
     return EXIT_PARTIAL;
   }
   return doctorCode;

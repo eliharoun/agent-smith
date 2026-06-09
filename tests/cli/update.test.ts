@@ -1,11 +1,11 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunResult, Runner } from "../../src/io/git";
 import { runUpdateCli } from "../../src/cli/commands/update";
 import { EXIT_RUNTIME } from "../../src/cli/exit-codes";
+import type { Runner, RunResult } from "../../src/io/git";
 
 let tmpDir: string;
 
@@ -27,10 +27,7 @@ async function fakeWorkspace(): Promise<{
   importMetaUrl: string;
 }> {
   const workspace = tmpDir;
-  await writeFile(
-    join(workspace, "package.json"),
-    JSON.stringify({ name: "agent-smith" }),
-  );
+  await writeFile(join(workspace, "package.json"), JSON.stringify({ name: "agent-smith" }));
   const srcDir = join(workspace, "src", "cli", "commands");
   await mkdir(srcDir, { recursive: true });
   return {
@@ -43,9 +40,10 @@ async function fakeWorkspace(): Promise<{
  * Build a runner whose responses are dispatched by matching the args array
  * via a string predicate. First matching entry wins. Records every invocation.
  */
-function makeRunner(
-  handlers: Array<{ match: (args: string[]) => boolean; result: RunResult }>,
-): { runner: Runner; calls: string[][] } {
+function makeRunner(handlers: Array<{ match: (args: string[]) => boolean; result: RunResult }>): {
+  runner: Runner;
+  calls: string[][];
+} {
   const calls: string[][] = [];
   const runner: Runner = async (args) => {
     calls.push(args);
@@ -65,13 +63,10 @@ describe("runUpdateCli", () => {
       dryRun: false,
       print: (s) => lines.push(s),
       // /tmp has no agent-smith package.json above it.
-      importMetaUrl: pathToFileURL("/tmp/non-existent-smith-workspace/index.ts")
-        .href,
+      importMetaUrl: pathToFileURL("/tmp/non-existent-smith-workspace/index.ts").href,
       runner: () => Promise.reject(new Error("runner must not be called")),
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called")),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called")),
     });
     expect(code).toBe(EXIT_RUNTIME);
     const all = lines.join("\n");
@@ -102,10 +97,8 @@ describe("runUpdateCli", () => {
       print: (s) => lines.push(s),
       importMetaUrl,
       runner,
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called")),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called")),
     });
     expect(code).toBe(1);
     const out = lines.join("\n");
@@ -276,10 +269,8 @@ describe("runUpdateCli", () => {
       print: (s) => lines.push(s),
       importMetaUrl,
       runner,
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called")),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called")),
     });
     expect(code).toBe(0);
     expect(lines.join("\n")).toContain("Already up to date");
@@ -299,10 +290,8 @@ describe("runUpdateCli", () => {
       print: (s) => lines.push(s),
       importMetaUrl,
       runner,
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called")),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called")),
     });
     expect(code).toBe(3);
     expect(lines.join("\n")).toContain("git fetch failed");
@@ -327,10 +316,8 @@ describe("runUpdateCli", () => {
       print: (s) => lines.push(s),
       importMetaUrl,
       runner,
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called")),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called")),
     });
     expect(code).toBe(3);
     expect(lines.join("\n")).toContain("Update failed");
@@ -464,8 +451,7 @@ describe("runUpdateCli", () => {
         result: { stdout: "", stderr: "", code: 0 },
       },
       {
-        match: (a) =>
-          a[0] === "rev-list" && a[1] === "--count" && a[2] === "HEAD..origin/main",
+        match: (a) => a[0] === "rev-list" && a[1] === "--count" && a[2] === "HEAD..origin/main",
         result: { stdout: "0\n", stderr: "", code: 0 },
       },
     ]);
@@ -475,18 +461,14 @@ describe("runUpdateCli", () => {
       print: () => {},
       importMetaUrl,
       runner,
-      bunInstall: () =>
-        Promise.reject(new Error("bunInstall must not be called in dry-run")),
+      bunInstall: () => Promise.reject(new Error("bunInstall must not be called in dry-run")),
       runReinstall: async () => {
         reinstallCalled = true;
         return { ok: true };
       },
       runWriteLauncher: () =>
-        Promise.reject(
-          new Error("runWriteLauncher must not be called in dry-run"),
-        ),
-      runDoctor: () =>
-        Promise.reject(new Error("runDoctor must not be called in dry-run")),
+        Promise.reject(new Error("runWriteLauncher must not be called in dry-run")),
+      runDoctor: () => Promise.reject(new Error("runDoctor must not be called in dry-run")),
     });
     expect(code).toBe(0);
     expect(reinstallCalled).toBe(false);
@@ -666,5 +648,131 @@ describe("runUpdateCli", () => {
       runDoctor: async () => 1,
     });
     expect(code).toBe(1);
+  });
+
+  // --- packaged-install branch (npm/bun/pnpm) ---
+  const PACKAGED_NPM = {
+    kind: "packaged" as const,
+    packageManager: "npm" as const,
+    workspacePath: "/opt/homebrew/lib/node_modules/@eliharoun/agent-smith",
+    updateCommand: "npm install -g @eliharoun/agent-smith",
+    canGitUpdate: false,
+  };
+
+  test("packaged: runs package upgrade + refresh + doctor, NEVER git", async () => {
+    const calls: string[] = [];
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      runner: () => Promise.reject(new Error("git runner must not be called on packaged install")),
+      getInstallInfo: async () => PACKAGED_NPM,
+      runPackageUpgrade: async () => {
+        calls.push("upgrade");
+        return { ok: true };
+      },
+      runPostUpgradeRefresh: async () => {
+        calls.push("refresh");
+        return { ok: true };
+      },
+      runPostUpgradeDoctor: async () => {
+        calls.push("doctor");
+        return 0;
+      },
+    });
+    expect(code).toBe(0);
+    expect(calls).toEqual(["upgrade", "refresh", "doctor"]);
+  });
+
+  test("packaged: upgrade failure → EXIT_PARTIAL, no doctor", async () => {
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      runner: () => Promise.reject(new Error("no git")),
+      getInstallInfo: async () => PACKAGED_NPM,
+      runPackageUpgrade: async () => ({ ok: false, error: "network" }),
+      runPostUpgradeDoctor: async () => {
+        throw new Error("doctor must not run after failed upgrade");
+      },
+    });
+    expect(code).toBe(3); // EXIT_PARTIAL
+  });
+
+  test("packaged: unknown manager refuses, runs nothing", async () => {
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      runner: () => Promise.reject(new Error("no git")),
+      getInstallInfo: async () => ({
+        kind: "packaged" as const,
+        packageManager: "unknown" as const,
+        workspacePath: "/weird/agent-smith",
+        updateCommand:
+          "reinstall @eliharoun/agent-smith globally with your package manager (npm/bun/pnpm)",
+        canGitUpdate: false,
+      }),
+      runPackageUpgrade: async () => {
+        throw new Error("must not upgrade when manager unknown");
+      },
+    });
+    expect(code).toBe(1); // EXIT_RUNTIME
+  });
+
+  test("packaged: refresh fails but doctor OK → EXIT_PARTIAL", async () => {
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      runner: () => Promise.reject(new Error("no git")),
+      getInstallInfo: async () => PACKAGED_NPM,
+      runPackageUpgrade: async () => ({ ok: true }),
+      runPostUpgradeRefresh: async () => ({ ok: false, error: "boom" }),
+      runPostUpgradeDoctor: async () => 0,
+    });
+    expect(code).toBe(3); // EXIT_PARTIAL
+  });
+
+  test("packaged dry-run → EXIT_OK, no git, no upgrade", async () => {
+    const code = await runUpdateCli({
+      dryRun: true,
+      print: () => {},
+      runner: () => Promise.reject(new Error("no git")),
+      getInstallInfo: async () => PACKAGED_NPM,
+      dryRunQuery: async () => ({ upToDate: null, message: "Run npm outdated -g …" }),
+      runPackageUpgrade: async () => {
+        throw new Error("dry-run must not upgrade");
+      },
+    });
+    expect(code).toBe(0);
+  });
+
+  test("source: git pipeline STILL runs (regression guard for the verbatim move)", async () => {
+    // Hermetic: a fake workspace + its importMetaUrl so runSourceUpdate's own
+    // resolveWorkspacePath resolves to the tmp workspace (not the real repo),
+    // making this test independent of where it runs / symlink layout.
+    const { importMetaUrl } = await fakeWorkspace();
+    const calls: string[][] = [];
+    const code = await runUpdateCli({
+      dryRun: false,
+      print: () => {},
+      importMetaUrl,
+      getInstallInfo: async () => ({
+        kind: "source" as const,
+        packageManager: "unknown" as const,
+        workspacePath: "/repo",
+        updateCommand: "smith update",
+        canGitUpdate: true,
+      }),
+      runner: async (args) => {
+        calls.push(args);
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      bunInstall: async () => ({ ok: true }),
+      runGuiBuild: async () => ({ ok: true }),
+      runWriteLauncher: async () => ({ ok: true }),
+      runReinstall: async () => ({ ok: true }),
+      runDoctor: async () => 0,
+    });
+    expect(code).toBe(0);
+    expect(calls.some((a) => a[0] === "status")).toBe(true);
+    expect(calls.some((a) => a[0] === "pull")).toBe(true);
   });
 });

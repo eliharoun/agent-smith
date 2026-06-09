@@ -102,9 +102,7 @@ export function formatCodexSection(
   return formatManualSection("Codex", p);
 }
 
-export function formatKiroSection(
-  p: Extract<DoctorPlatformReport, { platform: "kiro" }>,
-): string {
+export function formatKiroSection(p: Extract<DoctorPlatformReport, { platform: "kiro" }>): string {
   return formatManualSection("Kiro", p);
 }
 
@@ -380,12 +378,13 @@ export function formatModelResolutionCompact(
     const st = mr.platforms[a.platform]?.status;
     if (st === "unauthenticated" || st === "cli-not-installed") {
       const why = st === "cli-not-installed" ? "CLI not installed" : "not authenticated";
-      const fix = st === "cli-not-installed" ? "install the platform CLI" : "authenticate the platform CLI";
+      const fix =
+        st === "cli-not-installed" ? "install the platform CLI" : "authenticate the platform CLI";
       out.push(`  [${a.platform}] ${a.agent}: platform ${why}`);
       out.push(`            -> ${fix} (\`smith doctor --verbose\` for details)`);
     }
   }
-  if (out.length === 1) out.push("  See \`smith doctor --verbose\` for details.");
+  if (out.length === 1) out.push("  See `smith doctor --verbose` for details.");
   return out.join("\n");
 }
 
@@ -445,9 +444,9 @@ export function formatModelResolutionSection(
     out.push("");
     out.push("  Tier resolution preview (what each platform's resolver returns):");
     // Column header line for legibility.
-    const cols = (
-      ["opencode", "claude-code", "codex", "kiro"] as const
-    ).map((id) => (PLATFORM_LABELS[id] ?? id).padEnd(14));
+    const cols = (["opencode", "claude-code", "codex", "kiro"] as const).map((id) =>
+      (PLATFORM_LABELS[id] ?? id).padEnd(14),
+    );
     out.push(`    ${"tier".padEnd(10)} ${cols.join(" ")}`);
     for (const t of mr.tierPreview) {
       const cells = (["opencode", "claude-code", "codex", "kiro"] as const).map((id) => {
@@ -530,6 +529,15 @@ export function formatWorkspaceSection(ws: WorkspaceVersionStatus): string {
         case "no-workspace":
           lines.push("  Status: Workspace check skipped (not a git checkout)");
           break;
+        case "packaged":
+          lines.push("  Status: Packaged install (not a git checkout) — staleness check skipped");
+          // `smith update` is the unified upgrade entry point for BOTH source and
+          // packaged installs — it detects the install type and runs the right
+          // thing. Recommend it (not the raw manager command) so users have one
+          // command to remember. The manager command is shown as the action it
+          // performs under the hood.
+          lines.push(`  Hint:   Run \`smith update\` to upgrade (runs \`${ws.updateCommand}\`).`);
+          break;
       }
       break;
   }
@@ -539,9 +547,13 @@ export function formatWorkspaceSection(ws: WorkspaceVersionStatus): string {
 export function formatAtlassianAuthSection(auth: AtlassianAuthReport): string {
   const lines: string[] = ["Atlassian auth:"];
   if (auth.status === "not-applicable") {
-    lines.push("  Status: not used (no Confluence/Jira knowledge sources; atlassian-skills not installed)");
+    lines.push(
+      "  Status: not used (no Confluence/Jira knowledge sources; atlassian-skills not installed)",
+    );
     lines.push("  To enable Confluence/Jira knowledge sources later,");
-    lines.push(`          create ${join(stateHome(), ".env")} with SMITH_ATLASSIAN_EMAIL / _API_TOKEN / _BASE_URL.`);
+    lines.push(
+      `          create ${join(stateHome(), ".env")} with SMITH_ATLASSIAN_EMAIL / _API_TOKEN / _BASE_URL.`,
+    );
     return lines.join("\n");
   }
   if (auth.status === "configured") {
@@ -686,11 +698,15 @@ export function formatAgentDriftSection(r: AgentDriftReport): string {
         break;
       case "drift":
         lines.push(`  [drift]   ${e.name} (${e.platform})`);
-        lines.push(`            -> on-disk file edited since install; run \`smith agent install ${e.name}\``);
+        lines.push(
+          `            -> on-disk file edited since install; run \`smith agent install ${e.name}\``,
+        );
         break;
       case "missing":
         lines.push(`  [missing] ${e.name} (${e.platform})`);
-        lines.push(`            -> installed file gone (${e.path}); run \`smith agent install ${e.name}\``);
+        lines.push(
+          `            -> installed file gone (${e.path}); run \`smith agent install ${e.name}\``,
+        );
         break;
     }
   }
@@ -911,9 +927,7 @@ function formatMcpSpawnFinding(f: McpSpawnFinding): string {
  * not install MCP servers; the user installs them via their platform's
  * own configuration UI.
  */
-export function formatMcpDepsSection(
-  r: NonNullable<DoctorReport["mcpDeps"]>,
-): string {
+export function formatMcpDepsSection(r: NonNullable<DoctorReport["mcpDeps"]>): string {
   const lines: string[] = ["MCP dependencies:"];
   if (r.findings.length === 0) {
     lines.push("  Status: ok");
@@ -943,9 +957,7 @@ export function formatMcpDepsSection(
  * isn't configured). There is no auto-fix — the user either wires `via:`
  * or installs the missing MCP server.
  */
-export function formatLazyFetchSection(
-  r: NonNullable<DoctorReport["lazyFetch"]>,
-): string {
+export function formatLazyFetchSection(r: NonNullable<DoctorReport["lazyFetch"]>): string {
   const lines: string[] = ["Lazy URL fetch:"];
   if (r.findings.length === 0) {
     lines.push("  Status: ok");
@@ -972,9 +984,7 @@ export function formatLazyFetchSection(
  * informational; the resolver picks the most-authoritative layer at
  * fetch time.
  */
-export function formatUrlRoutingSection(
-  r: NonNullable<DoctorReport["urlRouting"]>,
-): string {
+export function formatUrlRoutingSection(r: NonNullable<DoctorReport["urlRouting"]>): string {
   const lines: string[] = ["URL routing:"];
   if (r.entries.length === 0) {
     lines.push("  Status: no routes registered");

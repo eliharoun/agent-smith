@@ -7,7 +7,13 @@ vi.mock("@/hooks/useStartJob", () => ({
 }));
 
 let q: {
-  data?: { alreadyUpToDate: boolean; commitsBehind: number; rawOutput: string };
+  data?: {
+    alreadyUpToDate: boolean;
+    commitsBehind: number;
+    rawOutput: string;
+    installKind?: "source" | "packaged" | "unknown";
+    updateAvailable?: boolean;
+  };
   isLoading: boolean;
   isError: boolean;
   error?: unknown;
@@ -60,6 +66,42 @@ describe("UpdatePreview", () => {
     render(<UpdatePreview />);
     fireEvent.click(screen.getByRole("button", { name: /run update/ }));
     expect(mutate).toHaveBeenCalledWith({ command: "update", dryRun: false });
+  });
+
+  it("packaged + update available: shows UPDATE AVAILABLE, no git 'BEHIND', run button works", () => {
+    q = {
+      isLoading: false,
+      isError: false,
+      data: {
+        alreadyUpToDate: false,
+        commitsBehind: 0,
+        rawOutput: "Update available. Upgrade with: npm install -g @eliharoun/agent-smith",
+        installKind: "packaged",
+        updateAvailable: true,
+      },
+    };
+    render(<UpdatePreview />);
+    expect(screen.getByText("UPDATE AVAILABLE")).toBeInTheDocument();
+    expect(screen.queryByText(/BEHIND/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /run update/ }));
+    expect(mutate).toHaveBeenCalledWith({ command: "update", dryRun: false });
+  });
+
+  it("packaged + up to date: shows UP TO DATE, no run button", () => {
+    q = {
+      isLoading: false,
+      isError: false,
+      data: {
+        alreadyUpToDate: true,
+        commitsBehind: 0,
+        rawOutput: "Already up to date.",
+        installKind: "packaged",
+        updateAvailable: false,
+      },
+    };
+    render(<UpdatePreview />);
+    expect(screen.getByText("UP TO DATE")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /run update/ })).not.toBeInTheDocument();
   });
 
   it("renders error state", () => {

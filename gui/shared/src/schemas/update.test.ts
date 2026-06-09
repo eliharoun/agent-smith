@@ -20,6 +20,16 @@ describe("UpdatePreview", () => {
       }).success,
     ).toBe(true);
   });
+  it("accepts the packaged-install shape", () => {
+    const r = UpdatePreview.safeParse({
+      commitsBehind: 0,
+      alreadyUpToDate: false,
+      rawOutput: "Update available. Upgrade with: npm install -g @eliharoun/agent-smith",
+      installKind: "packaged",
+      updateAvailable: true,
+    });
+    expect(r.success).toBe(true);
+  });
   it("rejects negative commitsBehind", () => {
     expect(
       UpdatePreview.safeParse({

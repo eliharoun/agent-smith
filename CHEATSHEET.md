@@ -51,14 +51,13 @@ smith doctor                                         # verify installation healt
 | Install (recommended) | `npm install -g @eliharoun/agent-smith` | Ships the CLI, the bundled skills, AND the GUI (`smith gui` works out of the box). Postinstall hook copies `the-architect` + `the-keymaker` into per-platform skill dirs when `bun` is on PATH; otherwise prints a hint and exits cleanly. **Requires `bun >= 1.1.0`** at runtime. |
 | Install (from source — for development / live GUI source) | `gh repo clone eliharoun/agent-smith ~/.agent-smith && bash ~/.agent-smith/bin/install` | Clones to `~/.agent-smith/`, runs `bun install` (which fires `scripts/bootstrap.ts` postinstall to install bundled skills), installs the `agent-smith` persona, builds the GUI SPA bundle, and symlinks `~/.local/bin/smith` → `~/.agent-smith/src/index.ts`. Use this to develop `agent-smith` itself or hack on the GUI source (editable source + auto-rebuild on `git pull`); `smith gui` itself is available from the npm install too. Also requires `gh` (or substitute `git clone`). |
 | First-time setup | `smith init && smith init-user` | `smith init` creates `~/.config/agent-smith/` and the registry. `smith init-user` opens `USER.md` in `$EDITOR`. Both are idempotent. |
-| Update (npm install) | `npm update -g @eliharoun/agent-smith` | Standard npm update. Re-runs the postinstall hook. |
-| Update (from source) | `smith update` | `git pull --ff-only` + `bun install` + `gui:build` + `agent-smith` reinstall + `doctor`. Equivalent to re-running `bash ~/.agent-smith/bin/install`. |
+| Update (recommended, both install types) | `smith update` | One upgrade command for source and packaged installs. Source: `git pull --ff-only` + `bun install` + `gui:build` + persona reinstall + doctor. Packaged (npm/bun/pnpm): runs the matching global upgrade (re-firing the postinstall bootstrap hook) then refresh + doctor. If the install manager can't be determined, prints the command instead. |
 | Re-install bundled skills | `smith skill bootstrap` | Re-installs `the-architect` + `the-keymaker` skills (normally fired by the postinstall hook). |
 | Re-install agent-smith persona | `smith agent install agent-smith` | Re-installs the companion agent (normally part of the from-source `bin/install` and `smith update`). |
 
 Dev invocation (no install): `bun run src/index.ts <cmd>` or `./src/index.ts <cmd>` from inside an `agent-smith` checkout.
 
-The from-source clone at `~/.agent-smith/` IS the install for the source path. There is no separate "user install" vs "dev install" — `cd ~/.agent-smith && git pull` (or `smith update`) updates the running CLI.
+The from-source clone at `~/.agent-smith/` IS the install for the source path. There is no separate "user install" vs "dev install" — `cd ~/.agent-smith && git pull` (or `smith update`) updates the running CLI. (Packaged installs have no clone: `smith update` runs the package-manager upgrade instead.)
 
 ---
 
@@ -98,7 +97,7 @@ back to the page over SSE.
 | Knowledge | `/system/atlassian-setup` | Atlassian credential setup (Confluence/Jira) |
 | System | `/system/doctor` | `smith doctor` + one-click `--fix-knowledge-refresh` + Codex-hooks migration banner |
 | System | `/system/daemon` | `smith daemon {start,stop,status}` + live log tail (SSE) + `pullIntervalMs` / `heartbeatIntervalMs` tuning |
-| System | `/system/update` | preview commits behind `origin/main` + run `smith update` with streamed progress |
+| System | `/system/update` | preview commits behind `origin/main` (source installs) + run `smith update` with streamed progress (packaged installs: `smith update` runs the package-manager upgrade) |
 | System | `/system/history` | persistent job history with debounced regex search across past output |
 | System | `/system/model-config` | per-target model configuration overrides |
 | System | `/system/settings` | GUI settings |

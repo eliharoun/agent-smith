@@ -37,7 +37,7 @@ try {
 if (!bunOk) {
   console.error("agent-smith: bun not detected on PATH.");
   console.error(
-    "agent-smith: install bun from https://bun.sh, then run `smith agent install agent-smith` to complete setup.",
+    "agent-smith: install bun from https://bun.sh, then run `npm rebuild @eliharoun/agent-smith` to finish setup (skills + launcher).",
   );
   console.error("agent-smith: skipping postinstall.");
   process.exit(0); // Exit 0 so npm install succeeds; smith just isn't bootstrapped.

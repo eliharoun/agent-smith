@@ -190,7 +190,9 @@ smith knowledge remove <agent> <source-id>      # remove a knowledge source from
 
 smith doctor                               # platform health, schema drift, registry hygiene
 smith status                               # registry + paths
-smith update                               # git pull + bun install + doctor
+smith update                               # upgrade agent-smith, any install type
+                                           #   source checkout: git pull + bun install + doctor
+                                           #   npm/bun/pnpm -g:  runs the matching global upgrade
 ```
 
 Full reference: [`smith --help`](./CHEATSHEET.md), the [cheat sheet](./CHEATSHEET.md), or the [CLI reference](./guide/14-cli-reference.md).

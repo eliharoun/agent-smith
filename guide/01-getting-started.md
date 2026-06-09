@@ -115,7 +115,7 @@ From the source path (`bash bin/install`):
 smith update
 ```
 
-Equivalent to `bin/install` in update mode, but invokable from anywhere on PATH.
+Upgrades agent-smith for both source and packaged installs. For source installs, equivalent to `bin/install` in update mode; for npm/bun/pnpm installs, runs the package manager's global upgrade and then refreshes + runs doctor. Works from anywhere on PATH.
 
 ### Uninstall
 

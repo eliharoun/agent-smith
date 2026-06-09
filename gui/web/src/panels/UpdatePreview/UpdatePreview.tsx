@@ -32,7 +32,10 @@ export function UpdatePreview() {
     );
   }
 
-  const { alreadyUpToDate, commitsBehind, rawOutput } = q.data;
+  const { alreadyUpToDate, commitsBehind, rawOutput, installKind, updateAvailable } = q.data;
+
+  const packaged = installKind === "packaged";
+  const upToDate = packaged ? updateAvailable === false : alreadyUpToDate;
 
   const onRun = () => {
     start.mutate({ command: "update", dryRun: false });
@@ -43,19 +46,19 @@ export function UpdatePreview() {
       <div className="font-mono text-[10px] uppercase tracking-widest text-matrix-green-muted mb-2">
         // smith update
       </div>
-      {alreadyUpToDate ? (
+      {upToDate ? (
         <div className="flex items-center gap-3">
           <Chip tone="green">UP TO DATE</Chip>
           <span className="font-mono text-sm text-matrix-green-muted">
-            no commits behind origin/main
+            {packaged ? "no upgrade available" : "no commits behind origin/main"}
           </span>
         </div>
       ) : (
         <>
           <div className="flex items-center gap-3 mb-3">
-            <Chip tone="amber">{commitsBehind} BEHIND</Chip>
+            <Chip tone="amber">{packaged ? "UPDATE AVAILABLE" : `${commitsBehind} BEHIND`}</Chip>
             <span className="font-mono text-sm text-matrix-green-muted">
-              run `smith update` to pull and reinstall
+              run `smith update` to upgrade
             </span>
           </div>
           <Button variant="primary" onClick={onRun} disabled={start.isPending}>

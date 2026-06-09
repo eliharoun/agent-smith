@@ -81,7 +81,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`skill update [name]`](#smith-skill-update-name) | Re-copy installed skill(s) from their source catalogs | [05](./05-skills.md) |
 | [`skill validate <name>`](#smith-skill-validate-name) | Validate a registered skill's frontmatter | [05](./05-skills.md) |
 | [`status`](#smith-status) | Print registry locations and registered catalog summary | [08](./08-registries-and-catalogs.md) |
-| [`update`](#smith-update) | Pull latest agent-smith from `origin/main`, install deps, run doctor | [11](./11-update-and-uninstall.md) |
+| [`update`](#smith-update) | Upgrade agent-smith (source or packaged install); runs doctor | [11](./11-update-and-uninstall.md) |
 
 ---
 
@@ -2663,11 +2663,7 @@ $ smith doctor --fix-mcp-commands
 
 **Synopsis:** `smith update [--dry-run]`
 
-**Description:** Pull the latest agent-smith from `origin/main`,
-install dependencies, rebuild the GUI bundle, refresh agent-smith's
-knowledge directory, and run `smith doctor` to verify. Specific to
-the from-source install path; for npm installs use `npm update -g
-agent-smith` instead. Refuses to run from a corrupt install (when
+**Description:** The single command for upgrading agent-smith whether installed from source or via a package manager. For source installs: pull the latest from `origin/main`, install dependencies, rebuild the GUI bundle, refresh the knowledge directory, and run `smith doctor`. For packaged installs (npm/bun/pnpm): run the package manager's global upgrade, then refresh + doctor. The install type is auto-detected; if it can't be determined, the command to run is printed instead. For source installs, refuses to run from a corrupt install (when
 `import.meta.url` does not resolve to a workspace — should not happen
 under the single-mode source install where every clone lives at
 `~/.agent-smith/`) with a pointer to a clean reinstall (`gh repo clone

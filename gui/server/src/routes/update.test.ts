@@ -66,4 +66,69 @@ describe("GET /api/update/preview", () => {
     await app.request("/api/update/preview");
     expect(captured).toEqual(["update", "--dry-run"]);
   });
+
+  it("packaged install: reports installKind packaged and parses 'Update available'", async () => {
+    const app = new Hono();
+    registerUpdateRoute(app, {
+      spawn: async () => ({
+        stdout: "Update available. Upgrade with: npm install -g @eliharoun/agent-smith\n",
+        exitCode: 0,
+      }),
+      detectInstall: async () => ({
+        kind: "packaged",
+        packageManager: "npm",
+        workspacePath: "/x",
+        updateCommand: "npm install -g @eliharoun/agent-smith",
+        canGitUpdate: false,
+      }),
+    });
+    const res = await app.request("/api/update/preview");
+    const body = (await res.json()) as { installKind: string; updateAvailable: boolean };
+    expect(body.installKind).toBe("packaged");
+    expect(body.updateAvailable).toBe(true);
+  });
+
+  it("packaged install: 'Already up to date' → updateAvailable false", async () => {
+    const app = new Hono();
+    registerUpdateRoute(app, {
+      spawn: async () => ({ stdout: "Already up to date.\n", exitCode: 0 }),
+      detectInstall: async () => ({
+        kind: "packaged",
+        packageManager: "npm",
+        workspacePath: "/x",
+        updateCommand: "npm install -g @eliharoun/agent-smith",
+        canGitUpdate: false,
+      }),
+    });
+    const res = await app.request("/api/update/preview");
+    const body = (await res.json()) as { updateAvailable: boolean };
+    expect(body.updateAvailable).toBe(false);
+  });
+
+  it("source install: keeps existing commitsBehind parsing, installKind source", async () => {
+    const app = new Hono();
+    registerUpdateRoute(app, {
+      spawn: async () => ({
+        stdout:
+          "smith update would pull 7 commit(s) from origin/main, then run `bun install` and `smith doctor`.\n",
+        exitCode: 0,
+      }),
+      detectInstall: async () => ({
+        kind: "source",
+        packageManager: "unknown",
+        workspacePath: "/repo",
+        updateCommand: "smith update",
+        canGitUpdate: true,
+      }),
+    });
+    const res = await app.request("/api/update/preview");
+    const body = (await res.json()) as {
+      commitsBehind: number;
+      installKind: string;
+      updateAvailable: boolean;
+    };
+    expect(body.commitsBehind).toBe(7);
+    expect(body.installKind).toBe("source");
+    expect(body.updateAvailable).toBe(true);
+  });
 });

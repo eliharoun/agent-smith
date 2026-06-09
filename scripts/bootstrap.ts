@@ -20,7 +20,9 @@
 
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
+import { getInstallInfo, type InstallInfo } from "../src/io/install-type";
 import { hashSkillDir, loadInstalledSkills } from "../src/io/installed-skills";
+import { writeLauncher } from "../src/io/launcher";
 import { installSkill, updateSkill } from "../src/io/skill-installer";
 
 export interface BootstrapPlatforms {
@@ -153,6 +155,27 @@ async function runPostinstallDaemonRestart(): Promise<void> {
   if (result.action === "restarted") {
     console.log(`agent-smith: daemon restarted (pid ${result.pid})`);
   }
+}
+
+/**
+ * Write the ~/.local/bin/smith launcher wrapper for packaged (npm/bun/pnpm)
+ * installs. Source installs already get the wrapper from bin/install, so this
+ * no-ops there. Never throws — postinstall must always exit 0.
+ */
+export async function installLauncher(opts: {
+  installInfo: InstallInfo;
+  writeLauncherFn?: typeof writeLauncher;
+}): Promise<{ ok: boolean; note: string }> {
+  const { installInfo } = opts;
+  if (installInfo.kind === "source") {
+    return { ok: true, note: "source: launcher owned by bin/install" };
+  }
+  if (installInfo.kind !== "packaged" || !installInfo.workspacePath) {
+    return { ok: false, note: "unknown install: skipped launcher write" };
+  }
+  const write = opts.writeLauncherFn ?? writeLauncher;
+  const r = await write({ workspacePath: installInfo.workspacePath });
+  return r.ok ? { ok: true, note: r.launcherPath } : { ok: false, note: r.error };
 }
 
 export async function bootstrap(opts: BootstrapOptions): Promise<BootstrapResult> {
@@ -300,6 +323,16 @@ if (import.meta.main) {
         // Fail-soft: never break `bun install` because of daemon orchestration.
         console.warn(
           `agent-smith: daemon restart skipped: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      try {
+        const info = await getInstallInfo({ importMetaUrl: import.meta.url });
+        const launcher = await installLauncher({ installInfo: info });
+        if (launcher.ok) console.log(`agent-smith: launcher ${launcher.note}`);
+        else console.warn(`agent-smith: launcher not written (${launcher.note})`);
+      } catch (err) {
+        console.warn(
+          `agent-smith: launcher step skipped: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       // Postinstall ALWAYS exits 0 — never break `bun install`.

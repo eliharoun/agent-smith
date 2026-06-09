@@ -54,7 +54,7 @@ The default seed is created in-memory by `defaultRegistry()` (`src/io/registry.t
 
 Consequences:
 
-- `smith agent install agent-smith` works on a fresh install, before the user runs any `smith agent register` command. The from-source installer (`bin/install`, Step 9) relies on this; under an `npm install -g @eliharoun/agent-smith`, running `smith agent install agent-smith` manually exercises the same code path against the npm-installed bundle.
+- `smith agent install agent-smith` works on a fresh install, before the user runs any `smith agent register` command. The from-source installer (`bin/install`, Step 9) relies on this; for packaged installs, `smith update` runs it as part of its refresh pipeline against the installed bundle (it can also be run manually at any time).
 - If you have **also** registered the same path as a `user-global` or `project` source — for example by cloning the repo into `~/.config/agent-smith/agents/` — the `collision` check inside `resolveAllSources` (`src/io/registry.ts`) drops the synthetic source so the bundle is not loaded twice. (As of the bootstrap consolidation, `scripts/bootstrap.ts` no longer touches agents at all — it installs only the bundled skills — so the synthetic-source dedup is the sole mechanism preventing double-load of the persona.)
 - `smith agent list` shows the synthetic source's bundles tagged `(agent-smith-self, registered)`. The `registered` kind is what the synthetic carries; the label disambiguates it from real `registered` catalogs.
 - `smith status` does **not** currently surface the synthetic source in its `Agent catalogs` table — only persisted sources show up there. To see it, run `smith agent list`.

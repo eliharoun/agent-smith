@@ -271,6 +271,8 @@ use the static tier literal for each platform. See
 
 `smith update` is a six-step sequential pipeline (`src/cli/commands/update.ts`) and its exit codes don't match a single SmithError variant. Spokes 11 and 14 link this section as `#update-pipeline`.
 
+The pipeline below describes the source-install path. For packaged installs (npm/bun/pnpm), `smith update` instead runs the package manager's global upgrade and then the refresh + doctor steps; if the install manager can't be determined, it prints the command to run rather than guessing.
+
 The pipeline:
 
 1. Resolve the workspace from `import.meta.url`. If `null`, refuse with a reinstall pointer.
