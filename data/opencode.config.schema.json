@@ -57,7 +57,7 @@
             },
             "branch": {
               "type": "string",
-              "description": "Branch or ref Scout should clone and inspect"
+              "description": "Branch or ref to clone and inspect"
             }
           },
           "required": [
@@ -153,12 +153,6 @@
             },
             "websearch": {
               "$ref": "#/$defs/PermissionActionConfig"
-            },
-            "repo_clone": {
-              "$ref": "#/$defs/PermissionRuleConfig"
-            },
-            "repo_overview": {
-              "$ref": "#/$defs/PermissionRuleConfig"
             },
             "lsp": {
               "$ref": "#/$defs/PermissionRuleConfig"
@@ -722,6 +716,44 @@
       },
       "additionalProperties": false
     },
+    "Policy.Effect": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "ConfigV2.Experimental.Policy": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "provider.use"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "effect": {
+          "$ref": "#/$defs/Policy.Effect"
+        },
+        "resource": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "effect",
+        "resource"
+      ],
+      "additionalProperties": false
+    },
     "Config": {
       "type": "object",
       "properties": {
@@ -758,6 +790,9 @@
               "model": {
                 "type": "string",
                 "$ref": "https://models.dev/model-schema.json#/$defs/Model"
+              },
+              "variant": {
+                "type": "string"
               },
               "subtask": {
                 "type": "boolean"
@@ -921,9 +956,6 @@
               "$ref": "#/$defs/AgentConfig"
             },
             "explore": {
-              "$ref": "#/$defs/AgentConfig"
-            },
-            "scout": {
               "$ref": "#/$defs/AgentConfig"
             },
             "title": {
@@ -1141,7 +1173,7 @@
             },
             "prune": {
               "type": "boolean",
-              "description": "Enable pruning of old tool outputs (default: true)"
+              "description": "Enable pruning of old tool outputs (default: false)"
             },
             "tail_turns": {
               "minimum": 0,
@@ -1194,6 +1226,13 @@
               "type": "integer",
               "maximum": 9007199254740991,
               "description": "Timeout in milliseconds for model context protocol (MCP) requests"
+            },
+            "policies": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ConfigV2.Experimental.Policy"
+              },
+              "description": "Policy statements applied to supported resources, such as provider access"
             }
           },
           "additionalProperties": false
