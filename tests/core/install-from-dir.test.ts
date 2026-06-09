@@ -74,10 +74,11 @@ describe("installFromDir", () => {
     try {
       const result = await installFromDir({ localPath: catalog });
       expect(result.bundles).toContain("code-reviewer");
-      // Nested layout: catalog root is <catalog>/agents/, not <catalog>.
-      expect(result.catalogRootPath).toBe(join(catalog, "agents"));
+      // Catalog root is the dir the user passed; recursive discovery finds the
+      // nested agents/code-reviewer bundle underneath it.
+      expect(result.catalogRootPath).toBe(catalog);
       const reg = await loadRegistry(canonicalRegistryPath());
-      const entry = reg.sources.find((s) => s.rootPath === join(catalog, "agents"));
+      const entry = reg.sources.find((s) => s.rootPath === catalog);
       expect(entry).toBeDefined();
       expect(entry?.kind).toBe("registered");
       expect(entry?.gitRemote).toBeUndefined();
@@ -166,7 +167,7 @@ describe("installFromDir", () => {
     });
   });
 
-  test("registers the inner agents/ dir when bundles live in a catalog layout", async () => {
+  test("registers the passed dir when bundles live in a nested agents/ layout", async () => {
     // Catalog layout: <catalog>/agents/code-reviewer/agent.config.json
     const catalog = await mkdtemp(join(tmpdir(), "team-agents-nested-"));
     const bundleDir = join(catalog, "agents", "code-reviewer");
@@ -188,10 +189,11 @@ describe("installFromDir", () => {
     try {
       const result = await installFromDir({ localPath: catalog });
       expect(result.bundles).toContain("code-reviewer");
-      // Catalog root should be <catalog>/agents/, not <catalog>.
-      expect(result.catalogRootPath).toBe(join(catalog, "agents"));
+      // Catalog root is now the dir the user passed; recursive listAgentDirs
+      // finds agents/code-reviewer underneath it. rootPath stays a git-able root.
+      expect(result.catalogRootPath).toBe(catalog);
       const reg = await loadRegistry(canonicalRegistryPath());
-      const entry = reg.sources.find((s) => s.rootPath === join(catalog, "agents"));
+      const entry = reg.sources.find((s) => s.rootPath === catalog);
       expect(entry).toBeDefined();
       expect(entry?.kind).toBe("registered");
     } finally {

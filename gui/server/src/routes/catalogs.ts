@@ -1,8 +1,8 @@
-import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { stat } from "node:fs/promises";
 import type { CatalogEntry, CatalogKindAny, CatalogList, CatalogMode } from "../../../shared/src/index";
 import type { Hono } from "hono";
 import { isProtectedCatalog } from "../../../../src/core/protected-bundles";
+import { discoverAgentBundleDirs } from "../../../../src/io/sources";
 import { parseRegistrySources } from "../services/parse-registry";
 import { discoverSkills, loadSkillCatalogs } from "../services/scan-skill-catalogs";
 
@@ -88,24 +88,8 @@ async function dirExists(p: string): Promise<boolean> {
 }
 
 async function countBundles(root: string): Promise<number> {
-  const entries = await readdir(root).catch(() => [] as string[]);
-  let n = 0;
-  for (const e of entries) {
-    const cfg = join(root, e, "agent.config.json");
-    if (await fileExists(cfg)) n += 1;
-  }
-  // DW-9: single-bundle layout (smith agent install --from <url>) puts
-  // agent.config.json at the TOP of the rootPath, not under a subdir.
-  // Count it too so /api/catalogs reports bundleCount: 1 instead of 0.
-  // Mirror fix to parse-registry's resolveCatalogEntry.
-  if (await fileExists(join(root, "agent.config.json"))) n += 1;
-  return n;
-}
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isFile();
-  } catch {
-    return false;
-  }
+  // Reuse the CLI's recursive discovery so /api/catalogs bundleCount matches
+  // what `smith agent list` and /api/agents report (single source of truth).
+  // discoverAgentBundleDirs already counts a single-bundle root.
+  return (await discoverAgentBundleDirs(root)).length;
 }

@@ -19,14 +19,26 @@
  * downstream code plan-literal.
  */
 
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
+import { discoverAgentBundleDirs } from "../../../../src/io/sources";
 import { resolveSelfSource, SELF_SOURCE_LABEL } from "./self-source";
+
+const GuiAgentRef = z.object({
+  // Flat identity (no slashes) — used as the :name route param, URL segment,
+  // and React key. Must satisfy the AGENT_NAME_PATTERN guard.
+  name: z.string(),
+  // Path of the bundle dir relative to the catalog `path`. For flat and
+  // single-bundle layouts this equals `name`; for nested layouts it carries
+  // the in-between dirs (e.g. "agents/my-agent"). Resolution is
+  // always join(path, relPath).
+  relPath: z.string(),
+});
 
 const GuiCatalog = z.object({
   path: z.string(),
-  agents: z.array(z.string()),
+  agents: z.array(GuiAgentRef),
 });
 
 // Note: `catalogs` is required (not defaulted) so that CLI-shaped JSON
@@ -224,7 +236,7 @@ async function parsePersistedRegistry(path: string): Promise<Registry> {
   return { catalogs: {} };
 }
 
-const bundleCache = new Map<string, { mtimeMs: number; bundles: string[] }>();
+const bundleCache = new Map<string, { mtimeMs: number; bundles: z.infer<typeof GuiAgentRef>[] }>();
 const bundleCacheStats = { hits: 0, misses: 0 };
 
 /** Test-only: clear the bundle cache and reset stats. Do not call from production. */
@@ -273,15 +285,20 @@ async function resolveCatalogEntry(rootPath: string): Promise<z.infer<typeof Gui
   const isSingleBundle = await fileExistsAt(join(rootPath, "agent.config.json"));
   if (isSingleBundle) {
     const single = basename(rootPath);
+    // Single-bundle: catalog path is the PARENT so join(path, relPath) lands
+    // on rootPath. The bundle's relPath is its basename (one segment).
+    const selfRef = { name: single, relPath: single };
     if (subBundles.length === 0) {
-      // Pure single-bundle. Catalog path is parent so join(path, name) == rootPath.
-      return { path: dirname(rootPath), agents: [single] };
+      return { path: dirname(rootPath), agents: [selfRef] };
     }
-    // Hybrid: prefer single-bundle path so the named-by-basename bundle
-    // resolves correctly. Sub-bundles surface but will resolve relative
-    // to dirname(rootPath); acceptable defensive behaviour for a layout
-    // the CLI doesn't actually emit.
-    return { path: dirname(rootPath), agents: [...subBundles, single].sort() };
+    // Hybrid (CLI never emits this): the sub-bundles' relPaths were computed
+    // relative to rootPath, but the catalog path is now dirname(rootPath), so
+    // prefix them with the basename to keep join(path, relPath) correct.
+    const rebased = subBundles.map((b) => ({ name: b.name, relPath: join(single, b.relPath) }));
+    return {
+      path: dirname(rootPath),
+      agents: [...rebased, selfRef].sort((a, b) => a.name.localeCompare(b.name)),
+    };
   }
   return { path: rootPath, agents: subBundles };
 }
@@ -294,7 +311,7 @@ async function fileExistsAt(path: string): Promise<boolean> {
   }
 }
 
-async function listAgentBundles(rootPath: string): Promise<string[]> {
+async function listAgentBundles(rootPath: string): Promise<z.infer<typeof GuiAgentRef>[]> {
   let dirStat: Awaited<ReturnType<typeof stat>>;
   try {
     dirStat = await stat(rootPath);
@@ -306,6 +323,12 @@ async function listAgentBundles(rootPath: string): Promise<string[]> {
   }
   if (!dirStat.isDirectory()) return [];
 
+  // Cache invalidation keys on rootPath's own mtime. Now that discovery is
+  // recursive, a bundle added DEEP under rootPath (e.g. rootPath/agents/new/)
+  // bumps the mtime of the intermediate dir but not rootPath's, so a runtime
+  // add under an intermediate dir is missed until rootPath's mtime changes or
+  // the server restarts. Acceptable: this layout/mutation is rare and a
+  // restart recovers it; a deeper watch would be scope creep here.
   const cached = bundleCache.get(rootPath);
   if (cached && cached.mtimeMs === dirStat.mtimeMs) {
     bundleCacheStats.hits += 1;
@@ -313,26 +336,18 @@ async function listAgentBundles(rootPath: string): Promise<string[]> {
   }
   bundleCacheStats.misses += 1;
 
-  let entries: string[];
-  try {
-    entries = await readdir(rootPath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.warn(`[parse-registry] could not list ${rootPath}: ${(err as Error).message}`);
-    }
-    return [];
-  }
-  const checks = await Promise.all(
-    entries.map(async (name) => {
-      try {
-        const s = await stat(join(rootPath, name, "agent.config.json"));
-        return s.isFile() ? name : null;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  const bundles = checks.filter((n): n is string => n !== null).sort();
+  // Reuse the CLI's recursive discovery (single source of truth, parity with
+  // `smith agent list`). discoverAgentBundleDirs returns ABSOLUTE bundle dirs,
+  // including rootPath itself when it is a single-bundle. We translate to
+  // {name, relPath}: name = basename(dir); relPath = dir relative to rootPath.
+  // The single-bundle case (dir === rootPath) is handled by resolveCatalogEntry,
+  // so we drop it here to avoid a "." relPath.
+  const absDirs = await discoverAgentBundleDirs(rootPath);
+  const bundles = absDirs
+    .filter((abs) => abs !== rootPath)
+    .map((abs) => ({ name: basename(abs), relPath: relative(rootPath, abs) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   bundleCache.set(rootPath, { mtimeMs: dirStat.mtimeMs, bundles });
   return bundles;
 }

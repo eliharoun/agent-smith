@@ -129,6 +129,25 @@ describe("sniffPath", () => {
     expect(result.agentBundles).toBe(0);
     expect(result.skillBundles).toBe(0);
   });
+
+  test("counts an agent bundle nested under agents/<name>/ (recursive)", async () => {
+    const bundle = join(dir, "agents", "my-agent");
+    await mkdir(bundle, { recursive: true });
+    await writeFile(join(bundle, "agent.config.json"), "{}");
+    const result = await sniffPath(dir);
+    expect(result.agentBundles).toBe(1);
+    expect(result.isSingleAgentBundle).toBe(false);
+  });
+
+  test("nested agent bundle does not trigger the doctor 'no agent bundles' path", async () => {
+    // sniff.agentBundles === 0 && !isSingleAgentBundle is the doctor warning
+    // condition (run-doctor.ts:1442). A nested-agents catalog must NOT match it.
+    const bundle = join(dir, "agents", "team-a", "agent-x");
+    await mkdir(bundle, { recursive: true });
+    await writeFile(join(bundle, "agent.config.json"), "{}");
+    const result = await sniffPath(dir);
+    expect(result.agentBundles === 0 && !result.isSingleAgentBundle).toBe(false);
+  });
 });
 
 describe("verifyGitRemote", () => {

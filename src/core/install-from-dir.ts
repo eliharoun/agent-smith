@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { detectGitRemote } from "../io/git-remote-detect";
 import { defaultRemoteRoot } from "../io/remote-root";
 import { addSource, canonicalRegistryPath, loadRegistry, saveRegistry } from "../io/registry";
@@ -87,38 +87,12 @@ export async function installFromDir(opts: InstallFromDirOptions): Promise<Insta
     });
   }
 
-  // Resolve the catalog root. The recipient-side install pipeline uses
-  // `listAgentDirs` which walks ONE level deep, so the catalog rootPath
-  // must be the directory whose direct children are bundle dirs. Two
-  // supported layouts:
-  //   - Flat:    <abs>/<bundle>/agent.config.json     → catalog root = <abs>
-  //   - Nested:  <abs>/agents/<bundle>/agent.config.json → catalog root = <abs>/agents
-  // Detect which by stat'ing <abs>/agents/<firstBundle>/agent.config.json.
-  const catalogRootPath = await resolveCatalogRoot(abs, bundles[0]!);
-
-  // Post-scan duplicate check on the resolved catalog root. This handles
-  // the nested layout (where abs !== catalogRootPath, e.g. <repo>/agents/).
-  if (catalogRootPath !== abs) {
-    const nestedExisting = reg.sources.find((s) => s.rootPath === catalogRootPath);
-    if (nestedExisting) {
-      let staleHint = "";
-      try {
-        await stat(nestedExisting.rootPath);
-      } catch {
-        staleHint = ` That path no longer exists; if it's stale, run \`smith agent unregister ${nestedExisting.label}\` first.`;
-      }
-      throw new SmithError({
-        code: "validation-failed",
-        what: "install --from",
-        reasons: [
-          `${catalogRootPath} is already registered as catalog "${nestedExisting.label}".${staleHint}`,
-        ],
-      });
-    }
-  }
-
-  // Register via the existing addSource helper for label-uniqueness handling
-  // and consistency with installFromArchive / installFromUrl.
+  // Register the directory the user passed, verbatim, as the catalog root.
+  // Recursive listAgentDirs discovers bundles at any depth underneath
+  // (single-bundle, flat <dir>/<name>/, or nested <dir>/agents/<name>/), so
+  // no rootPath rebasing is needed. Keeping rootPath = the passed dir means
+  // it remains a valid git working tree for any later sync/purge operations.
+  const catalogRootPath = abs;
   const label = catalogRootPath.split("/").filter(Boolean).pop() ?? "local-catalog";
   const newSource: Source = {
     kind: "registered",
@@ -143,29 +117,4 @@ export async function installFromDir(opts: InstallFromDirOptions): Promise<Insta
     bundles,
     ...(detectedGitRemote !== undefined ? { detectedGitRemote } : {}),
   };
-}
-
-async function resolveCatalogRoot(abs: string, sampleBundle: string): Promise<string> {
-  // Flat layout: <abs>/<bundle>/agent.config.json
-  try {
-    await stat(join(abs, sampleBundle, "agent.config.json"));
-    return abs;
-  } catch {}
-  // Nested catalog layout: <abs>/agents/<bundle>/agent.config.json
-  try {
-    await stat(join(abs, "agents", sampleBundle, "agent.config.json"));
-    return join(abs, "agents");
-  } catch {}
-  // scanBundleNames found something; if neither known layout matches, the
-  // bundle lives at some other depth scanBundleNames recursively walked.
-  // We can't usefully install in that case — listAgentDirs is one-level
-  // only — so refuse with a clear message.
-  throw new SmithError({
-    code: "validation-failed",
-    what: "install --from",
-    reasons: [
-      `bundles found under ${abs} are nested deeper than the supported layouts. ` +
-      `Supported: <dir>/<name>/agent.config.json (flat) or <dir>/agents/<name>/agent.config.json (catalog).`,
-    ],
-  });
 }

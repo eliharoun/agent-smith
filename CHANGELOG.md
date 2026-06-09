@@ -4,6 +4,29 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] — 2026-06-08
+
+### Fixed
+
+- `smith agent install --from <git-url>` now finds agent bundles that live in a
+  subdirectory such as `agents/<name>/` (at any depth), instead of reporting
+  "no bundles" for repositories laid out that way. Agent discovery is now
+  recursive — matching how skills are already found — and skips `.git` and
+  `node_modules`, stops at the first `agent.config.json` it finds in a
+  directory, and is guarded against symlink cycles. The same fix applies in the
+  GUI's "Install from URL" flow and agent listing. Catalogs are still registered
+  at the repository root, so `smith agent sync`, `smith doctor`, and
+  `smith agent unregister --purge-clone` keep working, and `smith doctor` no
+  longer reports "contains no agent bundles" for these repositories.
+- `smith agent register <dir>` now accepts a directory that is itself a single
+  agent bundle, consistent with how URL installs register single-bundle repos.
+
+### Changed
+
+- In the GUI, the "Add Knowledge Source" forms now auto-format the id field to
+  kebab-case as you type, and the URL form pre-fills the id from the URL until
+  you edit it yourself.
+
 ## [1.16.0] — 2026-06-08
 
 ### Added

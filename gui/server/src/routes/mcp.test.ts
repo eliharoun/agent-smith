@@ -93,7 +93,12 @@ describe("GET /api/agents/:name/mcp-wiring-plan", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     // Pre-populate Claude Code with the canonical entry.
@@ -153,7 +158,12 @@ describe("POST /api/agents/:name/mcp-wiring", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
   });

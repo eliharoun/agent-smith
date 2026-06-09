@@ -1,15 +1,9 @@
-import { resolve, dirname } from "node:path";
-import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import pc from "picocolors";
 import { SmithError } from "../../core/smith-error";
 import type { SourceKind } from "../../core/types";
 import { addSource, canonicalRegistryPath, loadRegistry, saveRegistry } from "../../io/registry";
-import {
-  defaultRunGit,
-  type GitRunner,
-  sniffPath,
-  verifyGitRemote,
-} from "../registry-validation";
+import { defaultRunGit, type GitRunner, sniffPath, verifyGitRemote } from "../registry-validation";
 import { warnIfDuplicateGitRemote } from "./dup-remote-warn";
 
 export interface RegisterOptions {
@@ -24,15 +18,6 @@ export interface RegisterOptions {
   registryPath?: string;
   /** Test seam. Defaults to defaultRunGit. */
   runGit?: GitRunner;
-}
-
-async function isBundleDir(path: string): Promise<boolean> {
-  try {
-    const s = await stat(`${path}/agent.config.json`);
-    return s.isFile();
-  } catch {
-    return false;
-  }
 }
 
 export async function register(rootPath: string, opts: RegisterOptions): Promise<number> {
@@ -60,18 +45,11 @@ export async function register(rootPath: string, opts: RegisterOptions): Promise
     });
   }
   if (sniff.agentBundles === 0 && !opts.allowEmpty) {
-    if (await isBundleDir(abs)) {
-      const parent = dirname(abs);
-      throw new SmithError({
-        code: "validation-failed",
-        what: "agent catalog",
-        reasons: [
-          `path ${abs} is a single agent bundle, not a catalog (a catalog contains subdirectories with agent.config.json)`,
-          "Did you mean to register the parent directory? Bundles inside registered roots are auto-discovered — no per-bundle register is needed.",
-        ],
-        suggestedCommand: `smith agent register ${parent} --kind ${opts.kind}${opts.label ? ` --label ${opts.label}` : ""}`,
-      });
-    }
+    // Note: a path that is itself a single agent bundle (top-level
+    // agent.config.json) is no longer rejected here — discoverAgentBundleDirs
+    // (via sniffPath) counts the root-as-bundle, so sniff.agentBundles >= 1 and
+    // we register it directly. This matches the single-bundle clone shape that
+    // `smith agent install --from <url>` registers (rootPath === clone root).
     throw new SmithError({
       code: "validation-failed",
       what: "agent catalog",

@@ -8,7 +8,7 @@
 // flow (clone -> scan -> register) is exercised without mocks.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installFromUrl } from "../../src/core/install-from-url";
@@ -258,4 +258,20 @@ describe("installFromUrl ref validation (C4.0.2)", () => {
       ).rejects.toThrow(/Invalid git ref .*(must not start with '-'|forbidden character)/);
     });
   }
+});
+
+describe("scanBundleNames recursion (agent)", () => {
+  test("returns the name of a bundle nested under agents/<name>/", async () => {
+    const { scanBundleNames } = await import("../../src/core/install-from-url");
+    const root = await mkdtemp(join(tmpdir(), "scan-nested-"));
+    const dir = join(root, "agents", "my-agent");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "agent.config.json"), JSON.stringify({ name: "my-agent" }));
+    try {
+      const names = await scanBundleNames(root, "agent");
+      expect(names).toEqual(["my-agent"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

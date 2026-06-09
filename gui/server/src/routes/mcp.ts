@@ -32,7 +32,9 @@ function assertValidAgentName(name: string): void {
 
 async function assertAgentExists(registryPath: string, name: string): Promise<void> {
   const reg = await parseRegistry(registryPath);
-  const exists = Object.values(reg.catalogs).some((info) => info.agents.includes(name));
+  const exists = Object.values(reg.catalogs).some((info) =>
+    info.agents.some((a) => a.name === name),
+  );
   if (!exists) {
     throw new HttpError(404, "NOT_FOUND", `agent ${name} not in registry`);
   }
@@ -53,8 +55,9 @@ async function readBundleHasEntry(
   agentName: string,
 ): Promise<boolean> {
   for (const info of Object.values(registry.catalogs)) {
-    if (!info.agents.includes(agentName)) continue;
-    const configPath = join(info.path, agentName, "agent.config.json");
+    const ref = info.agents.find((a) => a.name === agentName);
+    if (!ref) continue;
+    const configPath = join(info.path, ref.relPath, "agent.config.json");
     try {
       const data = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
       const arr = data.mcpServers;
@@ -92,7 +95,9 @@ export function registerMcpRoutes(app: Hono, deps: McpRouteDeps) {
     const name = c.req.param("name");
     assertValidAgentName(name);
     const reg = await parseRegistry(deps.registryPath);
-    const exists = Object.values(reg.catalogs).some((info) => info.agents.includes(name));
+    const exists = Object.values(reg.catalogs).some((info) =>
+      info.agents.some((a) => a.name === name),
+    );
     if (!exists) {
       throw new HttpError(404, "NOT_FOUND", `agent ${name} not in registry`);
     }

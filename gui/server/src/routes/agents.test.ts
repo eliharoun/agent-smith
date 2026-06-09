@@ -37,7 +37,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -53,12 +58,69 @@ describe("agents routes", () => {
     expect(body[0]).toMatchObject({ name: "foo", catalog: "default" });
   });
 
+  it("serves an agent whose bundle is nested under agents/<name>/", async () => {
+    // CLI-shape registered source whose bundle lives at
+    // <rootPath>/agents/nested-agent/. parseRegistry's recursive discovery
+    // surfaces it as { name: "nested-agent", relPath: "agents/nested-agent" };
+    // the route must resolve join(info.path, relPath) — NOT join(info.path, name).
+    const catalogDir = join(root, "clone");
+    const bundleDir = join(catalogDir, "agents", "nested-agent");
+    await mkdir(bundleDir, { recursive: true });
+    for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md", "USER.md"]) {
+      await writeFile(join(bundleDir, f), `# ${f}\nbody\n`);
+    }
+    await writeFile(
+      join(bundleDir, "agent.config.json"),
+      JSON.stringify({
+        name: "nested-agent",
+        description: "test",
+        model: "sonnet",
+        targets: ["opencode"],
+      }),
+    );
+    await writeFile(
+      registryPath,
+      JSON.stringify({
+        version: 1,
+        sources: [{ kind: "registered", rootPath: catalogDir, label: "clone" }],
+      }),
+    );
+    const jm = new JobManager({ spawner: fakeSpawner });
+    const app = createApp({
+      token: "t",
+      jobs: jm,
+      registryPath,
+      installPathsFor: () => ({ opencode: "/x", "claude-code": "/y", codex: "/z" }),
+    });
+    const res = await app.request("/api/agents/nested-agent", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { name: string; path: string };
+    expect(body.name).toBe("nested-agent");
+    expect(body.path).toBe(bundleDir);
+
+    // The listing endpoint uses a separate loop; assert it resolves the
+    // nested relPath too (guards against a regression that fixes only detail).
+    const listRes = await app.request("/api/agents", {
+      headers: { authorization: "Bearer t" },
+    });
+    expect(listRes.status).toBe(200);
+    const list = (await listRes.json()) as Array<{ name: string; path: string }>;
+    expect(list.some((a) => a.name === "nested-agent" && a.path === bundleDir)).toBe(true);
+  });
+
   it("GET /api/agents/:name returns full detail", async () => {
     await writeBundle("default", "foo");
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -94,7 +156,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -146,7 +213,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -173,7 +245,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -214,7 +291,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -245,7 +327,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -294,11 +381,14 @@ describe("agents routes", () => {
         catalogs: {
           default: {
             path: join(root, "catalogs", "default"),
-            agents: ["foo", "bar"],
+            agents: [
+              { name: "foo", relPath: "foo" },
+              { name: "bar", relPath: "bar" },
+            ],
           },
           extra: {
             path: join(root, "catalogs", "extra"),
-            agents: ["baz"],
+            agents: [{ name: "baz", relPath: "baz" }],
           },
         },
       }),
@@ -325,8 +415,14 @@ describe("agents routes", () => {
       registryPath,
       JSON.stringify({
         catalogs: {
-          default: { path: join(root, "catalogs", "default"), agents: ["foo"] },
-          extra: { path: join(root, "catalogs", "extra"), agents: ["foo"] },
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+          extra: {
+            path: join(root, "catalogs", "extra"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
         },
       }),
     );
@@ -362,8 +458,14 @@ describe("agents routes", () => {
       registryPath,
       JSON.stringify({
         catalogs: {
-          default: { path: join(root, "catalogs", "default"), agents: ["foo"] },
-          extra: { path: join(root, "catalogs", "extra"), agents: ["foo"] },
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+          extra: {
+            path: join(root, "catalogs", "extra"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
         },
       }),
     );
@@ -462,7 +564,12 @@ describe("agents routes", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const jm = new JobManager({ spawner: fakeSpawner });
@@ -505,7 +612,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", { targets: ["opencode", "kiro"], modelTier: "high" });
@@ -523,7 +635,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", { targets: [] });
@@ -548,7 +665,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", {
@@ -589,7 +711,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     // type=url requires url; supplying `path` instead is structurally wrong
@@ -607,7 +734,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", {
@@ -636,7 +768,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     // Toggle-OFF result: only `other-server` survives.
@@ -657,7 +794,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", {
@@ -677,7 +819,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", { mcpServers: [] });
@@ -691,7 +838,12 @@ describe("PUT /api/agents/:name/config", () => {
     await writeFile(
       registryPath,
       JSON.stringify({
-        catalogs: { default: { path: join(root, "catalogs", "default"), agents: ["foo"] } },
+        catalogs: {
+          default: {
+            path: join(root, "catalogs", "default"),
+            agents: [{ name: "foo", relPath: "foo" }],
+          },
+        },
       }),
     );
     const res = await put(appWith(), "foo", {
@@ -744,10 +896,7 @@ describe("Bug A: synthetic self-source visibility", () => {
     );
     // Persisted registry contains NO agent-smith entry. The synthetic
     // source must surface it on its own.
-    await writeFile(
-      registryPath,
-      JSON.stringify({ schemaVersion: 2, sources: [] }),
-    );
+    await writeFile(registryPath, JSON.stringify({ schemaVersion: 2, sources: [] }));
     // Suppress test preload's blanket disable; pin our fixture.
     prevDisable = process.env.SMITH_DISABLE_SELF_SOURCE;
     prevWorkspace = process.env.SMITH_SELF_SOURCE_WORKSPACE;

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfluenceForm } from "./ConfluenceForm";
+import { inferIdFromUrl, toKebabCase } from "./common";
 import { DirForm } from "./DirForm";
 import { FileForm } from "./FileForm";
 import { GitForm } from "./GitForm";
@@ -126,5 +127,71 @@ describe("sourceForms", () => {
     fireEvent.submit(form);
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText(/id already exists/i)).toBeInTheDocument();
+  });
+
+  it("kebab-cases the id field as the user types", () => {
+    wrap(<FileForm existingIds={[]} onSubmit={vi.fn()} formId="t-form" />);
+    const idInput = screen.getByLabelText(/^\/\/ id/) as HTMLInputElement;
+    fireEvent.change(idInput, { target: { value: "My Source Name" } });
+    expect(idInput.value).toBe("my-source-name");
+    fireEvent.change(idInput, { target: { value: "fooBar" } });
+    expect(idInput.value).toBe("foo-bar");
+  });
+});
+
+describe("toKebabCase", () => {
+  const cases: Array<[string, string]> = [
+    ["My Source Name", "my-source-name"],
+    ["fooBar", "foo-bar"],
+    ["Already-Kebab", "already-kebab"],
+    ["  leading spaces", "leading-spaces"],
+    ["weird__chars!!here", "weird-chars-here"],
+    ["foo ", "foo-"], // gentle mid-typing: trailing separator survives
+    ["HTTPServer", "httpserver"],
+  ];
+  for (const [input, expected] of cases) {
+    it(`"${input}" → "${expected}"`, () => {
+      expect(toKebabCase(input)).toBe(expected);
+    });
+  }
+});
+
+describe("inferIdFromUrl", () => {
+  const cases: Array<[string, string]> = [
+    ["https://example.com/docs/getting-started", "getting-started"],
+    ["https://example.com/guide/intro.html", "intro"],
+    ["https://example.com/blog/2024/01/my-post", "my-post"],
+    ["https://example.com/docs/index.html", "docs"],
+    ["https://example.com/", "example"],
+    ["https://www.example.com", "example"],
+    ["https://docs.foo.dev/Some%20Page", "some-page"],
+    ["not a url", ""],
+    ["", ""],
+  ];
+  for (const [input, expected] of cases) {
+    it(`"${input}" → "${expected}"`, () => {
+      expect(inferIdFromUrl(input)).toBe(expected);
+    });
+  }
+});
+
+describe("UrlForm id inference", () => {
+  function wrapUrl(node: React.ReactElement) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+  }
+
+  it("auto-fills id from the URL until the user edits id", () => {
+    wrapUrl(<UrlForm existingIds={[]} onSubmit={vi.fn()} formId="t-form" />);
+    const idInput = screen.getByLabelText(/^\/\/ id/) as HTMLInputElement;
+    const urlInput = screen.getByLabelText(/^\/\/ url/) as HTMLInputElement;
+
+    fireEvent.change(urlInput, { target: { value: "https://example.com/docs/getting-started" } });
+    expect(idInput.value).toBe("getting-started");
+
+    // User takes over the id — subsequent URL edits must not clobber it.
+    fireEvent.change(idInput, { target: { value: "custom" } });
+    fireEvent.change(urlInput, { target: { value: "https://example.com/docs/other-page" } });
+    expect(idInput.value).toBe("custom");
   });
 });

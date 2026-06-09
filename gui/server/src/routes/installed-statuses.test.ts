@@ -37,7 +37,13 @@ describe("GET /api/agents/installed-statuses", () => {
       registryPath,
       JSON.stringify({
         catalogs: {
-          local: { path: join(root, "catalogs", "local"), agents: ["alpha", "beta"] },
+          local: {
+            path: join(root, "catalogs", "local"),
+            agents: [
+              { name: "alpha", relPath: "alpha" },
+              { name: "beta", relPath: "beta" },
+            ],
+          },
         },
       }),
     );

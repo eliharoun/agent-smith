@@ -26,7 +26,10 @@ describe("GET /api/registry", () => {
       catalogs: {
         "test-catalog": {
           path: "/some/path",
-          agents: ["alpha", "beta"],
+          agents: [
+            { name: "alpha", relPath: "alpha" },
+            { name: "beta", relPath: "beta" },
+          ],
         },
       },
     };
@@ -37,7 +40,10 @@ describe("GET /api/registry", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      catalogs: Record<string, { path: string; agents: string[] }>;
+      catalogs: Record<
+        string,
+        { path: string; agents: Array<{ name: string; relPath: string }> }
+      >;
     };
     expect(body.catalogs).toEqual(registry.catalogs);
   });

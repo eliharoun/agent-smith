@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { normalizeGitUrl } from "../io/git-url";
+import { discoverAgentBundleDirs } from "../io/sources";
 
 export interface SniffResult {
   exists: boolean;
@@ -63,17 +64,24 @@ export async function sniffPath(path: string): Promise<SniffResult> {
   const isSingleAgentBundle = await fileExists(join(path, "agent.config.json"));
   const isSingleSkillBundle = !isSingleAgentBundle && (await fileExists(join(path, "SKILL.md")));
 
-  let agentBundles = 0;
+  // Agent bundles: reuse the shared recursive primitive so the doctor's count
+  // matches `smith agent list` (listAgentDirs) and never diverges on depth.
+  // discoverAgentBundleDirs already includes a root-as-bundle AND nested
+  // children, so this counts single-bundle + flat + nested uniformly. This is
+  // a separate recursive walk from the `entries` listing above; `entries` is
+  // reused only for the one-level skill/empty scan below (the intentional
+  // double-read is negligible at catalog sizes and keeps the two concerns
+  // independent).
+  const agentBundles = (await discoverAgentBundleDirs(path)).length;
+
   let skillBundles = 0;
   const emptyBundleDirs: string[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const sub = join(path, entry.name);
-    const hasAgent = await fileExists(join(sub, "agent.config.json"));
-    if (hasAgent) {
-      agentBundles++;
-      continue;
-    }
+    // Agent bundle dirs are counted above via the primitive; skip them here so
+    // they aren't probed for SKILL.md or flagged as empty.
+    if (await fileExists(join(sub, "agent.config.json"))) continue;
     const hasSkill = await fileExists(join(sub, "SKILL.md"));
     if (hasSkill) {
       skillBundles++;

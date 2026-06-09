@@ -259,6 +259,46 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
     }
   }, HEAVY_GIT_TIMEOUT_MS);
 
+  test("discoverFromUrl enumerates a bundle nested under agents/<name>/ and keeps rootPath at the clone root", async () => {
+    const { discoverFromUrl } = await import("../../src/core/install-from-url");
+    const remote = await createBareRemote();
+    const remoteRoot = await mkdtemp(join(tmpdir(), "nested-url-remote-root-"));
+    try {
+      const dir = "agents/my-agent";
+      await remote.commitFile(
+        `${dir}/agent.config.json`,
+        JSON.stringify({
+          schemaVersion: 1,
+          name: "my-agent",
+          description: "Use proactively as a nested-URL install fixture.",
+          targets: ["claude-code"],
+          modelTier: "balanced",
+          mode: "subagent",
+        }),
+      );
+      await remote.commitFile(`${dir}/IDENTITY.md`, "placeholder\n");
+      await remote.commitFile(`${dir}/EXPERTISE.md`, "placeholder\n");
+      await remote.commitFile(`${dir}/SOUL.md`, "placeholder\n");
+      await remote.commitFile(`${dir}/USER.md`, "placeholder\n");
+
+      const discovered = await discoverFromUrl({
+        kind: "agent",
+        url: remote.url,
+        ref: "main",
+        remoteRoot,
+        homeDir: home,
+      });
+
+      const names = discovered.bundles.map((b) => b.name).sort();
+      expect(names).toContain("my-agent");
+      // rootPath must be the clone root, NOT the agents/ subdir.
+      expect(discovered.catalog.rootPath.endsWith("/agents")).toBe(false);
+    } finally {
+      await rm(remoteRoot, { recursive: true, force: true });
+      await remote.cleanup();
+    }
+  }, HEAVY_GIT_TIMEOUT_MS);
+
   test("agent skipped with a warning when no selected platform matches its declared targets", async () => {
     const remote = await createBareRemote();
     try {

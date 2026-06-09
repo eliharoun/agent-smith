@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { register } from "../../src/cli/commands/register";
 import { SmithError } from "../../src/core/smith-error";
 
@@ -49,23 +49,19 @@ describe("smith agent register — validation", () => {
     expect(err.payload.suggestedCommand).toContain("--allow-empty");
   });
 
-  // The "no agent bundles" error is also what users hit when they try to
-  // register a single bundle directory (e.g. `smith agent register .../agents/my-debugger`)
-  // — `register` expects a CATALOG (dir-of-dirs), and a bundle dir contains
-  // agent.config.json directly, not a child dir with one. The error must
-  // mention this confusion so the user understands `register` operates on
-  // catalogs, and that bundles inside an already-registered root are
-  // auto-discovered (no per-bundle register needed).
-  test("rejects a single bundle dir with hint about auto-discovery + parent dir", async () => {
+  // A path that is itself a single agent bundle (top-level agent.config.json)
+  // is accepted: discoverAgentBundleDirs counts the root-as-bundle, so the
+  // catalog has one bundle. This is exactly the single-bundle clone shape that
+  // `smith agent install --from <url>` registers (rootPath === clone root),
+  // and bundle enumeration is now uniformly recursive across CLI and GUI.
+  test("accepts a single bundle dir (root-as-bundle, single-bundle clone shape)", async () => {
     const bundleDir = join(dir, "my-debugger");
     await mkdir(bundleDir, { recursive: true });
     await writeFile(join(bundleDir, "agent.config.json"), "{}");
-    const err = await register(bundleDir, { kind: "user-global", registryPath }).catch((e) => e);
-    expect(err).toBeInstanceOf(SmithError);
-    expect(err.payload.code).toBe("validation-failed");
-    const reasons: string[] = err.payload.reasons;
-    expect(reasons.some((r) => r.toLowerCase().includes("auto-discovered"))).toBe(true);
-    expect(reasons.some((r) => r.toLowerCase().includes("parent"))).toBe(true);
+    await register(bundleDir, { kind: "user-global", registryPath });
+    const reg = JSON.parse(await readFile(registryPath, "utf8"));
+    const entry = reg.sources.find((s: { rootPath: string }) => s.rootPath === bundleDir);
+    expect(entry).toBeDefined();
   });
 
   test("accepts empty path with --allow-empty", async () => {
@@ -145,9 +141,7 @@ describe("smith agent register — validation", () => {
     expect(stderrSpy.some((line) => line.includes("--label"))).toBe(true);
 
     const reg = JSON.parse(await readFile(registryPath, "utf8"));
-    const entry = reg.sources.find(
-      (s: { rootPath: string }) => s.rootPath === target,
-    );
+    const entry = reg.sources.find((s: { rootPath: string }) => s.rootPath === target);
     expect(entry.label).toBe("original");
   });
 });

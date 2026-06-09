@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { KnowledgeBlockSchema } from "../../../../src/core/knowledge/schema";
+import { isProtectedAgent, refusalMessage } from "../../../../src/core/protected-bundles";
 import {
   AgentConfigPatch,
   type AgentSummary,
@@ -7,10 +11,6 @@ import {
   PersonaFile,
   type Platform,
 } from "../../../shared/src/index";
-import type { Hono } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { KnowledgeBlockSchema } from "../../../../src/core/knowledge/schema";
-import { isProtectedAgent, refusalMessage } from "../../../../src/core/protected-bundles";
 import { atomicWriteText } from "../io/atomic-write";
 import { HttpError } from "../middleware/error";
 import { agentWithRemote } from "../projections/agent-with-remote";
@@ -36,8 +36,9 @@ export interface AgentsDeps {
 function findAgentMatches(reg: Registry, name: string): Array<{ catalog: string; path: string }> {
   const matches: Array<{ catalog: string; path: string }> = [];
   for (const [catalog, info] of Object.entries(reg.catalogs)) {
-    if (info.agents.includes(name)) {
-      matches.push({ catalog, path: join(info.path, name) });
+    const ref = info.agents.find((a) => a.name === name);
+    if (ref) {
+      matches.push({ catalog, path: join(info.path, ref.relPath) });
     }
   }
   if (matches.length > 1) {
@@ -82,9 +83,10 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
     ]);
     const tasks: Array<Promise<AgentSummary | null>> = [];
     for (const [catalog, info] of Object.entries(reg.catalogs)) {
-      for (const name of info.agents) {
+      for (const ref of info.agents) {
+        const name = ref.name;
         tasks.push(
-          scanBundle({ name, catalog, path: join(info.path, name) })
+          scanBundle({ name, catalog, path: join(info.path, ref.relPath) })
             .then((detail): AgentSummary => {
               const summary: AgentSummary = {
                 name: detail.name,
@@ -151,7 +153,9 @@ export function registerAgentsRoutes(app: Hono, deps: AgentsDeps) {
     const name = c.req.param("name");
     assertValidAgentName(name);
     const reg = await parseRegistry(deps.registryPath);
-    const exists = Object.values(reg.catalogs).some((info) => info.agents.includes(name));
+    const exists = Object.values(reg.catalogs).some((info) =>
+      info.agents.some((a) => a.name === name),
+    );
     if (!exists) {
       throw new HttpError(404, "NOT_FOUND", `agent ${name} not in registry`);
     }

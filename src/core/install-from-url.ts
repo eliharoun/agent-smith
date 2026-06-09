@@ -40,7 +40,7 @@ import {
   loadSkillRegistry,
   saveSkillRegistry,
 } from "../io/skill-registry";
-import { listAgentDirs } from "../io/sources";
+import { discoverAgentBundleDirs, listAgentDirs } from "../io/sources";
 import { SmithError } from "./smith-error";
 import type { Remote, Source } from "./types";
 import { loadBundle } from "../io/bundle-loader";
@@ -313,14 +313,27 @@ async function checkCollision(
 }
 
 export async function scanBundleNames(rootDir: string, kind: "agent" | "skill"): Promise<string[]> {
+  if (kind === "agent") {
+    // Route agent discovery through the shared primitive so install-time
+    // and load-time discovery never diverge on depth (Task 4). Note: unlike
+    // the skill branch below, a symlinked agent.config.json is intentionally
+    // followed (parity with how discoverSkills reads SKILL.md); directory
+    // cycles are still guarded inside discoverAgentBundleDirs.
+    const dirs = await discoverAgentBundleDirs(rootDir);
+    const out: string[] = [];
+    for (const dir of dirs) {
+      const name = await readBundleName(join(dir, "agent.config.json"), "agent", dir);
+      if (name) out.push(name);
+    }
+    return out.sort();
+  }
   const out: string[] = [];
-  const target = kind === "agent" ? "agent.config.json" : "SKILL.md";
   await walk(rootDir, async (filePath) => {
-    if (!filePath.endsWith(`/${target}`)) return;
+    if (!filePath.endsWith("/SKILL.md")) return;
     const st = await lstat(filePath).catch(() => null);
     if (!st || st.isSymbolicLink()) return; // hardening (spec §5.8)
-    const dir = filePath.slice(0, -target.length - 1);
-    const name = await readBundleName(filePath, kind, dir);
+    const dir = filePath.slice(0, -"SKILL.md".length - 1);
+    const name = await readBundleName(filePath, "skill", dir);
     if (name) out.push(name);
   });
   return out.sort();

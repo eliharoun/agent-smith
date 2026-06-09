@@ -35,14 +35,16 @@ describe("parseRegistry", () => {
         catalogs: {
           default: {
             path: join(dir, "catalogs", "default"),
-            agents: ["incident-debugger"],
+            agents: [{ name: "incident-debugger", relPath: "incident-debugger" }],
           },
         },
       }),
       "utf8",
     );
     const reg = await parseRegistry(file);
-    expect(reg.catalogs.default?.agents).toEqual(["incident-debugger"]);
+    expect(reg.catalogs.default?.agents).toEqual([
+      { name: "incident-debugger", relPath: "incident-debugger" },
+    ]);
   });
 
   it("self-heals on malformed JSON", async () => {
@@ -70,7 +72,10 @@ describe("parseRegistry", () => {
     const reg = await parseRegistry(file);
     expect(reg.catalogs["user-global"]).toBeDefined();
     expect(reg.catalogs["user-global"]?.path).toBe(catalogDir);
-    expect(reg.catalogs["user-global"]?.agents).toEqual(["alpha", "beta"]);
+    expect(reg.catalogs["user-global"]?.agents).toEqual([
+      { name: "alpha", relPath: "alpha" },
+      { name: "beta", relPath: "beta" },
+    ]);
   });
 
   it("returns empty agents for a CLI source whose rootPath does not exist", async () => {
@@ -113,12 +118,11 @@ describe("parseRegistry", () => {
     );
 
     const reg = await parseRegistry(file);
-    expect(reg.catalogs["owner/repo"]?.agents).toEqual(["owner-repo"]);
-    expect(reg.catalogs["owner/repo"]?.path).toBe(dir);
-    // Round-trip: join(info.path, bundleName) === rootPath
     const entry = reg.catalogs["owner/repo"];
-    expect(entry).toBeDefined();
-    if (entry) expect(join(entry.path, "owner-repo")).toBe(bundleDir);
+    expect(entry?.agents).toEqual([{ name: "owner-repo", relPath: "owner-repo" }]);
+    expect(entry?.path).toBe(dir);
+    // Round-trip: join(info.path, relPath) === rootPath
+    if (entry) expect(join(entry.path, entry.agents[0]!.relPath)).toBe(bundleDir);
   });
 
   it("[DW-9] a rootPath with BOTH a top-level config AND sub-bundles surfaces both", async () => {
@@ -139,8 +143,15 @@ describe("parseRegistry", () => {
       }),
     );
     const reg = await parseRegistry(file);
-    expect(reg.catalogs.hybrid?.agents).toContain("child");
-    expect(reg.catalogs.hybrid?.agents).toContain("hybrid");
+    const entry = reg.catalogs.hybrid;
+    const names = entry?.agents.map((a) => a.name) ?? [];
+    expect(names).toContain("child");
+    expect(names).toContain("hybrid");
+    // Round-trip: the rebased relPaths must still resolve to the real dirs.
+    const childRef = entry?.agents.find((a) => a.name === "child");
+    const hybridRef = entry?.agents.find((a) => a.name === "hybrid");
+    if (entry && childRef) expect(join(entry.path, childRef.relPath)).toBe(join(hybrid, "child"));
+    if (entry && hybridRef) expect(join(entry.path, hybridRef.relPath)).toBe(hybrid);
   });
 
   it("warns and returns empty when JSON is neither GUI nor CLI shape", async () => {
@@ -172,7 +183,7 @@ describe("parseRegistry", () => {
     try {
       const reg = await parseRegistry(file);
       expect(reg.catalogs.main?.path).toBe(firstDir);
-      expect(reg.catalogs.main?.agents).toEqual(["alpha"]);
+      expect(reg.catalogs.main?.agents).toEqual([{ name: "alpha", relPath: "alpha" }]);
       const messages = warn.mock.calls.map((c) => String(c[0]));
       expect(messages.some((m) => m.includes("duplicate label"))).toBe(true);
     } finally {
@@ -218,7 +229,7 @@ describe("parseRegistry", () => {
     );
 
     const reg1 = await parseRegistry(file);
-    expect(reg1.catalogs.main?.agents).toEqual(["alpha"]);
+    expect(reg1.catalogs.main?.agents).toEqual([{ name: "alpha", relPath: "alpha" }]);
 
     // Add a new bundle — directory mtime updates because a child was added.
     await mkdir(join(catalogDir, "beta"), { recursive: true });
@@ -227,7 +238,31 @@ describe("parseRegistry", () => {
     const before = __bundleCacheStatsForTest();
     const reg2 = await parseRegistry(file);
     const after = __bundleCacheStatsForTest();
-    expect(reg2.catalogs.main?.agents).toEqual(["alpha", "beta"]);
+    expect(reg2.catalogs.main?.agents).toEqual([
+      { name: "alpha", relPath: "alpha" },
+      { name: "beta", relPath: "beta" },
+    ]);
     expect(after.misses).toBe(before.misses + 1);
+  });
+
+  it("discovers a bundle nested under agents/<name>/ with relPath", async () => {
+    const catalogDir = join(dir, "clone");
+    const bundleDir = join(catalogDir, "agents", "my-agent");
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(join(bundleDir, "agent.config.json"), "{}");
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 1,
+        sources: [{ kind: "registered", rootPath: catalogDir, label: "agg" }],
+      }),
+    );
+    const reg = await parseRegistry(file);
+    const entry = reg.catalogs.agg;
+    expect(entry?.path).toBe(catalogDir);
+    expect(entry?.agents).toEqual([
+      { name: "my-agent", relPath: join("agents", "my-agent") },
+    ]);
+    if (entry) expect(join(entry.path, entry.agents[0]!.relPath)).toBe(bundleDir);
   });
 });

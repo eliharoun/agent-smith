@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMcpServersAndTools } from "@/hooks/useMcpServersAndTools";
 import { FormField } from "@/ui/FormField";
 import { Toggle } from "@/ui/Toggle";
-import { type CommonFields, commonFields, validateId } from "./common";
+import { type CommonFields, commonFields, inferIdFromUrl, validateId } from "./common";
 import { RoutingPicker, type ViaPick } from "./RoutingPicker";
 import type { SourceFormProps } from "./types";
 
@@ -23,7 +23,17 @@ export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProp
   const [url, setUrl] = useState("");
   const [via, setVia] = useState<ViaPick | null>(null);
   const [lazy, setLazy] = useState(false);
+  // Once the user types in the id field we stop overwriting it from the URL.
+  const [idTouched, setIdTouched] = useState(false);
   const idErr = validateId(c.id, existingIds);
+
+  // Auto-fill the id from the URL until the user takes ownership of the field.
+  const handleUrlChange = (next: string) => {
+    setUrl(next);
+    if (idTouched) return;
+    const inferred = inferIdFromUrl(next);
+    if (inferred) setC((p) => ({ ...p, id: inferred }));
+  };
 
   // Mirror the picker's gating: only fetch when the user has typed a URL.
   // The hook is also called inside RoutingPicker but tanstack-query
@@ -82,13 +92,13 @@ export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProp
       }}
       className="space-y-3"
     >
-      {commonFields(c, setC, idErr)}
+      {commonFields(c, setC, idErr, () => setIdTouched(true))}
       <FormField
         label="url"
         fieldId="knowledge.url"
         required
         value={url}
-        onChange={(e) => setUrl(e.target.value)}
+        onChange={(e) => handleUrlChange(e.target.value)}
         placeholder="https://example.com/page"
         hint={httpsWarn}
       />

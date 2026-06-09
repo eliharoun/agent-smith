@@ -13,7 +13,7 @@ export function registerInstalledStatusesRoute(app: Hono, deps: InstalledStatuse
     const reg = await parseRegistry(deps.registryPath);
     const allAgents: string[] = [];
     for (const info of Object.values(reg.catalogs)) {
-      for (const name of info.agents) allAgents.push(name);
+      for (const ref of info.agents) allAgents.push(ref.name);
     }
     const entries = await Promise.all(
       allAgents.map(async (name) => {

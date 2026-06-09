@@ -110,8 +110,14 @@ describe("status route", () => {
       registry,
       JSON.stringify({
         catalogs: {
-          "cat-a": { path: "/p/a", agents: ["one", "two"] },
-          "cat-b": { path: "/p/b", agents: ["three"] },
+          "cat-a": {
+            path: "/p/a",
+            agents: [
+              { name: "one", relPath: "one" },
+              { name: "two", relPath: "two" },
+            ],
+          },
+          "cat-b": { path: "/p/b", agents: [{ name: "three", relPath: "three" }] },
         },
       }),
     );
@@ -227,7 +233,13 @@ describe("onboarding route", () => {
       join(config, "registry.json"),
       JSON.stringify({
         catalogs: {
-          "test-catalog": { path: "/some/path", agents: ["foo", "bar"] },
+          "test-catalog": {
+            path: "/some/path",
+            agents: [
+              { name: "foo", relPath: "foo" },
+              { name: "bar", relPath: "bar" },
+            ],
+          },
         },
       }),
     );

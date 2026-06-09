@@ -139,8 +139,9 @@ function isPlatform(t: Target): t is Platform {
  */
 function findBundlePath(reg: Registry, name: string): { catalog: string; path: string } | null {
   for (const [catalog, info] of Object.entries(reg.catalogs)) {
-    if (info.agents.includes(name)) {
-      return { catalog, path: join(info.path, name) };
+    const ref = info.agents.find((a) => a.name === name);
+    if (ref) {
+      return { catalog, path: join(info.path, ref.relPath) };
     }
   }
   return null;

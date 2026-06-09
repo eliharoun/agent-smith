@@ -78,6 +78,35 @@ describe("cli/load-all", () => {
     expect(selfBundles.length).toBeGreaterThan(0);
     expect(selfBundles.some((b) => b.config.name === "agent-smith")).toBe(true);
   });
+
+  test("recursive agent discovery ignores skills/ subtrees (no over-match)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "loadall-overmatch-"));
+    const bundle = join(root, "agents", "my-agent");
+    await mkdir(bundle, { recursive: true });
+    await writeFile(
+      join(bundle, "agent.config.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "my-agent",
+        description: "Use proactively as a load-all over-match fixture.",
+        targets: ["claude-code"],
+        modelTier: "balanced",
+        mode: "subagent",
+      }),
+    );
+    for (const f of ["IDENTITY.md", "EXPERTISE.md", "SOUL.md", "USER.md"]) {
+      await writeFile(join(bundle, f), "placeholder\n");
+    }
+    const skill = join(root, "skills", "git-workflow");
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(skill, "SKILL.md"), "---\nname: git-workflow\ndescription: x\n---\n");
+
+    const { listAgentDirs } = await import("../../src/io/sources");
+    const dirs = await listAgentDirs({ kind: "registered", rootPath: root, label: "t" });
+    expect(dirs.map((d) => d.split("/").pop()).sort()).toEqual(["my-agent"]);
+
+    await rm(root, { recursive: true, force: true });
+  });
 });
 
 describe("loadAllBundles envelope", () => {

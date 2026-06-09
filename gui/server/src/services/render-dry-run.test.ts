@@ -65,9 +65,16 @@ async function writeBundle(catalog: string, name: string, targets: Platform[] = 
 }
 
 async function writeRegistry(agents: Record<string, string[]>) {
-  const catalogs: Record<string, { path: string; agents: string[] }> = {};
+  const catalogs: Record<
+    string,
+    { path: string; agents: Array<{ name: string; relPath: string }> }
+  > = {};
   for (const [catalog, names] of Object.entries(agents)) {
-    catalogs[catalog] = { path: join(root, "catalogs", catalog), agents: names };
+    catalogs[catalog] = {
+      path: join(root, "catalogs", catalog),
+      // Flat layout: relPath equals name. Add a nested case explicitly if ever needed.
+      agents: names.map((name) => ({ name, relPath: name })),
+    };
   }
   await writeFile(registryPath, JSON.stringify({ catalogs }));
 }
