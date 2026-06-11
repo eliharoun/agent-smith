@@ -27,7 +27,7 @@ describe("KnowledgeSourceSchema", () => {
   it("rejects url source without url", () => {
     const r = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       delivery: "auto",
     });
     expect(r.success).toBe(false);
@@ -136,7 +136,7 @@ describe("KnowledgeSourceSchema", () => {
   describe("via routing field (v1.2)", () => {
     it("accepts via with server + tool", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        type: "webpage", id: "x", delivery: "file",
         url: "https://example.com",
         via: { server: "internal-mcp", tool: "fetch_page" },
       });
@@ -145,7 +145,7 @@ describe("KnowledgeSourceSchema", () => {
 
     it("accepts via with optional args object", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        type: "webpage", id: "x", delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "y", args: { url: "https://example.com" } },
       });
@@ -154,7 +154,7 @@ describe("KnowledgeSourceSchema", () => {
 
     it("rejects via with empty server", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        type: "webpage", id: "x", delivery: "file",
         url: "https://example.com",
         via: { server: "", tool: "y" },
       });
@@ -163,7 +163,7 @@ describe("KnowledgeSourceSchema", () => {
 
     it("rejects via with unknown extra keys (strict mode)", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        type: "webpage", id: "x", delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "y", extra: 1 },
       });
@@ -173,7 +173,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects via.args containing credential-shaped keys", () => {
       for (const key of ["authorization", "Authorization", "token", "API_KEY", "cookie", "secret", "password", "bearer"]) {
         const r = KnowledgeSourceSchema.safeParse({
-          type: "url", id: "x", delivery: "file",
+          type: "webpage", id: "x", delivery: "file",
           url: "https://example.com",
           via: { server: "x", tool: "y", args: { [key]: "..." } },
         });
@@ -183,7 +183,7 @@ describe("KnowledgeSourceSchema", () => {
 
     it("accepts allowWriteTool flag on via", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "url", id: "x", delivery: "file",
+        type: "webpage", id: "x", delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "create_thing", allowWriteTool: true },
       });
@@ -195,7 +195,7 @@ describe("KnowledgeSourceSchema", () => {
     it("accepts a lazy URL source with description", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://wiki.internal.example.com/x",
         lazy: true,
         description: "Platform architecture wiki. Use when answering deployment questions.",
@@ -206,7 +206,7 @@ describe("KnowledgeSourceSchema", () => {
     it("accepts lazy: false (explicit)", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com/x",
         delivery: "auto",
         lazy: false,
@@ -255,7 +255,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects lazy: 'auto' (only true|false now; 'auto' is gone)", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: "auto",
       });
@@ -265,7 +265,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects delivery alongside lazy: true", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         delivery: "inline",
@@ -283,7 +283,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects materialize alongside lazy: true", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         materialize: "html-to-md",
@@ -294,7 +294,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects extractor alongside lazy: true", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         extractor: "pdf-parse",
@@ -305,7 +305,7 @@ describe("KnowledgeSourceSchema", () => {
     it("rejects inlineBudgetTokens alongside lazy: true", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         inlineBudgetTokens: 1000,
@@ -316,7 +316,7 @@ describe("KnowledgeSourceSchema", () => {
     it("accepts lazy: true with via: routing", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://wiki.internal.example.com/x",
         lazy: true,
         via: { server: "internal-mcp", tool: "fetch_page" },
@@ -327,7 +327,7 @@ describe("KnowledgeSourceSchema", () => {
     it("accepts lazy: true with summary, toc, retrieval (compile-stage fields)", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         summary: "Short TOC line.",
@@ -340,7 +340,7 @@ describe("KnowledgeSourceSchema", () => {
     it("accepts lazy: true with description and refresh", () => {
       const r = KnowledgeSourceSchema.safeParse({
         id: "wiki",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         lazy: true,
         description: "A wiki.",
@@ -389,7 +389,7 @@ describe("KnowledgeSourceSchema: auth field", () => {
   test("accepts auth='atlassian' on type=url", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "wiki-page",
-      type: "url",
+      type: "webpage",
       url: "https://acme.atlassian.net/wiki/x",
       delivery: "file",
       auth: "atlassian",
@@ -400,7 +400,7 @@ describe("KnowledgeSourceSchema: auth field", () => {
   test("accepts auth='none' on type=url (explicit no-auth)", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "public-doc",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/doc",
       delivery: "file",
       auth: "none",
@@ -411,7 +411,7 @@ describe("KnowledgeSourceSchema: auth field", () => {
   test("auth field is optional on type=url (defaults to no-auth behavior)", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "public-doc",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/doc",
       delivery: "file",
     });
@@ -517,7 +517,7 @@ describe("KnowledgeSourceSchema: subpath field", () => {
   test("rejects subpath on type=url", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "u",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/x",
       delivery: "file",
       subpath: "docs/",
@@ -570,7 +570,7 @@ describe("KnowledgeSourceSchema: git url forms", () => {
   test("rejects garbage url on type=url", () => {
     const r = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "not-a-url",
       delivery: "file",
     });
@@ -580,7 +580,7 @@ describe("KnowledgeSourceSchema: git url forms", () => {
   test("rejects SCP-style url on type=url (must be RFC URL)", () => {
     const r = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "git@github.com:acme/team-skills.git",
       delivery: "file",
     });
@@ -671,7 +671,7 @@ describe("KnowledgeSourceSchema: confluence", () => {
   test("rejects space on non-confluence type", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://example.com",
       space: "ENG",
       delivery: "file",
@@ -685,7 +685,7 @@ describe("KnowledgeSourceSchema: confluence", () => {
   test("rejects pages on non-confluence type", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://example.com",
       pages: ["foo"],
       delivery: "file",
@@ -696,7 +696,7 @@ describe("KnowledgeSourceSchema: confluence", () => {
   test("rejects format on non-confluence type", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://example.com",
       format: "markdown",
       delivery: "file",
@@ -765,7 +765,7 @@ describe("KnowledgeSourceSchema: jira", () => {
   test("rejects jql on non-jira type", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://example.com",
       jql: "project = ENG",
       delivery: "file",
@@ -776,7 +776,7 @@ describe("KnowledgeSourceSchema: jira", () => {
   test("rejects fields on non-jira type", () => {
     const result = KnowledgeSourceSchema.safeParse({
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://example.com",
       fields: ["summary"],
       delivery: "file",
@@ -789,7 +789,7 @@ describe("KnowledgeSourceSchema — refresh field", () => {
   const baseUrl = {
     id: "test-source",
     delivery: "file" as const,
-    type: "url" as const,
+    type: "webpage" as const,
     url: "https://example.com/doc",
   };
 
@@ -861,7 +861,7 @@ describe("KnowledgeSourceSchema: compile-stage fields", () => {
   it("accepts a per-source summary, toc, and retrieval block", () => {
     const parsed = KnowledgeSourceSchema.parse({
       id: "team-runbook",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/runbook",
       delivery: "file",
       summary: "On-call runbook for the data platform",
@@ -877,7 +877,7 @@ describe("KnowledgeSourceSchema: compile-stage fields", () => {
     expect(() =>
       KnowledgeSourceSchema.parse({
         id: "x",
-        type: "url",
+        type: "webpage",
         url: "https://x",
         delivery: "file",
         retrieval: { mode: "vector" },

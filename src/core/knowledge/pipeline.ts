@@ -416,12 +416,12 @@ export async function runKnowledgeStage(
       // Lazy sources have no on-disk artifact and no inline body.
       if (p.effectiveDelivery === "lazy") {
         const provenance: { url?: string } = {};
-        if (p.declared.type === "url") provenance.url = p.declared.url;
+        if (p.declared.type === "webpage") provenance.url = p.declared.url;
         manifestSources.push({
           id: p.declared.id,
           scope: "agent",
           type: p.declared.type,
-          ...(p.declared.type === "url" ? { url: p.declared.url } : {}),
+          ...(p.declared.type === "webpage" ? { url: p.declared.url } : {}),
           ...(Object.keys(provenance).length > 0 ? { source: provenance } : {}),
           delivery: "lazy",
           files: [],
@@ -533,7 +533,7 @@ export async function runKnowledgeStage(
     );
     const currentUrlKeys = new Set(
       sources
-        .filter((s): s is Extract<KnowledgeSource, { type: "url" }> => s.type === "url")
+        .filter((s): s is Extract<KnowledgeSource, { type: "webpage" | "web" }> => s.type === "webpage" || s.type === "web")
         .map((s) => urlCacheKey(s.url)),
     );
     const cacheSweep = await sweepStaleCacheEntries(paths.cacheDir, currentGitKeys, currentUrlKeys);

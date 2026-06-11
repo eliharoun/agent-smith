@@ -257,7 +257,7 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
 
   // Lazy URL sources have no on-disk artifact to refresh. Return
   // early without acquiring the lock or touching the manifest.
-  if (source.type === "url" && (source as { lazy?: boolean }).lazy === true) {
+  if (source.type === "webpage" && (source as { lazy?: boolean }).lazy === true) {
     return { kind: "lazy-only", sourceId };
   }
 

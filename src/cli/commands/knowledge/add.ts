@@ -126,7 +126,7 @@ export function deriveIdFromTitle(
 export interface KnowledgeAddOptions {
   bundleDir: string;
   type: KnowledgeSourceType;
-  pathOrUrl: string;
+  pathOrUrl?: string;
   id?: string;
   delivery?: KnowledgeDelivery;
   description?: string;
@@ -157,6 +157,28 @@ export interface KnowledgeAddOptions {
   fields?: string;
   /** Jira: result count cap (schema: 1-500). */
   maxResults?: number;
+  // --- Web-only ---
+  /** Web crawl mode. */
+  mode?: "crawl" | "llms-txt" | "openapi";
+  /** Web crawl: max link depth. */
+  depth?: number;
+  /** Web crawl: restrict to seed origin. */
+  sameOrigin?: boolean;
+  /** Web crawl: include path globs. */
+  include?: string[];
+  /** Web crawl: exclude path globs. */
+  exclude?: string[];
+  // --- MCP-only ---
+  /** MCP: server name. */
+  server?: string;
+  /** MCP: tool to call. */
+  tool?: string;
+  /** MCP: tool arguments. */
+  args?: Record<string, unknown>;
+  /** MCP: preset connector name. */
+  preset?: string;
+  /** MCP: permit a write-shaped tool name. */
+  allowWriteTool?: boolean;
   // --- DI for auth probe (Task 5) ---
   /** Test override for the atlassian-auth resolver. */
   resolveAuth?: () => AtlassianAuth | null;
@@ -192,9 +214,14 @@ export interface KnowledgeAddOptions {
 
 function deriveId(opts: KnowledgeAddOptions): string {
   if (opts.id) return opts.id;
-  if (opts.type === "url" || opts.type === "git") {
+  if (opts.type === "mcp") {
+    const base = [opts.server, opts.tool].filter(Boolean).join("-");
+    return truncateSlug(slugify(base, "mcp-source"));
+  }
+  const pathOrUrl = opts.pathOrUrl as string;
+  if (opts.type === "webpage" || opts.type === "web" || opts.type === "git") {
     try {
-      const u = new URL(opts.pathOrUrl);
+      const u = new URL(pathOrUrl);
       const base = `${u.host}${u.pathname}`.replace(/\.git$/, "");
       return truncateSlug(slugify(base, "url-source"));
     } catch {
@@ -202,7 +229,7 @@ function deriveId(opts: KnowledgeAddOptions): string {
     }
   }
   if (opts.type === "confluence") {
-    const spaceSlug = slugify(opts.pathOrUrl, "confluence-source");
+    const spaceSlug = slugify(pathOrUrl, "confluence-source");
     if (opts.pages) {
       const parsed = parsePagesList(opts.pages);
       const first = parsed[0];
@@ -216,10 +243,10 @@ function deriveId(opts: KnowledgeAddOptions): string {
     return truncateSlug(spaceSlug);
   }
   if (opts.type === "jira") {
-    return truncateSlug(slugify(opts.pathOrUrl.replace(/['"]/g, ""), "jira-source"));
+    return truncateSlug(slugify(pathOrUrl.replace(/['"]/g, ""), "jira-source"));
   }
   // file/dir/glob: filename minus extension, kebab.
-  const name = basename(opts.pathOrUrl).replace(/\.[^.]+$/, "");
+  const name = basename(pathOrUrl).replace(/\.[^.]+$/, "");
   return slugify(name, "source");
 }
 
@@ -227,26 +254,27 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
   const delivery = opts.delivery ?? "auto";
   const description = opts.description ? { description: opts.description } : {};
   const optional = opts.optional ? { optional: true } : {};
+  const pathOrUrl = opts.pathOrUrl as string; // guaranteed by CLI guard for non-mcp types
   switch (opts.type) {
     case "file":
-      return { id, type: "file", delivery, path: opts.pathOrUrl, ...description, ...optional };
+      return { id, type: "file", delivery, path: pathOrUrl, ...description, ...optional };
     case "dir":
-      return { id, type: "dir", delivery, path: opts.pathOrUrl, ...description, ...optional };
+      return { id, type: "dir", delivery, path: pathOrUrl, ...description, ...optional };
     case "glob":
-      return { id, type: "glob", delivery, path: opts.pathOrUrl, ...description, ...optional };
-    case "url":
-      return { id, type: "url", delivery, url: opts.pathOrUrl, ...description, ...optional };
+      return { id, type: "glob", delivery, path: pathOrUrl, ...description, ...optional };
+    case "webpage":
+      return { id, type: "webpage", delivery, url: pathOrUrl, ...description, ...optional };
     case "git":
-      return { id, type: "git", delivery, url: opts.pathOrUrl, ...description, ...optional };
+      return { id, type: "git", delivery, url: pathOrUrl, ...description, ...optional };
     case "npm":
-      return { id, type: "npm", delivery, package: opts.pathOrUrl, ...description, ...optional };
+      return { id, type: "npm", delivery, package: pathOrUrl, ...description, ...optional };
     case "confluence": {
       const pages = opts.pages ? parsePagesList(opts.pages) : undefined;
       return {
         id,
         type: "confluence",
         delivery,
-        space: opts.pathOrUrl,
+        space: pathOrUrl,
         ...(pages && pages.length > 0 ? { pages } : {}),
         ...(opts.maxPages !== undefined ? { maxPages: opts.maxPages } : {}),
         ...(opts.includeChildren ? { includeChildren: true } : {}),
@@ -261,23 +289,60 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
         id,
         type: "jira",
         delivery,
-        jql: opts.pathOrUrl,
+        jql: pathOrUrl,
         ...(fields && fields.length > 0 ? { fields } : {}),
         ...(opts.maxResults !== undefined ? { maxResults: opts.maxResults } : {}),
         ...description,
         ...optional,
       };
     }
+    case "web": {
+      return {
+        id,
+        type: "web",
+        delivery,
+        url: pathOrUrl,
+        mode: opts.mode ?? "crawl",
+        ...(opts.maxPages !== undefined ? { maxPages: opts.maxPages } : {}),
+        ...(opts.depth !== undefined ? { depth: opts.depth } : {}),
+        ...(opts.sameOrigin !== undefined ? { sameOrigin: opts.sameOrigin } : {}),
+        ...(opts.include && opts.include.length > 0 ? { include: opts.include } : {}),
+        ...(opts.exclude && opts.exclude.length > 0 ? { exclude: opts.exclude } : {}),
+        ...description,
+        ...optional,
+      };
+    }
+    case "mcp": {
+      if (!opts.server || !opts.tool) {
+        throw new SmithError({ code: "usage-error", message: "type=mcp requires --server and --tool" });
+      }
+      return {
+        id,
+        type: "mcp",
+        delivery: opts.delivery ?? "file",
+        server: opts.server,
+        tool: opts.tool,
+        ...(opts.args && Object.keys(opts.args).length > 0 ? { args: opts.args } : {}),
+        ...(opts.preset ? { preset: opts.preset } : {}),
+        ...(opts.allowWriteTool ? { allowWriteTool: true } : {}),
+        ...description,
+        ...optional,
+      };
+    }
+    default: {
+      const _x: never = opts.type;
+      throw new SmithError({ code: "validation-failed", what: "knowledge type", reasons: [`unsupported type ${String(_x)}`] });
+    }
   }
 }
 
 export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   await guardProtectedAgent(basename(opts.bundleDir), "knowledge.add", opts.prompt);
-  if (opts.lazy === true && opts.type !== "url") {
+  if (opts.lazy === true && opts.type !== "webpage") {
     throw new SmithError({
       code: "validation-failed",
-      what: "--lazy requires type=url",
-      reasons: [`--lazy is only supported on type=url sources, got type=${opts.type}`],
+      what: "--lazy requires type=webpage",
+      reasons: [`--lazy is only supported on type=webpage sources, got type=${opts.type}`],
     });
   }
   const cfgPath = join(opts.bundleDir, "agent.config.json");
@@ -320,7 +385,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   } else if (opts.urlMode?.titleId && opts.type === "confluence") {
     const existingBlock = (cfg.knowledge as KnowledgeBlock | undefined) ?? {};
     const existingIds = (existingBlock.sources ?? []).map((s) => s.id);
-    const spaceSlug = slugify(opts.pathOrUrl, "confluence-source");
+    const spaceSlug = slugify(opts.pathOrUrl!, "confluence-source");
     id = deriveIdFromTitle(
       spaceSlug,
       opts.urlMode.titleId.title,
@@ -359,7 +424,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
       return false;
     }
   };
-  if (opts.type === "url" && isHttpUrl(opts.pathOrUrl) && isTty) {
+  if (opts.type === "webpage" && isHttpUrl(opts.pathOrUrl!) && isTty) {
     // Build the union of bundle-declared and locally-available MCP
     // servers. When both are empty there is nothing to pick from — fall
     // through to the curated-registry suggestion without printing the
@@ -380,7 +445,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
         opts.spawnOptsFor ?? (await createSpawnOptsResolver({ homeDir: homedir() }));
       try {
         const picked = await pickViaInteractively({
-          url: opts.pathOrUrl,
+          url: opts.pathOrUrl!,
           currentMcpServers: declared,
           availableMcpServers: available,
           pool,
@@ -408,8 +473,8 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   // The curated registry now runs ONLY when the picker didn't land a
   // route (skipped in non-TTY mode, or user chose 0).
   let suggestedVia: { server: string; tool: string } | undefined;
-  if (!chosenVia && opts.type === "url") {
-    const route = findRoute(opts.pathOrUrl);
+  if (!chosenVia && opts.type === "webpage") {
+    const route = findRoute(opts.pathOrUrl!);
     if (route) {
       const note = (route as { note?: string }).note;
       console.log(pc.dim("•"), `URL matches a known pattern. Smith can route fetches through:`);

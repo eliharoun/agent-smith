@@ -100,7 +100,7 @@ describe("knowledgeFetch", () => {
     // If neither exists, rm({force:true}) returns without error and the surgical path runs.
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src", type: "url", delivery: "file", url: "https://example.com/x" }];
+    const sources = [{ id: "src", type: "webpage", delivery: "file", url: "https://example.com/x" }];
     const installFn = mock(async (_opts: string | InstallCliOptions) => 0);
     const refreshSourceFn = mock(async () => ({
       kind: "refreshed" as const,
@@ -158,7 +158,7 @@ describe("knowledgeFetch", () => {
     // cache would otherwise be silently reused.
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src", type: "url", delivery: "file", url: "https://example.com/x" }];
+    const sources = [{ id: "src", type: "webpage", delivery: "file", url: "https://example.com/x" }];
     const rmSpy = spyOn(fsPromises, "rm").mockImplementation(async () => {
       const e: NodeJS.ErrnoException = Object.assign(new Error("permission denied"), {
         code: "EACCES",
@@ -189,8 +189,8 @@ describe("knowledgeFetch", () => {
     const urlA = "https://example.com/a";
     const urlB = "https://example.com/b";
     const sources = [
-      { id: "id-a", type: "url", delivery: "file", url: urlA },
-      { id: "id-b", type: "url", delivery: "file", url: urlB },
+      { id: "id-a", type: "webpage", delivery: "file", url: urlA },
+      { id: "id-b", type: "webpage", delivery: "file", url: urlB },
     ];
     const knowledgePaths = { agentSmithHome: dir };
     const cacheDir = cacheDirFor("agent-multi", knowledgePaths);
@@ -274,7 +274,7 @@ describe("knowledgeFetch", () => {
   it("writes .meta.json per acquirable source on successful fetch (last_error=null, timestamps=now)", async () => {
     const sources = [
       { id: "src-a", type: "file", delivery: "file", path: "a.md" },
-      { id: "src-b", type: "url", delivery: "file", url: "https://example.com/b" },
+      { id: "src-b", type: "webpage", delivery: "file", url: "https://example.com/b" },
     ];
     const installFn = mock(async () => 0);
     const writes: Array<{ root: string; agent: string; sourceId: string; entry: unknown }> = [];
@@ -317,7 +317,7 @@ describe("knowledgeFetch", () => {
   });
 
   it("writes .meta.json with last_error set on failed source; preserves prior last_refreshed_at", async () => {
-    const sources = [{ id: "bad", type: "url", delivery: "file", url: "https://x" }];
+    const sources = [{ id: "bad", type: "webpage", delivery: "file", url: "https://x" }];
     const installFn = mock(async () => 0);
     const writes: Array<{ sourceId: string; entry: any }> = [];
     const writeStub = mock(async (_r: string, _a: string, sourceId: string, entry: unknown) => {
@@ -361,7 +361,7 @@ describe("knowledgeFetch", () => {
     spies.push(log as unknown as ReturnType<typeof spyOn>);
     const sources = [
       { id: "keep-a", type: "file", delivery: "file", path: "a.md" },
-      { id: "target", type: "url", delivery: "file", url: "https://x" },
+      { id: "target", type: "webpage", delivery: "file", url: "https://x" },
       { id: "keep-b", type: "file", delivery: "file", path: "b.md" },
     ];
     const installFn = mock(async () => 0);
@@ -408,7 +408,7 @@ describe("knowledgeFetch", () => {
   it("post-install meta block does NOT run when install() returns non-zero", async () => {
     const errSpy = spyOn(console, "error").mockImplementation(() => {});
     spies.push(errSpy as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src-a", type: "url", delivery: "file", url: "https://example.com/a" }];
+    const sources = [{ id: "src-a", type: "webpage", delivery: "file", url: "https://example.com/a" }];
     const installFn = mock(async () => 1);
     const writes: string[] = [];
     const writeStub = mock(async (_r: string, _a: string, sourceId: string, _e: unknown) => {
@@ -442,7 +442,7 @@ describe("knowledgeFetch", () => {
 
   it("post-install meta block still runs when install() succeeds", async () => {
     const sources = [
-      { id: "src-ok", type: "url", delivery: "file", url: "https://example.com/ok" },
+      { id: "src-ok", type: "webpage", delivery: "file", url: "https://example.com/ok" },
     ];
     const installFn = mock(async () => 0);
     const writes: string[] = [];
@@ -478,7 +478,7 @@ describe("knowledgeFetch", () => {
   it("--source routes through refreshSource (not install)", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src-a", type: "url", delivery: "file", url: "https://example.com/a" }];
+    const sources = [{ id: "src-a", type: "webpage", delivery: "file", url: "https://example.com/a" }];
     const installFn = mock(async () => 0);
     const refreshSourceFn = mock(async () => ({
       kind: "refreshed" as const,
@@ -507,7 +507,7 @@ describe("knowledgeFetch", () => {
   it("--source success calls rerenderPrompts", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src-b", type: "url", delivery: "file", url: "https://example.com/b" }];
+    const sources = [{ id: "src-b", type: "webpage", delivery: "file", url: "https://example.com/b" }];
     const installFn = mock(async () => 0);
     const refreshSourceFn = mock(async () => ({
       kind: "refreshed" as const,
@@ -538,7 +538,7 @@ describe("knowledgeFetch", () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
     const sources = [
-      { id: "src-fail", type: "url", delivery: "file", url: "https://example.com/f" },
+      { id: "src-fail", type: "webpage", delivery: "file", url: "https://example.com/f" },
     ];
     const installFn = mock(async () => 0);
     const refreshSourceFn = mock(async () => {
@@ -567,7 +567,7 @@ describe("knowledgeFetch", () => {
     spies.push(errSpy as unknown as ReturnType<typeof spyOn>);
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
-    const sources = [{ id: "src-c", type: "url", delivery: "file", url: "https://example.com/c" }];
+    const sources = [{ id: "src-c", type: "webpage", delivery: "file", url: "https://example.com/c" }];
     const installFn = mock(async () => 0);
     const refreshSourceFn = mock(async () => ({
       kind: "refreshed" as const,
@@ -608,7 +608,7 @@ describe("knowledgeFetch", () => {
       const sources = [
         {
           id: "via-src",
-          type: "url",
+          type: "webpage",
           delivery: "file",
           url: "https://example.com/x",
           via: { server: "echo", tool: "Fetch" },
@@ -659,7 +659,7 @@ describe("knowledgeFetch", () => {
       const sources = [
         {
           id: "via-missing",
-          type: "url",
+          type: "webpage",
           delivery: "file",
           url: "https://example.com/x",
           via: { server: "ghost", tool: "Fetch" },
@@ -745,7 +745,7 @@ describe("knowledgeFetch", () => {
 
   it("forwards cached routeCache into refreshSource on the surgical path", async () => {
     const sources = [
-      { id: "src-cache", type: "url", delivery: "file", url: "https://wiki.test/team/foo" },
+      { id: "src-cache", type: "webpage", delivery: "file", url: "https://wiki.test/team/foo" },
     ];
     const cache = {
       schemaVersion: 1 as const,
@@ -797,7 +797,7 @@ describe("knowledgeFetch", () => {
 
   it("non-TTY → no probeOnFailure forwarded into refreshSource", async () => {
     const sources = [
-      { id: "src-ntty", type: "url", delivery: "file", url: "https://example.com/x" },
+      { id: "src-ntty", type: "webpage", delivery: "file", url: "https://example.com/x" },
     ];
     let received: unknown;
     const refreshSourceFn = mock(async (opts: unknown) => {
@@ -832,7 +832,7 @@ describe("knowledgeFetch", () => {
 
   it("TTY → probeOnFailure forwarded into refreshSource as a function", async () => {
     const sources = [
-      { id: "src-tty", type: "url", delivery: "file", url: "https://example.com/x" },
+      { id: "src-tty", type: "webpage", delivery: "file", url: "https://example.com/x" },
     ];
     let received: unknown;
     const refreshSourceFn = mock(async (opts: unknown) => {
@@ -867,7 +867,7 @@ describe("knowledgeFetch", () => {
 
   it("recordRoute callback persists confirmed routes via saveRouteCache", async () => {
     const sources = [
-      { id: "src-rec", type: "url", delivery: "file", url: "https://example.com/x" },
+      { id: "src-rec", type: "webpage", delivery: "file", url: "https://example.com/x" },
     ];
     let captured:
       | ((r: { url: string; server: string; tool: string }) => Promise<void>)

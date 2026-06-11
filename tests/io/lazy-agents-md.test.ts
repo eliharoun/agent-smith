@@ -9,14 +9,14 @@ const block: KnowledgeBlock = {
   sources: [
     {
       id: "wiki",
-      type: "url",
+      type: "webpage",
       url: "https://wiki.internal.example.com/architecture",
       lazy: true,
       description: "Architecture wiki. Use when answering deployment topology questions.",
     },
     {
       id: "doc",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/doc",
       delivery: "auto", // not lazy — should be skipped
     },

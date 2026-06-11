@@ -678,7 +678,7 @@ describe("PUT /api/agents/:name/config", () => {
         sources: [
           {
             id: "docs",
-            type: "url",
+            type: "webpage",
             url: "https://x.test/",
             delivery: "auto",
             summary: "team docs",
@@ -694,7 +694,7 @@ describe("PUT /api/agents/:name/config", () => {
     expect(written.knowledge.sources).toHaveLength(1);
     expect(written.knowledge.sources[0]).toMatchObject({
       id: "docs",
-      type: "url",
+      type: "webpage",
       url: "https://x.test/",
       delivery: "auto",
       summary: "team docs",

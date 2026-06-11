@@ -115,7 +115,7 @@ describe("contract: kiro JSON shape", () => {
           sources: [
             {
               id: "live",
-              type: "url",
+              type: "webpage",
               url: "https://x",
               delivery: "file",
               refresh: { mode: "session" },

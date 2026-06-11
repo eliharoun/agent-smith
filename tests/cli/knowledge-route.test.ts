@@ -55,8 +55,8 @@ describe("knowledgeRoute", () => {
 
   it("routes a single source via --source flag", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
-      { id: "beta", type: "url", delivery: "file", url: "https://example.test/b" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
+      { id: "beta", type: "webpage", delivery: "file", url: "https://example.test/b" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const exit = await knowledgeRoute({
@@ -81,8 +81,8 @@ describe("knowledgeRoute", () => {
 
   it("routes all unrouted URL sources when no --source is passed", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
-      { id: "beta", type: "url", delivery: "file", url: "https://example.test/b" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
+      { id: "beta", type: "webpage", delivery: "file", url: "https://example.test/b" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     // Both prompts pick server #1.
@@ -108,12 +108,12 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "preset", tool: "preset_tool" },
       },
-      { id: "beta", type: "url", delivery: "file", url: "https://example.test/b" },
+      { id: "beta", type: "webpage", delivery: "file", url: "https://example.test/b" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const promptCalls: string[] = [];
@@ -146,7 +146,7 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "old", tool: "old_tool" },
@@ -171,7 +171,7 @@ describe("knowledgeRoute", () => {
 
   it("errors when --source <id> doesn't match any URL source", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const err = await knowledgeRoute({
@@ -210,7 +210,7 @@ describe("knowledgeRoute", () => {
 
   it("appends to mcpServers[] and mcp.required[] when picking a previously undeclared server", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
     ]);
     const pool = fakePool({ "ai-client-fetcher": [URL_TOOL] });
     const exit = await knowledgeRoute({
@@ -235,8 +235,8 @@ describe("knowledgeRoute", () => {
 
   it("prints the summary with routed and skipped counts", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
-      { id: "beta", type: "url", delivery: "file", url: "https://example.test/b" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
+      { id: "beta", type: "webpage", delivery: "file", url: "https://example.test/b" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const responses = ["1", "0"]; // route alpha, skip beta
@@ -267,7 +267,7 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "preset", tool: "preset_tool" },
@@ -299,14 +299,14 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "preset", tool: "preset_tool" },
       },
       {
         id: "beta",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/b",
         via: { server: "preset", tool: "preset_tool" },
@@ -335,7 +335,7 @@ describe("knowledgeRoute", () => {
 
   it("no-op message when source has no via", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const logs: string[] = [];
@@ -371,7 +371,7 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "preset", tool: "preset_tool" },
@@ -397,7 +397,7 @@ describe("knowledgeRoute", () => {
     await writeConfig([
       {
         id: "alpha",
-        type: "url",
+        type: "webpage",
         delivery: "file",
         url: "https://example.test/a",
         via: { server: "preset", tool: "preset_tool" },
@@ -425,14 +425,14 @@ describe("knowledgeRoute", () => {
       [
         {
           id: "alpha",
-          type: "url",
+          type: "webpage",
           delivery: "file",
           url: "https://example.test/a",
           via: { server: "shared-fetcher", tool: "fetch_page" },
         },
         {
           id: "beta",
-          type: "url",
+          type: "webpage",
           delivery: "file",
           url: "https://example.test/b",
           via: { server: "shared-fetcher", tool: "fetch_page" },
@@ -468,7 +468,7 @@ describe("knowledgeRoute", () => {
 
   it("rejects non-TTY runs with a clear SmithError", async () => {
     await writeConfig([
-      { id: "alpha", type: "url", delivery: "file", url: "https://example.test/a" },
+      { id: "alpha", type: "webpage", delivery: "file", url: "https://example.test/a" },
     ]);
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] });
     const err = await knowledgeRoute({

@@ -17,6 +17,19 @@ interface Req {
   fields?: string | undefined;
   maxResults?: number | undefined;
   lazy?: boolean | undefined;
+  // Web-only:
+  mode?: string | undefined;
+  maxPagesWeb?: number | undefined;
+  depth?: number | undefined;
+  sameOrigin?: boolean | undefined;
+  include?: string[] | undefined;
+  exclude?: string[] | undefined;
+  // MCP-only:
+  server?: string | undefined;
+  tool?: string | undefined;
+  args?: Record<string, unknown> | undefined;
+  preset?: string | undefined;
+  allowWriteTool?: boolean | undefined;
 }
 
 export function buildKnowledgeAdd(req: Req): BuiltArgv {
@@ -30,6 +43,7 @@ export function buildKnowledgeAdd(req: Req): BuiltArgv {
   if (!req.install) argv.push("--no-install");
 
   if (req.pages) argv.push("--pages", req.pages);
+  // maxPages (confluence) and maxPagesWeb (web) are mutually exclusive by source type — only one is ever populated.
   if (req.maxPages !== undefined) argv.push("--max-pages", String(req.maxPages));
   if (req.includeChildren) argv.push("--include-children");
   if (req.format) argv.push("--format", req.format);
@@ -38,6 +52,20 @@ export function buildKnowledgeAdd(req: Req): BuiltArgv {
   if (req.maxResults !== undefined) argv.push("--max-results", String(req.maxResults));
 
   if (req.lazy === true) argv.push("--lazy");
+
+  // Web-only flags:
+  if (req.mode) argv.push("--mode", req.mode);
+  if (req.depth !== undefined) argv.push("--depth", String(req.depth));
+  if (req.maxPagesWeb !== undefined) argv.push("--max-pages", String(req.maxPagesWeb));
+  if (req.sameOrigin === false) argv.push("--no-same-origin");
+  for (const g of req.include ?? []) argv.push("--include", g);
+  for (const g of req.exclude ?? []) argv.push("--exclude", g);
+  // MCP-only flags:
+  if (req.server) argv.push("--server", req.server);
+  if (req.tool) argv.push("--tool", req.tool);
+  for (const [k, v] of Object.entries(req.args ?? {})) argv.push("--arg", `${k}=${String(v)}`);
+  if (req.preset) argv.push("--preset", req.preset);
+  if (req.allowWriteTool) argv.push("--allow-write-tool");
 
   // The auto-materialize tail (when install: true) acquires the agent lock
   // because it shells out to `smith agent install <agent>`. Always lock the

@@ -13,7 +13,7 @@ import type {
   FileSource,
   GitSource,
   GlobSource,
-  UrlSource,
+  WebpageSource,
 } from "../../../src/core/knowledge/types";
 import { McpClientPool } from "../../../src/io/mcp-client-pool";
 import { SmithError } from "../../../src/core/smith-error";
@@ -229,8 +229,8 @@ describe("acquire-source: via routing", () => {
 
   it("routes through MCP when via is set and pool injected", async () => {
     pool = new McpClientPool();
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "x",
       delivery: "file",
       url: "https://example.com/x",
@@ -246,8 +246,8 @@ describe("acquire-source: via routing", () => {
   }, 30_000);
 
   it("throws internal-error when via is set but mcpPool missing", async () => {
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "x",
       delivery: "file",
       url: "https://example.com/x",
@@ -275,8 +275,8 @@ describe("acquire-source: via routing", () => {
     // want to make a real network call, so we assert that the failure is a
     // network/HTTP error from acquireUrl — NOT an internal-error from the
     // missing-pool guard, and NOT a routing-via-MCP error.
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "x",
       delivery: "file",
       url: "https://127.0.0.1:1/definitely-not-listening",
@@ -332,8 +332,8 @@ describe("acquire-source: Phase 3 resolver", () => {
         },
       ],
     };
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "u-cache",
       delivery: "file",
       url: "https://example.com/some-doc",
@@ -368,8 +368,8 @@ describe("acquire-source: Phase 3 resolver", () => {
     };
     // Use a URL that will fail at the network layer (TCP refused) — this
     // surfaces as `network-error`, which isProbeRecoverable accepts.
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "u-probe",
       delivery: "file",
       url: "https://127.0.0.1:1/auth-blocked",
@@ -405,8 +405,8 @@ describe("acquire-source: Phase 3 resolver", () => {
     // non-SmithError, so the probe callback must never run.
     const fileAsCache = join(dir, "not-a-dir");
     await writeFile(fileAsCache, "x", "utf8");
-    const src: UrlSource = {
-      type: "url",
+    const src: WebpageSource = {
+      type: "webpage",
       id: "u-noprobe",
       delivery: "file",
       url: "https://example.com/whatever",

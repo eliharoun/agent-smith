@@ -314,7 +314,7 @@ describe("checkRefreshHooks — consent-without-need reclassification", () => {
               sources: [
                 {
                   id: "wiki",
-                  type: "url",
+                  type: "webpage",
                   url: "https://x",
                   delivery: "file",
                 },
@@ -374,7 +374,7 @@ describe("checkRefreshHooks — consent-without-need reclassification", () => {
               sources: [
                 {
                   id: "wiki",
-                  type: "url",
+                  type: "webpage",
                   url: "https://x",
                   delivery: "file",
                   refresh: { mode: "session" },

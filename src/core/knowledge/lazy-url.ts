@@ -9,7 +9,7 @@ const DESCRIPTION_MIN_CHARS = 30;
 const DESCRIPTION_MAX_CHARS = 1024;
 
 export function isLazyUrlSource(src: KnowledgeSource): boolean {
-  return src.type === "url" && (src as { lazy?: boolean }).lazy === true;
+  return src.type === "webpage" && (src as { lazy?: boolean }).lazy === true;
 }
 
 export function lazyDescriptionWarnings(src: KnowledgeSource): string[] {
@@ -49,5 +49,5 @@ export function lazyTocLine(src: KnowledgeSource): string {
   const summaryText = (src.description ?? src.summary ?? "").trim();
   const summaryPart = summaryText ? ` — ${summaryText}` : "";
   const fetchHint = via ? `${via.server}.${via.tool}` : "WebFetch";
-  return `- \`${src.id}\` [url, lazy]${summaryPart}\n    url: ${url}\n    fetch via: ${fetchHint}`;
+  return `- \`${src.id}\` [webpage, lazy]${summaryPart}\n    url: ${url}\n    fetch via: ${fetchHint}`;
 }

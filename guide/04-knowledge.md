@@ -2,11 +2,34 @@
 
 > Knowledge sources let an agent ship with static reference content — schemas, runbooks, API docs, glossaries, ticket queues — that `agent-smith` fetches at install time, converts to text, and either inlines into the prompt or writes to a per-agent knowledge directory the agent has implicit read access to. This is the canonical reference for the knowledge model: every source type, every field, the inline budget, Atlassian credentials, and every `smith knowledge` subcommand.
 
-Read this when you're declaring a `knowledge` block in `agent.config.json`, debugging why a knowledge source didn't materialize the way you expected, configuring Atlassian credentials, or operating the `smith knowledge` CLI.
+Read this when you're declaring a `knowledge` block in `agent.config.json`, debugging why a knowledge source didn't materialize (fetch and convert to text) the way you expected, configuring Atlassian credentials, or operating the `smith knowledge` CLI.
 
 > **Inline vs. progressive.** Everything in this spoke describes the inline/file pipeline. Smith chooses between inline rendering and the progressive-disclosure compile stage automatically: small corpora (total estimated tokens under `inlineBudget.totalTokens`, default 8000) stay inline; larger corpora auto-compile. Explicit `compile.progressive: true/false` overrides the heuristic; explicit `delivery: "inline"` on any source pins the bundle to inline mode. The progressive surface also adds an `agents-md` install target and a BM25 retrieval MCP server. See [16 — Knowledge compiler](./16-knowledge-compiler.md) for the smart default, overrides, and the compile-stage surface.
 
 > **Tip — browser GUI.** `/knowledge/:agent` in `smith gui` wraps `smith knowledge {list,add,fetch,validate}` with a per-source view, a one-click refresh button (job streamed live over SSE), and a `/system/atlassian-setup` route for the credential walk-through. `/knowledge/refresh-history` shows the refresh-mode timeline across agents. See [README → Browser GUI](../README.md#browser-gui-smith-gui).
+
+---
+
+## What are knowledge sources?
+
+Knowledge sources are reference material you attach to an agent — documentation, files, wiki pages, tickets — so it can read them while helping you. You list them in `agent.config.json` and smith fetches and prepares them automatically.
+
+### Source types at a glance
+
+| Type | What it does | Example use |
+|---|---|---|
+| `file` | Reads a single file from your computer | A config file or schema |
+| `dir` | Reads all files in a folder (optionally filtered) | A folder of runbooks |
+| `glob` | Reads files matching a pattern across folders | All `.json` under `examples/` |
+| `webpage` | Fetches a single web page | An API reference page |
+| `web` | Fetches content from a whole website — crawl links, read an llms.txt list, or parse an API spec | A docs site with many pages |
+| `git` | Clones a git repo and reads selected files | Your team's standards repo |
+| `npm` | *(not yet available — reserved for a future release)* | — |
+| `confluence` | Fetches pages from a Confluence wiki | Your team's wiki space |
+| `jira` | Fetches issues from Jira via a search query | Open tickets for your project |
+| `mcp` | Pulls data from an external tool (Notion, Slack, GitHub, …) through a connector | Onboarding pages in Notion |
+
+> **Which should I pick?** File on your machine → `file`, `dir`, or `glob`. A single web page → `webpage`. A whole docs site → `web`. Confluence or Jira → use those types directly. Another tool like Notion or Slack → `mcp`.
 
 ---
 
@@ -16,7 +39,7 @@ Every knowledge source has three independent dimensions. Get them straight and t
 
 | Dimension | Question it answers | Values |
 |---|---|---|
-| **type** | Where do the bytes come from? | `file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira` |
+| **type** | Where do the bytes come from? | `file`, `dir`, `glob`, `webpage`, `web`, `git`, `confluence`, `jira`, `mcp` |
 | **materializer** | How do the raw bytes become text? | `passthrough`, `markdown`, `text`, `html-to-md`, `json` (also `pdf-extract` — declared but not implemented) |
 | **delivery** | Where does the text land? | `inline`, `file`, `auto` |
 
@@ -27,7 +50,7 @@ agent.config.json (+ knowledge.json sidecar)
             │
             ▼
    ┌─────────────────┐
-   │     acquire     │   type=file/dir/glob/url/git/confluence/jira
+   │     acquire     │   type=file/dir/glob/webpage/web/git/confluence/jira/mcp
    │  → AcquiredArt. │   bytes + filename + (contentType?)
    └────────┬────────┘
             ▼
@@ -54,16 +77,16 @@ Every source carries the same envelope. Type-specific fields layer on top.
 | Field | Type | Meaning | Notes |
 |---|---|---|---|
 | `id` | string | Stable identifier within the bundle | Must match `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` (kebab-case). See `src/core/knowledge/schema.ts`. |
-| `type` | enum | Where bytes come from | `file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`. `npm` is declared but rejected by the validator. |
+| `type` | enum | Where bytes come from | `file`, `dir`, `glob`, `webpage`, `web`, `git`, `confluence`, `jira`, `mcp`. `url` is accepted as a deprecated alias for `webpage` (emits a migration warning). `npm` is declared but rejected by the validator. |
 | `delivery` | enum | Where text lands | `inline`, `file`, `auto`. **Required.** |
 | `materialize` | enum | Override inferred materializer | `passthrough`, `markdown`, `text`, `html-to-md`, `json`. `pdf-extract` is declared but rejected. |
 | `extractor` | enum | PDF extractor | Only valid when `materialize=pdf-extract`; both are forward-compat. |
 | `inlineBudgetTokens` | int | Per-source inline cap | 1–16000. Falls back to remaining global budget when omitted. |
 | `refresh` | enum or object | Refresh policy (`install`/`ttl`/`session`/`always`) — legacy shorthands `1h`/`1d`/`1w`/`never` still accepted | See [Refresh modes](#refresh-modes). `ttl` mode is driven by the daemon at a 5-minute poll cadence; `session`/`always` require platform hooks. |
 | `description` | string | Human-readable summary | Surfaced in `knowledge list` output and the prompt's knowledge index. |
-| `include` | string[] | picomatch include patterns | Only meaningful for `dir` and `git`. |
-| `exclude` | string[] | picomatch exclude patterns | Only meaningful for `dir`. |
-| `auth` | enum | Auth provider | `atlassian`, `none`. **Only valid on `type=url`.** Validator rejects on any other type (`src/core/knowledge/schema.ts`). |
+| `include` | string[] | picomatch include patterns (familiar wildcards — `**/*.md` = all `.md` files in any subfolder) | Only meaningful for `dir`, `git`, and `web` (mode: crawl). |
+| `exclude` | string[] | picomatch exclude patterns | Only meaningful for `dir` and `web` (mode: crawl). |
+| `auth` | enum | Auth provider | `atlassian`, `none`. **Only valid on `type=webpage`.** Validator rejects on any other type (`src/core/knowledge/schema.ts`). |
 | `optional` | boolean | Demote runtime failures to warnings | When `true`, runtime/IO failures (network, missing file, git auth, etc.) are demoted to warnings and the source is skipped. Author bugs (`validation-failed` SmithErrors) still abort. See [Optional sources](#optional-sources). |
 
 Unknown fields are dropped silently; required fields per type are listed below.
@@ -109,12 +132,17 @@ Like `dir`, but `path` IS the picomatch pattern (rooted at `bundleDir`). Useful 
 
 Required: `path` (the pattern). See `src/core/knowledge/acquire.ts`.
 
-### `url`
+### `webpage`
 
+Point smith at any web page and it downloads the content for your agent to read. It only re-downloads later if the page actually changed.
+
+> **Deprecation note.** The type name `url` is still accepted as an alias for `webpage` and works identically at runtime. However, `smith validate` emits a migration warning when it encounters `type: url`. New bundles should use `type: webpage`.
+
+<!-- Fetch the Stripe API reference as a single page -->
 ```json
 {
   "id": "stripe-api",
-  "type": "url",
+  "type": "webpage",
   "url": "https://stripe.com/docs/api",
   "delivery": "auto",
   "auth": "none"
@@ -123,7 +151,7 @@ Required: `path` (the pattern). See `src/core/knowledge/acquire.ts`.
 
 Fetches `url` once and caches the response body plus `ETag`/`Last-Modified` for revalidation. Subsequent fetches send `If-None-Match` / `If-Modified-Since`; on a `304` the cached body is reused. The cache lives at `<knowledgeDir>/.cache/<sha256(url)>.bin` with sibling `.json` for headers. See `src/core/knowledge/acquire.ts`.
 
-Required: `url` (must be RFC-parseable — `new URL(url)` succeeds). Validator rejects non-RFC URLs on `type=url` (`src/core/knowledge/schema.ts`).
+Required: `url` (must be RFC-parseable — `new URL(url)` succeeds). Validator rejects non-RFC URLs on `type=webpage` (`src/core/knowledge/schema.ts`).
 
 `auth: "atlassian"` is only valid here. When set, smith resolves Atlassian Cloud credentials and injects a `Basic` header — see [Atlassian-authenticated sources](#atlassian-authenticated-sources).
 
@@ -140,7 +168,7 @@ sources:
     delivery: file
 ```
 
-Both ssh (`git@host:path` SCP shorthand or `ssh://...`) and https (`https://...`) URLs are accepted. The validator accepts either form for `type=git`; `type=url` requires a strict RFC URL (`src/core/knowledge/schema.ts`). Pick whichever your environment is already configured for.
+Both ssh (`git@host:path` SCP shorthand or `ssh://...`) and https (`https://...`) URLs are accepted. The validator accepts either form for `type=git`; `type=webpage` requires a strict RFC URL (`src/core/knowledge/schema.ts`). Pick whichever your environment is already configured for.
 
 **Caching & refresh.** Clones land in `<cacheDir>/git/<sha256(url)>/`. On re-run, `smith` checks whether `ref` is a branch — if yes, it `git fetch`es and hard-resets to `origin/<ref>`. If `ref` is a tag or commit SHA, the existing clone is reused unchanged (immutable). Re-run `smith agent install <agent>` or `smith knowledge fetch <agent>` to refresh branch refs.
 
@@ -197,7 +225,7 @@ sources:
 
 Output: one file per page named `<page-id>-<slug>.md` (or `.html` for `format: storage` / `format: view`). When `pages` is omitted and the space has more pages than `maxPages`, `agent-smith` fetches the first N and emits a warning telling you to set `maxPages` (≤100) or list `pages` explicitly. See `src/io/confluence.ts`.
 
-When `includeChildren: true`, the seed pages are BFS-expanded via the Confluence v2 children endpoint; the same `maxPages` cap applies to the **total set (seeds + descendants)** and a warning is emitted when the cap is hit (`src/io/confluence.ts`). Use a higher `maxPages` (still capped at 100) if you need more recursion.
+When `includeChildren: true`, the seed pages are expanded (follows links level by level) via the Confluence v2 children endpoint; the same `maxPages` cap applies to the **total set (seeds + descendants)** and a warning is emitted when the cap is hit (`src/io/confluence.ts`). Use a higher `maxPages` (still capped at 100) if you need more recursion.
 
 **Title lookup is case-sensitive exact match.** When you pass a page reference as a string title, smith pages the space's title→id map (capped at `max(maxPages * 4, 1000)` scanned pages defensively) and looks up the title verbatim. Misspell or mis-case it and you get `Confluence: page titled "..." not found in space ...`. Use the `{ id: 12345 }` form when you have a stable page id.
 
@@ -224,6 +252,110 @@ Output: one file per issue named `<issue-key>.md` (e.g. `ENG-1234.md`). Paginati
 When `fields` is omitted (or set to `[]`), Smith requests the safe default trio `["summary", "description", "status"]`. The renderer dumps any *additional* fields it receives into a `## Other fields` JSON block, so passing every field can balloon artifact sizes (attachments, ADF descriptions, full changelogs). Pass `fields: ["*all"]` to opt back in to the server-side default of every field.
 
 Required: `jql`. Optional: `fields`, `maxResults`. The validator rejects `jql`, `fields`, and `maxResults` on any other type (`src/core/knowledge/schema.ts`).
+
+### `web`
+
+Crawl a site, fetch an `llms.txt` manifest, or parse an OpenAPI spec (a machine-readable description of a web API) — three modes for structured web content that goes beyond a single page.
+
+**The three modes in plain English:**
+
+- **crawl** — point it at a docs site and smith follows links to collect multiple pages. You set how many (`maxPages`, default 25) and how deep (`depth`, default 2); it stays on the same site by default.
+- **llms-txt** — some sites publish an `llms.txt` file listing their key pages. Point smith at it and it reads everything listed.
+- **openapi** — if a service publishes an API description (OpenAPI/Swagger), smith reads it so your agent understands the API's endpoints.
+
+```yaml
+sources:
+  # Crawl up to 50 pages of the Stripe docs, following links 3 levels deep
+  - id: stripe-docs
+    type: web
+    url: https://docs.stripe.com/
+    mode: crawl
+    delivery: file
+    maxPages: 50
+    depth: 3
+
+  # llms-txt mode: fetch a site's llms.txt manifest and referenced pages
+  - id: project-llms
+    type: web
+    url: https://example.com/llms.txt
+    mode: llms-txt
+    delivery: file
+
+  # openapi mode: parse an OpenAPI/Swagger spec
+  - id: pets-api
+    type: web
+    url: https://api.example.com/openapi.json
+    mode: openapi
+    delivery: file
+```
+
+**Modes:**
+
+| Mode | Behavior |
+|---|---|
+| `crawl` | Starts at `url`, follows same-origin links up to `depth` hops, collecting up to `maxPages` pages. |
+| `llms-txt` | Fetches the `llms.txt` file at `url` and materializes the pages it references. |
+| `openapi` | Fetches the OpenAPI/Swagger JSON or YAML spec at `url` and materializes it as structured reference. |
+
+**Crawl bounds (mode: crawl only):**
+
+| Field | Type | Default | Constraint |
+|---|---|---|---|
+| `maxPages` | int | 25 | 1–200 |
+| `depth` | int | 2 | 1–5 |
+| `sameOrigin` | bool | `true` | When `true`, only follows links on the same origin as `url`. |
+| `include` | string[] | (match all) | picomatch path globs — only crawl URLs whose pathname matches. |
+| `exclude` | string[] | (match none) | picomatch path globs — skip URLs whose pathname matches. |
+
+`include` and `exclude` are only valid on `mode: crawl`; the validator rejects them on `llms-txt` and `openapi`.
+
+**Install-time only.** Web sources are always materialized at install time. They do not support `lazy: true` — the validator rejects it.
+
+Required: `url`, `mode`. Optional (crawl-only): `maxPages`, `depth`, `sameOrigin`, `include`, `exclude`.
+
+### `mcp`
+
+Connect your agent to external tools — Notion, GitHub, Slack, and others — and pull in their data. Smith talks to these tools through connectors called MCP servers (small programs that know how to talk to a specific service). You tell smith which tool and what to look for.
+
+<!-- Pull onboarding pages from Notion via MCP connector -->
+```yaml
+sources:
+  - id: onboarding-pages
+    type: mcp
+    server: notion-mcp
+    tool: search
+    args:
+      query: "onboarding guide"
+    preset: notion
+    delivery: file
+```
+
+**Fields:**
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `server` | string | yes | Name of an MCP server declared in the bundle's `mcp.required` or `mcp.peer`. |
+| `tool` | string | yes | Tool name to invoke on the server. |
+| `args` | object | no | Arguments passed to the tool. Credential-shaped keys (matching `authorization`, `bearer`, `cookie`, `credential`, `password`, `passwd`, `secret`, `token`, `*_key`, `apikey`) are rejected by the validator. |
+| `preset` | enum | no | One of: `notion`, `github`, `slack`, `linear`, `sentry`, `grafana`. Pre-fills `server`/`tool`/`argHints` defaults. |
+| `allowWriteTool` | bool | no | Default `false`. By default only tool names starting with a read-shaped prefix (`read`, `get`, `fetch`, `search`, `list`, `describe`, `preview`, `head` — case-insensitive) are allowed; all others are blocked unless this is `true`. |
+
+**Presets:**
+
+| Preset | Default server | Default tool | Docs |
+|---|---|---|---|
+| `notion` | `notion-mcp` | `search` | [github.com/makenotion/notion-mcp-server](https://github.com/makenotion/notion-mcp-server) |
+| `github` | `github-mcp` | `search_repositories` | [github.com/github/github-mcp-server](https://github.com/github/github-mcp-server) |
+| `slack` | `slack-mcp` | `search_messages` | [github.com/modelcontextprotocol/servers/tree/main/src/slack](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) |
+| `linear` | `linear-mcp` | `search_issues` | [github.com/linear/linear-mcp-server](https://github.com/linear/linear-mcp-server) |
+| `sentry` | `sentry-mcp` | `search_issues` | [github.com/getsentry/sentry-mcp-server](https://github.com/getsentry/sentry-mcp-server) |
+| `grafana` | `grafana-mcp` | `search_dashboards` | [github.com/grafana/grafana-mcp-server](https://github.com/grafana/grafana-mcp-server) |
+
+**Credential denylist.** The `args` object is scanned for credential-shaped keys. Keys matching `/(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i` are rejected (e.g. `token`, `api_key`, `access_token`, `client_secret`, `refresh_token`, `private_key`, `authorization`, `bearer`, `cookie`, `password`) — note plain `auth` is NOT matched. Credentials belong in the MCP server's own environment/config, not in the bundle.
+
+**Read-tool guard.** By default smith only allows tool names that start with a read-shaped prefix (`read`, `get`, `fetch`, `search`, `list`, `describe`, `preview`, `head` — case-insensitive). All other tool names (including names like `find_`/`query_`/`compute_`) are blocked. Set `allowWriteTool: true` to override when a non-read-prefixed name is actually safe (e.g. a tool named `compute_stats` that only reads data).
+
+**Server declaration.** The `server` field should reference a server declared in the bundle's `mcp.required` or `mcp.peer` array. This ensures `smith agent install` can preflight the dependency and warn when the server is missing from the target platform's MCP config.
 
 ---
 
@@ -267,7 +399,7 @@ For URL sources, you can opt out of install-time fetching: the bundle ships only
 ```json
 {
   "id": "platform-architecture",
-  "type": "url",
+  "type": "webpage",
   "url": "https://wiki.internal.example.com/architecture",
   "lazy": true,
   "description": "Platform service architecture. Use when answering deployment topology or service-boundary questions."
@@ -305,7 +437,7 @@ When a URL needs authentication that the agent's built-in fetch tool can't provi
 ```json
 {
   "id": "platform-architecture",
-  "type": "url",
+  "type": "webpage",
   "url": "https://wiki.internal.example.com/architecture",
   "lazy": true,
   "via": { "server": "internal-mcp", "tool": "fetch_page" },
@@ -332,7 +464,7 @@ Set `optional: true` on a source to make `smith agent install` resilient to its 
 ```json
 {
   "id": "live-runbook",
-  "type": "url",
+  "type": "webpage",
   "url": "https://internal-wiki.example.com/runbook",
   "delivery": "file",
   "optional": true
@@ -347,7 +479,7 @@ When the source's acquire/materialize step throws at install time — network do
 
 Mirrors npm's `optionalDependencies`: a missing optional dep doesn't fail the install, but it doesn't pretend to have succeeded either.
 
-**What `optional` does NOT demote.** Author bugs — anything the schema or validator catches as a structured `validation-failed` SmithError — still abort regardless of `optional`. The flag exists to absorb environmental flakiness (network, missing optional files), not to hide misconfiguration. So a misspelled `materialize`, an `auth: atlassian` on a non-`url` source, or a `type=npm` placeholder still fail the install.
+**What `optional` does NOT demote.** Author bugs — anything the schema or validator catches as a structured `validation-failed` SmithError — still abort regardless of `optional`. The flag exists to absorb environmental flakiness (network, missing optional files), not to hide misconfiguration. So a misspelled `materialize`, an `auth: atlassian` on a non-`webpage` source, or a `type=npm` placeholder still fail the install.
 
 **When to use it.** Sources that depend on environment-specific availability (an internal wiki you may be off-VPN from; a credential-guarded URL for users who haven't configured Atlassian; a `git` clone that requires SSH agent setup that not every dev has). Don't use it as a workaround for sources that fail in CI but work locally — fix the underlying issue or scope the source to the right environment.
 
@@ -455,7 +587,7 @@ For URL sources that require Atlassian Cloud credentials (Confluence REST API en
     "sources": [
       {
         "id": "wiki-runbook",
-        "type": "url",
+        "type": "webpage",
         "url": "https://acme.atlassian.net/wiki/rest/api/content/12345",
         "delivery": "file",
         "auth": "atlassian"
@@ -465,7 +597,7 @@ For URL sources that require Atlassian Cloud credentials (Confluence REST API en
 }
 ```
 
-`auth` is **only valid on `type=url`**. The dedicated `confluence` and `jira` source types resolve credentials automatically and reject `auth` (`src/core/knowledge/schema.ts`).
+`auth` is **only valid on `type=webpage`**. The dedicated `confluence` and `jira` source types resolve credentials automatically and reject `auth` (`src/core/knowledge/schema.ts`).
 
 ### Credential resolution order
 
@@ -520,7 +652,7 @@ For these, set `via` on the source:
 ```json
 {
   "id": "internal-wiki",
-  "type": "url",
+  "type": "webpage",
   "url": "https://wiki.internal.example.com/architecture/",
   "delivery": "file",
   "via": {
@@ -576,7 +708,7 @@ $ smith knowledge add my-agent https://wiki.internal.example.com/space/page
   loading tools from confluence-mcp…
   → routing through confluence-mcp.fetch_page
 → added confluence-mcp to mcpServers[] and marked as required
-→ added knowledge source wiki-internal-example-com-space-page (url)
+→ added knowledge source wiki-internal-example-com-space-page (webpage)
 ```
 
 After you pick a server smith calls its `tools/list` and filters for
@@ -665,7 +797,7 @@ $ smith knowledge add my-agent url https://wiki.internal.example.com/space/page
     (verify the tool name against your server's tools/list)
   use this routing? [y/N] y
 → routing through internal-mcp.FetchInternalUrl
-→ added knowledge source wiki-internal-example-com-space-page (url)
+→ added knowledge source wiki-internal-example-com-space-page (webpage)
 ```
 
 Smith **never** auto-sets `via` without an explicit `y` — tool names
@@ -847,7 +979,7 @@ Adds a source to the agent's `agent.config.json`, validates the result, and **au
 smith knowledge add my-agent file ./db/schema.sql
 
 # Add a URL with a stable id and explicit delivery
-smith knowledge add my-agent url https://stripe.com/docs/api \
+smith knowledge add my-agent webpage https://stripe.com/docs/api \
   --id stripe-api \
   --delivery auto \
   --description "Stripe API reference"
@@ -877,8 +1009,8 @@ smith knowledge add my-agent jira "project=ENG AND status='In Progress'" \
 | Case | Derivation |
 |---|---|
 | `--id` is provided | Always wins. |
-| `type=url` or `type=git` and URL parses | `host + pathname`, lowercased, non-alphanumerics collapsed to `-`, trimmed, max 60 chars. Fallback: `"url-source"`. |
-| `type=url` or `type=git` and URL doesn't parse | `"url-source"`. |
+| `type=webpage` or `type=git` and URL parses | `host + pathname`, lowercased, non-alphanumerics collapsed to `-`, trimmed, max 60 chars. Fallback: `"url-source"`. |
+| `type=webpage` or `type=git` and URL doesn't parse | `"url-source"`. |
 | `type=file`, `dir`, `glob` | basename minus extension, kebab-case. Fallback: `"source"`. |
 
 **Default delivery** is `auto` when `--delivery` is omitted.
@@ -897,7 +1029,7 @@ This guarantees that the human contract ("add this source") and the machine cont
 **Output you'll see (success path):**
 
 ```
-→ added knowledge source stripe-api (url)
+→ added knowledge source stripe-api (webpage)
   materializing via 'smith agent install my-agent'…
 → opencode /Users/you/.config/opencode/agents/my-agent.md
 1 installed, 0 unchanged
@@ -910,7 +1042,7 @@ The new `stripe-api` source shows as `→` (changed) because there's no prior ma
 **Output with `--no-install`:**
 
 ```
-→ added knowledge source stripe-api (url)
+→ added knowledge source stripe-api (webpage)
   run 'smith agent install my-agent' to materialize
 ```
 
@@ -958,7 +1090,7 @@ $ smith knowledge list draft-agent
 Knowledge for draft-agent:
   1 source(s) declared but not yet materialized
 
-  opencode-docs  (url, https://opencode.ai/docs)
+  opencode-docs  (webpage, https://opencode.ai/docs)
     Live OpenCode docs
 
   Materialize:  smith agent install draft-agent
@@ -1005,7 +1137,7 @@ smith knowledge fetch my-agent --source stripe-api   # surgically clear and re-f
 
 **`--source <id>` is surgical.** Smith clears only the named source's acquirer cache before re-fetching:
 
-- `type: url` — removes `<knowledgeDir>/.cache/<sha256(url)>.bin` and the sibling `.json` headers.
+- `type: webpage` — removes `<knowledgeDir>/.cache/<sha256(url)>.bin` and the sibling `.json` headers.
 - `type: git` — removes `<knowledgeDir>/.cache/git/<sha256(url)>/` recursively.
 - `file`, `dir`, `glob`, `confluence`, `jira`, and `npm`-placeholder types: no on-disk acquirer cache to clear. For `confluence`/`jira`, surgical refresh re-acquires through the API but does not pre-clear any on-disk cache; the broad form (no `--source`) goes through the same path.
 
@@ -1035,7 +1167,7 @@ Runs the knowledge linter (`src/core/knowledge/validator.ts`) against the agent'
 - Duplicate source ids.
 - Unknown source types (e.g. `npm` — declared in the schema but not implemented).
 - Unknown materializers (e.g. `pdf-extract` — same).
-- Missing required fields per type (`space` for confluence, `jql` for jira, `path` for file/dir/glob, `url` for url/git).
+- Missing required fields per type (`space` for confluence, `jql` for jira, `path` for file/dir/glob, `url` for webpage/web/git, `server`/`tool` for mcp).
 - `inlineBudget.totalTokens` above the 16000 hard ceiling.
 - Sum-of-inline-source-budgets exceeding the global budget (warning, not error).
 - Use of `packs` (declared in the schema but not yet implemented — error, not warning).
@@ -1063,7 +1195,7 @@ The same linter runs as part of `smith agent validate`, so you only need to invo
 - **Symlinks inside git sources are silently skipped.** Materialize real files, or commit the resolved content.
 - **Inline budget demotion is "oldest first".** When the budget is exceeded, the pipeline keeps already-fitted sources and demotes the next one; the warning identifies which source was demoted.
 - **Cache invalidation is per-source for URL/git sources.** Pass `--source <id>` to clear and re-fetch one source's URL or git cache; without `--source`, smith re-runs install and reuses the existing cache (ETag revalidation, branch hard-resets). To force a full re-fetch of every source, delete `<knowledgeDir>/.cache/` directly and re-run `smith agent install`.
-- **`url` requires a strict RFC URL; `git` accepts SCP shorthand.** `https://...` works for both, but `git@host:path` only validates as `type=git`. The validator surfaces a clear error either way (`schema.ts`).
+- **`webpage` requires a strict RFC URL; `git` accepts SCP shorthand.** `https://...` works for both, but `git@host:path` only validates as `type=git`. The validator surfaces a clear error either way (`schema.ts`).
 - **`auth`, `subpath`, `space`/`pages`/`includeChildren`/`format`, `maxPages`, `jql`/`fields`, `maxResults` are all type-restricted.** Setting any of them on the wrong source type fails validation with a precise message. Use `smith knowledge validate <agent>` after editing the config by hand.
 - **`smith knowledge add confluence|jira ...` is fully supported as of v0.12.0.** The third positional is the type's required identifier (`<space>` for confluence, `<jql>` for jira); optional per-type flags (`--pages`, `--max-pages`, `--include-children`, `--format`, `--fields`, `--max-results`) map to the schema's per-variant fields. The add command checks Atlassian-auth presence and warns (does not block) if credentials are missing. See [smith knowledge add in cli-reference](./14-cli-reference.md#smith-knowledge-add-agent-type-or-url-path-or-url) for full flag docs.
 - **`smith knowledge add <agent> <atlassian-url>` URL shortcut is supported as of v0.12.0.** Paste any Atlassian/Confluence/Jira URL directly as the second positional and smith infers the type and fills the right flags (six URL shapes recognised: Confluence page/blog/space, Jira issue, Jira JQL search, plain web URL fallback). The success line labels the kind it created so a typo'd Atlassian URL falling through to `plain web URL` is caught immediately. Explicit flags always override URL-derived defaults. v1 limitations: Confluence tinylinks (`/wiki/x/...`), Jira boards/dashboards, and the newer `/jira/software/projects/.../issues/KEY-N` path fall through to plain URL — use the long-form flag command for those.
@@ -1094,7 +1226,7 @@ sources:
       mode: session
       timeout: 3      # per-source budget in seconds (default 5, max 60)
   - id: cache-poll
-    type: url
+    type: webpage
     url: https://example.com/api/spec
     refresh:
       mode: ttl

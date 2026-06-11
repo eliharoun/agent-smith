@@ -38,7 +38,7 @@ function bundleWithSessionSource(name: string): AgentBundle {
     sources: [
       {
         id: "live-docs",
-        type: "url",
+        type: "webpage",
         url: "https://example.com",
         delivery: "file",
         refresh: { mode: "session" },

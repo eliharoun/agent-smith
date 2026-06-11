@@ -3,7 +3,7 @@ import type { KnowledgeBlock, KnowledgeSource } from "../../src/core/knowledge/t
 export function lazyUrlSource(overrides: Partial<KnowledgeSource> = {}): KnowledgeSource {
   return {
     id: "wiki",
-    type: "url",
+    type: "webpage",
     url: "https://wiki.internal.example.com/architecture",
     lazy: true,
     description:
@@ -15,7 +15,7 @@ export function lazyUrlSource(overrides: Partial<KnowledgeSource> = {}): Knowled
 export function eagerUrlSource(overrides: Partial<KnowledgeSource> = {}): KnowledgeSource {
   return {
     id: "doc",
-    type: "url",
+    type: "webpage",
     url: "https://example.com/doc",
     delivery: "auto",
     ...overrides,

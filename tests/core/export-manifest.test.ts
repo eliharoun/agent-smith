@@ -101,7 +101,7 @@ describe("manifestToReadme", () => {
       ...VALID,
       requires: {
         ...VALID.requires,
-        remoteKnowledge: [{ id: "wiki", type: "url", endpoint: "wiki.example.com" }],
+        remoteKnowledge: [{ id: "wiki", type: "webpage", endpoint: "wiki.example.com" }],
       },
     });
     expect(md).toMatch(/wiki\.example\.com/);

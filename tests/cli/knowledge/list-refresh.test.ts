@@ -61,7 +61,7 @@ function firstLog(): string {
 const baseSrc = (over: Partial<KnowledgeSource>): KnowledgeSource =>
   ({
     id: "src1",
-    type: "url",
+    type: "webpage",
     url: "https://example.com",
     delivery: "auto",
     ...over,
@@ -108,7 +108,7 @@ describe("knowledgeList — refresh status (materialized state)", () => {
         {
           id: "src1",
           scope: "agent",
-          type: "url",
+          type: "webpage",
           delivery: "auto",
           files: [{ path: "src1/index.md", sha256: "abc", bytes: 100 }],
           tokensInline: 0,

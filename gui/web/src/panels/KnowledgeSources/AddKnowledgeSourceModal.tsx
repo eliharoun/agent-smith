@@ -11,31 +11,37 @@ import { GlobForm } from "./sourceForms/GlobForm";
 import { JiraForm } from "./sourceForms/JiraForm";
 import { NpmForm } from "./sourceForms/NpmForm";
 import type { FormSubmit, SourceFormProps } from "./sourceForms/types";
-import { UrlForm } from "./sourceForms/UrlForm";
+import { McpForm } from "./sourceForms/McpForm";
+import { WebpageForm } from "./sourceForms/WebpageForm";
+import { WebForm } from "./sourceForms/WebForm";
 import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 
-type SourceType = "file" | "dir" | "glob" | "url" | "git" | "npm" | "confluence" | "jira";
+type SourceType = "file" | "dir" | "glob" | "webpage" | "web" | "git" | "npm" | "confluence" | "jira" | "mcp";
 
 const FORMS: Record<SourceType, (p: SourceFormProps) => JSX.Element> = {
   file: FileForm,
   dir: DirForm,
   glob: GlobForm,
-  url: UrlForm,
+  webpage: WebpageForm,
+  web: WebForm,
   git: GitForm,
   npm: NpmForm,
   confluence: ConfluenceForm,
   jira: JiraForm,
+  mcp: McpForm,
 };
 
 const TYPE_DESCRIPTIONS: Record<SourceType, string> = {
   file: "single file on disk",
   dir: "directory of files (markdown / text)",
   glob: "file glob pattern",
-  url: "fetch from an http(s) URL",
+  webpage: "fetch a single http(s) page",
+  web: "crawl a site, an llms.txt manifest, or an OpenAPI spec",
   git: "shallow clone of a git repo",
   npm: "package contents from npm",
   confluence: "Confluence space or pages",
   jira: "Jira issues matching a JQL query",
+  mcp: "connect to an MCP server (Notion, Slack, GitHub, ...)",
 };
 
 interface Props {
@@ -104,7 +110,7 @@ export function AddKnowledgeSourceModal({
       const existingSources = (existingBlock.sources ?? []) as KnowledgeSource[];
       const newSource: Record<string, unknown> = {
         id: s.request.id,
-        type: "url",
+        type: "webpage",
         url: s.request.typeOrUrl,
         // Lazy URL forbids `delivery` (the schema rejects the pair); eager
         // URL gets the existing `delivery: "auto"` default.

@@ -34,12 +34,13 @@ export interface AcquireViaOpts {
  */
 export async function acquireViaMcp(
   via: Via,
-  url: string,
+  locator: string | undefined,
   opts: AcquireViaOpts,
 ): Promise<AcquiredArtifact[]> {
   assertViaToolAllowed(via);
+  const errUrl = locator ?? `mcp://${via.server}/${via.tool}`;
   const client = await opts.pool.acquire(via.server, opts.spawnOptsFor(via.server));
-  const args = await resolveArgs(via, url, client);
+  const args = await resolveArgs(via, locator, client);
   let result;
   try {
     result = await client.callTool(via.tool, args);
@@ -57,7 +58,7 @@ export async function acquireViaMcp(
     throw new SmithError({
       code: "network-error",
       operation: `mcp ${via.server}.${via.tool}`,
-      url,
+      url: errUrl,
       cause: errText || "tool returned isError=true with no text content",
     });
   }
@@ -69,12 +70,12 @@ export async function acquireViaMcp(
     throw new SmithError({
       code: "network-error",
       operation: `mcp ${via.server}.${via.tool}`,
-      url,
+      url: errUrl,
       cause: "tool returned no text content",
     });
   }
   const declaredCt = readDeclaredContentType(result);
-  const sniffHints: { url: string; declaredCt?: string } = { url };
+  const sniffHints: { url: string; declaredCt?: string } = { url: errUrl };
   if (declaredCt) sniffHints.declaredCt = declaredCt;
   const sniff = sniffArtifact(Buffer.from(text, "utf8"), sniffHints);
   return [{
@@ -82,7 +83,7 @@ export async function acquireViaMcp(
     relPath: sniff.filename,
     bytes: sniff.bytes,
     contentType: sniff.contentType,
-    sourceUrl: url,
+    sourceUrl: errUrl,
   }];
 }
 
@@ -101,13 +102,14 @@ function readDeclaredContentType(result: { content: ReadonlyArray<{ type: string
 
 async function resolveArgs(
   via: Via,
-  url: string,
+  locator: string | undefined,
   client: McpClient,
 ): Promise<Record<string, unknown>> {
   if (via.args) return via.args;
-  const route = findRoute(url);
+  if (!locator) return {};
+  const route = findRoute(locator);
   if (route && route.server === via.server && route.tool === via.tool) {
-    return route.argMapper(url);
+    return route.argMapper(locator);
   }
   // Inspect the tool's declared inputSchema so we wrap the URL in the
   // shape the tool actually expects — single string vs string[]. The
@@ -118,15 +120,15 @@ async function resolveArgs(
     const tool = tools.find((t) => t.name === via.tool);
     if (tool) {
       const param = detectUrlParam(tool);
-      if (param?.kind === "string") return { [param.key]: url };
-      if (param?.kind === "string-array") return { [param.key]: [url] };
+      if (param?.kind === "string") return { [param.key]: locator };
+      if (param?.kind === "string-array") return { [param.key]: [locator] };
     }
   } catch {
     // tools/list failure is non-fatal here — fall through to the
     // legacy { url } default and let callTool surface a meaningful
     // error if the tool genuinely doesn't accept that shape.
   }
-  return { url };
+  return { url: locator };
 }
 
 /**

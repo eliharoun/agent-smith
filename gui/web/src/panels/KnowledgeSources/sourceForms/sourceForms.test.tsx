@@ -10,7 +10,7 @@ import { GlobForm } from "./GlobForm";
 import { JiraForm } from "./JiraForm";
 import { NpmForm } from "./NpmForm";
 import type { FormSubmit, SourceFormProps } from "./types";
-import { UrlForm } from "./UrlForm";
+import { WebpageForm } from "./WebpageForm";
 
 function wrap(node: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -53,7 +53,7 @@ const CASES: Case[] = [
   },
   {
     name: "UrlForm",
-    Component: UrlForm,
+    Component: WebpageForm,
     fill: [{ label: /^\/\/ url/, value: "https://example.com/p" }],
     expect: { typeOrUrl: "https://example.com/p", id: "src-1" },
   },
@@ -182,7 +182,7 @@ describe("UrlForm id inference", () => {
   }
 
   it("auto-fills id from the URL until the user edits id", () => {
-    wrapUrl(<UrlForm existingIds={[]} onSubmit={vi.fn()} formId="t-form" />);
+    wrapUrl(<WebpageForm existingIds={[]} onSubmit={vi.fn()} formId="t-form" />);
     const idInput = screen.getByLabelText(/^\/\/ id/) as HTMLInputElement;
     const urlInput = screen.getByLabelText(/^\/\/ url/) as HTMLInputElement;
 

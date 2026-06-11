@@ -37,7 +37,7 @@ describe("knowledge compile drift — lazy URL hash convergence", () => {
         {
           id: "wiki",
           scope: "agent" as const,
-          type: "url" as const,
+          type: "webpage" as const,
           source: { url: "https://example.com/wiki" },
           delivery: "file" as const,
           files: [
@@ -72,7 +72,7 @@ describe("knowledge compile drift — lazy URL hash convergence", () => {
           sources: [
             {
               id: "wiki",
-              type: "url",
+              type: "webpage",
               url: "https://example.com/wiki",
               delivery: "auto",
               lazy: true,

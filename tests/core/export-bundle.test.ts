@@ -460,7 +460,7 @@ describe("exportBundle — remote knowledge declarations", () => {
         sources: [
           {
             id: "wiki",
-            type: "url",
+            type: "webpage",
             delivery: "file",
             url: "https://wiki.example.com/space/page",
           },
@@ -477,7 +477,7 @@ describe("exportBundle — remote knowledge declarations", () => {
         smithVersion: "1.7.0",
       });
       expect(result.manifest.requires.remoteKnowledge).toEqual([
-        { id: "wiki", type: "url", endpoint: "wiki.example.com" },
+        { id: "wiki", type: "webpage", endpoint: "wiki.example.com" },
       ]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -514,6 +514,38 @@ describe("exportBundle — remote knowledge declarations", () => {
           docPath: expect.stringContaining("15-sharing"),
         },
       ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("web and mcp sources appear in remoteKnowledge and pass manifest validation", async () => {
+    const dir = await makeTempBundle("web-mcp-decl", {
+      knowledge: {
+        sources: [
+          { id: "crawl", type: "web", delivery: "file", url: "https://docs.example.com/" },
+          { id: "kb", type: "mcp", delivery: "file", server: "notion-mcp", tool: "search" },
+        ],
+      },
+    });
+    try {
+      const result = await exportBundle({
+        bundlePath: dir,
+        bundleName: "web-mcp-decl",
+        includeSkills: false,
+        userMdPolicy: "stub",
+        now: () => new Date("2026-06-03T15:00:00Z"),
+        smithVersion: "1.7.0",
+      });
+      expect(result.manifest.requires.remoteKnowledge).toEqual([
+        { id: "crawl", type: "web", endpoint: "docs.example.com" },
+        { id: "kb", type: "mcp", endpoint: "notion-mcp" },
+      ]);
+      // Round-trip through the schema parser to confirm mcp is accepted.
+      const entries = await readArchive(result.archive!);
+      const manifestEntry = entries.find((e) => e.path === "web-mcp-decl/_smith-export.json")!;
+      const parsed = ExportManifestSchema.parse(JSON.parse(manifestEntry.bytes.toString()));
+      expect(parsed.requires.remoteKnowledge).toHaveLength(2);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

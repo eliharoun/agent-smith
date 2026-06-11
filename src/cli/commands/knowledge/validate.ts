@@ -24,7 +24,13 @@ export async function knowledgeValidate(
   let succeeded = 0;
   const errorDetails: string[] = [];
   for (const b of bundles) {
-    const r = validateKnowledge(b.config.knowledge);
+    const r = validateKnowledge(b.config.knowledge, {
+      declaredMcpServers: [
+        ...(b.config.mcp?.required ?? []),
+        ...(b.config.mcp?.peer ?? []),
+        ...(b.config.mcpServers ?? []),
+      ],
+    });
     if (r.errors.length === 0 && r.warnings.length === 0) {
       succeeded++;
       continue;

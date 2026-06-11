@@ -8,7 +8,7 @@ import type { KnowledgeSource } from "../../../src/core/knowledge/types";
 
 const lazySrc: KnowledgeSource = {
   id: "wiki",
-  type: "url",
+  type: "webpage",
   url: "https://wiki.internal.example.com/architecture",
   lazy: true,
   description: "Platform service architecture wiki. Use when answering deployment or service-boundary questions.",
@@ -20,12 +20,12 @@ describe("isLazyUrlSource", () => {
   });
 
   it("returns false for a URL source with lazy: false", () => {
-    const eager: KnowledgeSource = { id: "x", type: "url", url: "https://x", lazy: false, delivery: "auto" };
+    const eager: KnowledgeSource = { id: "x", type: "webpage", url: "https://x", lazy: false, delivery: "auto" };
     expect(isLazyUrlSource(eager)).toBe(false);
   });
 
   it("returns false for a URL source with lazy unset", () => {
-    const eager: KnowledgeSource = { id: "x", type: "url", url: "https://x", delivery: "auto" };
+    const eager: KnowledgeSource = { id: "x", type: "webpage", url: "https://x", delivery: "auto" };
     expect(isLazyUrlSource(eager)).toBe(false);
   });
 
@@ -41,7 +41,7 @@ describe("lazyDescriptionWarnings", () => {
   });
 
   it("warns when description is missing", () => {
-    const src: KnowledgeSource = { id: "x", type: "url", url: "https://x", lazy: true };
+    const src: KnowledgeSource = { id: "x", type: "webpage", url: "https://x", lazy: true };
     const warnings = lazyDescriptionWarnings(src);
     expect(warnings.length).toBe(1);
     expect(warnings[0]).toMatch(/description/i);
@@ -50,7 +50,7 @@ describe("lazyDescriptionWarnings", () => {
   it("warns when description is shorter than 30 chars", () => {
     const src: KnowledgeSource = {
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://x",
       lazy: true,
       description: "short",
@@ -67,7 +67,7 @@ describe("lazyDescriptionWarnings", () => {
       "This skill helps with platform questions.",
       "This source contains platform info.",
     ]) {
-      const src: KnowledgeSource = { id: "x", type: "url", url: "https://x", lazy: true, description: desc };
+      const src: KnowledgeSource = { id: "x", type: "webpage", url: "https://x", lazy: true, description: desc };
       const warnings = lazyDescriptionWarnings(src);
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.some((w) => w.match(/third.person|first.person|point of view/i))).toBe(true);
@@ -77,7 +77,7 @@ describe("lazyDescriptionWarnings", () => {
   it("warns when description exceeds 1024 chars", () => {
     const src: KnowledgeSource = {
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://x",
       lazy: true,
       description: "a".repeat(1025),
@@ -87,7 +87,7 @@ describe("lazyDescriptionWarnings", () => {
   });
 
   it("returns empty array for non-lazy sources", () => {
-    const eager: KnowledgeSource = { id: "x", type: "url", url: "https://x", delivery: "auto" };
+    const eager: KnowledgeSource = { id: "x", type: "webpage", url: "https://x", delivery: "auto" };
     expect(lazyDescriptionWarnings(eager)).toEqual([]);
   });
 });
@@ -95,7 +95,7 @@ describe("lazyDescriptionWarnings", () => {
 describe("lazyTocLine", () => {
   it("renders a basic lazy TOC line with WebFetch hint when no via", () => {
     const line = lazyTocLine(lazySrc);
-    expect(line).toMatch(/^- `wiki` \[url, lazy\]/);
+    expect(line).toMatch(/^- `wiki` \[webpage, lazy\]/);
     expect(line).toMatch(/Platform service architecture wiki/);
     expect(line).toMatch(/url: https:\/\/wiki.internal.example.com\/architecture/);
     expect(line).toMatch(/fetch via: WebFetch/);
@@ -114,7 +114,7 @@ describe("lazyTocLine", () => {
   it("uses summary when description is absent", () => {
     const src: KnowledgeSource = {
       id: "x",
-      type: "url",
+      type: "webpage",
       url: "https://x.test",
       lazy: true,
       summary: "TOC summary line.",
@@ -124,9 +124,9 @@ describe("lazyTocLine", () => {
   });
 
   it("renders without description or summary (degraded but valid)", () => {
-    const src: KnowledgeSource = { id: "x", type: "url", url: "https://x.test", lazy: true };
+    const src: KnowledgeSource = { id: "x", type: "webpage", url: "https://x.test", lazy: true };
     const line = lazyTocLine(src);
-    expect(line).toMatch(/^- `x` \[url, lazy\]/);
+    expect(line).toMatch(/^- `x` \[webpage, lazy\]/);
     expect(line).toMatch(/url: https:\/\/x.test/);
   });
 });

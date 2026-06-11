@@ -1,6 +1,7 @@
 import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import pc from "picocolors";
 import ora, { type Ora } from "ora";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { atomicWriteText } from "../../io/atomic-write";
@@ -35,6 +36,7 @@ import {
 import type { DoctorDeps, SchemaCache } from "../../core/freshness/types";
 import { CURATED_FALLBACK_V0_6_0 } from "../../core/model-resolution";
 import { toMessage } from "../../core/to-message";
+import { collectKnowledgeDeprecations } from "../../core/config-schema";
 import type { InstallPaths } from "../../core/types";
 import { defaultCacheRoot } from "../../io/cache-root";
 import { hashContent, loadInstalledAgents } from "../../io/installed-agents";
@@ -482,6 +484,15 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
   const agentReg = await loadRegistry(canonicalRegistryPath());
   const bundleResult = await loadAllBundles(agentReg);
   warnAllLoadFailures(bundleResult.failures, (m) => console.error(m));
+
+  // Surface knowledge deprecation warnings (mirrors validate.ts).
+  for (const b of bundleResult.bundles) {
+    try {
+      const raw = JSON.parse(await readFile(join(b.bundlePath, "agent.config.json"), "utf8"));
+      for (const w of collectKnowledgeDeprecations(raw)) console.warn(`${pc.yellow("⚠")} ${b.config.name}: ${w}`);
+    } catch { /* ignore — missing/unreadable config */ }
+  }
+
   const hasAtlassianKnowledgeSources = bundleResult.bundles.some((b) =>
     (b.config.knowledge?.sources ?? []).some((s) => s.type === "confluence" || s.type === "jira"),
   );

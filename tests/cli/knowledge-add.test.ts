@@ -41,7 +41,7 @@ describe("knowledgeAdd", () => {
   it("adds a url source with auto-derived id", async () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://stripe.com/docs/api",
     });
     expect(code).toBe(0);
@@ -53,7 +53,7 @@ describe("knowledgeAdd", () => {
   it("respects an explicit --id and --description", async () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.com/x",
       id: "my-id",
       description: "An example",
@@ -81,7 +81,7 @@ describe("knowledgeAdd", () => {
   it("--optional adds optional:true to the new source (CORE-8)", async () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://flaky.example.com/api",
       optional: true,
     });
@@ -374,7 +374,7 @@ describe("knowledgeAdd auto-materialize (post-add install)", () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
       agentName: "myagent",
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.com/docs",
       runInstall: async (name) => {
         calls.push(name);
@@ -390,7 +390,7 @@ describe("knowledgeAdd auto-materialize (post-add install)", () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
       agentName: "myagent",
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.com/docs",
       installAfter: false,
       runInstall: async () => {
@@ -406,7 +406,7 @@ describe("knowledgeAdd auto-materialize (post-add install)", () => {
     const code = await knowledgeAdd({
       bundleDir: dir,
       agentName: "myagent",
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.com/docs",
       runInstall: async () => {
         throw new Error("network down");
@@ -422,7 +422,7 @@ describe("knowledgeAdd auto-materialize (post-add install)", () => {
     let called = false;
     const code = await knowledgeAdd({
       bundleDir: dir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.com/docs",
       runInstall: async () => {
         called = true;
@@ -534,7 +534,7 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
   it("auto-confirms via on TTY when user answers 'y'", async () => {
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
       delivery: "file",
       isTTY: () => true,
@@ -556,7 +556,7 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
   it("does NOT set via when user answers 'n'", async () => {
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
       delivery: "file",
       isTTY: () => true,
@@ -579,7 +579,7 @@ describe("knowledgeAdd: routing-registry suggestion (v1.2)", () => {
     try {
       await knowledgeAdd({
         bundleDir,
-        type: "url",
+        type: "webpage",
         pathOrUrl: "https://github.com/acme/repo/blob/main/README.md",
         delivery: "file",
         isTTY: () => false,
@@ -652,7 +652,7 @@ describe("knowledgeAdd: interactive MCP picker (v1.4)", () => {
     const pool = fakePool({ "bundle-fetcher": [URL_TOOL] }) as InstanceType<typeof McpClientPool>;
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       // Atlassian URL — would normally fire the curated registry. The
       // picker must short-circuit it.
       pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
@@ -682,7 +682,7 @@ describe("knowledgeAdd: interactive MCP picker (v1.4)", () => {
     } as unknown as InstanceType<typeof import("../../src/io/mcp-client-pool").McpClientPool>;
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
       delivery: "file",
       isTTY: () => false,
@@ -705,7 +705,7 @@ describe("knowledgeAdd: interactive MCP picker (v1.4)", () => {
     >;
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://example.test/docs",
       delivery: "file",
       isTTY: () => true,
@@ -737,7 +737,7 @@ describe("knowledgeAdd: interactive MCP picker (v1.4)", () => {
     const responses = ["0", "n"];
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://acme.atlassian.net/wiki/spaces/ENG/pages/123/Doc",
       delivery: "file",
       isTTY: () => true,

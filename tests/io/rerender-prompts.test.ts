@@ -31,7 +31,7 @@ describe("rerenderPrompts", () => {
         {
           id: "src-a",
           scope: "agent",
-          type: "url",
+          type: "webpage",
           delivery: "file",
           files: [
             { path: "sources/src-a/index.md", sha256: "abc", bytes: 100, summary: "API docs" },
@@ -58,7 +58,7 @@ describe("rerenderPrompts", () => {
       config: {
         name: "test-agent",
         targets: ["opencode"] as const,
-        knowledge: { sources: [{ id: "src-a", type: "url", delivery: "file" }] },
+        knowledge: { sources: [{ id: "src-a", type: "webpage", delivery: "file" }] },
         skills: [],
       },
       files: { identity: "# Identity", expertise: "# Expertise", soul: "# Soul", user: "# User" },
@@ -150,7 +150,7 @@ describe("rerenderPrompts", () => {
       config: {
         name: "missing-manifest-agent",
         targets: ["opencode"] as const,
-        knowledge: { sources: [{ id: "src-a", type: "url", delivery: "file" }] },
+        knowledge: { sources: [{ id: "src-a", type: "webpage", delivery: "file" }] },
         skills: [],
       },
       files: { identity: "# Identity", expertise: "# Expertise", soul: "# Soul", user: "# User" },

@@ -1,13 +1,15 @@
-/** Source acquisition type. Supported: file/dir/glob/url/git/confluence/jira. npm declared but rejected by validator (acquire impl pending). */
+/** Source acquisition type. Supported: file/dir/glob/webpage/web/git/confluence/jira/mcp. npm declared but rejected by validator (acquire impl pending). */
 export type KnowledgeSourceType =
   | "file"
   | "dir"
   | "glob"
-  | "url"
+  | "webpage"
+  | "web"
   | "git"
   | "npm"
   | "confluence"
-  | "jira";
+  | "jira"
+  | "mcp";
 
 /** Materializer choice. Supported: passthrough/markdown/text/html-to-md/json. pdf-extract declared but rejected (extractor pending). */
 export type Materializer =
@@ -128,8 +130,8 @@ export interface GlobSource extends KnowledgeSourceBase {
   type: "glob";
   path: string;
 }
-export interface UrlSource extends Omit<KnowledgeSourceBase, "delivery"> {
-  type: "url";
+export interface WebpageSource extends Omit<KnowledgeSourceBase, "delivery"> {
+  type: "webpage";
   url: string;
   auth?: KnowledgeAuth;
   /** When true, the URL body is NOT fetched at install time. Smith records
@@ -166,15 +168,36 @@ export interface JiraSource extends KnowledgeSourceBase {
   maxResults?: number;
 }
 
+export interface WebSource extends KnowledgeSourceBase {
+  type: "web";
+  url: string;
+  mode: "crawl" | "llms-txt" | "openapi";
+  maxPages?: number;
+  depth?: number;
+  sameOrigin?: boolean;
+  include?: string[];
+  exclude?: string[];
+}
+export interface McpSource extends KnowledgeSourceBase {
+  type: "mcp";
+  server: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  preset?: string;
+  allowWriteTool?: boolean;
+}
+
 export type KnowledgeSource =
   | FileSource
   | DirSource
   | GlobSource
-  | UrlSource
+  | WebpageSource
+  | WebSource
   | GitSource
   | NpmSource
   | ConfluenceSource
-  | JiraSource;
+  | JiraSource
+  | McpSource;
 
 export interface KnowledgeInlineBudget {
   totalTokens: number;

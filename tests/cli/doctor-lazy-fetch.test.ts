@@ -90,7 +90,7 @@ describe("runDoctorCli lazy-fetch section", () => {
             sources: [
               {
                 id: "wiki",
-                type: "url",
+                type: "webpage",
                 url: "https://example.com",
                 lazy: true,
                 description: "A wiki",

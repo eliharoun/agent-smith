@@ -32,7 +32,7 @@ describe("knowledgeRemove", () => {
       knowledge: {
         sources: [
           { id: "schema", type: "file", delivery: "inline", path: "./schema.sql" },
-          { id: "docs", type: "url", delivery: "auto", url: "https://example.com/docs" },
+          { id: "docs", type: "webpage", delivery: "auto", url: "https://example.com/docs" },
         ],
       },
     });

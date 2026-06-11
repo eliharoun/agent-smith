@@ -37,7 +37,7 @@ const ConfluencePageRef = z.union([
 // at acquire/refresh time. Travels with the bundle so recipients route the
 // same way. Credential-shaped argument keys are rejected at schema level —
 // authors must not bake auth into shared bundles.
-const CREDENTIAL_KEY_DENYLIST = /^(authorization|token|api[_-]?key|cookie|secret|password|bearer)$/i;
+export const CREDENTIAL_KEY_DENYLIST = /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
 
 const ViaSpec = z
   .object({
@@ -126,22 +126,22 @@ const GlobVariant = z
     path: z.string({ message: "type=glob requires path" }),
   })
   .strict();
-// URL sources can be either lazy (no install-time fetch; agent fetches
-// at runtime) or eager (existing v1 behavior, fetched at install).
+// Webpage sources (formerly "url") can be either lazy (no install-time fetch;
+// agent fetches at runtime) or eager (existing v1 behavior, fetched at install).
 //
 // When lazy=true, the delivery decision doesn't apply (lazy supersedes
 // delivery), and materialize/extractor/inlineBudgetTokens are nonsensical
 // since no body is fetched at install. Those fields are forbidden via a
 // superRefine below. When lazy is unset or false, delivery is required.
 //
-// We keep a single ZodObject for the URL variant (rather than a nested
+// We keep a single ZodObject for the Webpage variant (rather than a nested
 // union) so the outer `discriminatedUnion("type", ...)` still works:
 // zod 4's discriminatedUnion forbids two options sharing the same
 // discriminator value and rejects nested unions wholesale.
-const UrlVariant = z
+const WebpageVariant = z
   .object({
     // `delivery` is optional at the schema level; the refinement below
-    // requires it for non-lazy URL sources and forbids it for lazy ones.
+    // requires it for non-lazy webpage sources and forbids it for lazy ones.
     id: BaseFields.id,
     delivery: BaseFields.delivery.optional(),
     materialize: BaseFields.materialize,
@@ -154,33 +154,70 @@ const UrlVariant = z
     toc: BaseFields.toc,
     retrieval: BaseFields.retrieval,
     via: BaseFields.via,
-    type: z.literal("url"),
-    url: z.string({ message: "type=url requires url" }).min(1),
+    type: z.literal("webpage"),
+    url: z.string({ message: "type=webpage requires url" }).min(1),
     auth: Auth.optional(),
     lazy: z.boolean().optional(),
   })
   .strict()
   .superRefine((src, ctx) => {
     if (src.lazy === true) {
-      // Lazy URL forbids install-time fetch knobs.
+      // Lazy webpage forbids install-time fetch knobs.
       for (const k of ["delivery", "materialize", "extractor", "inlineBudgetTokens"] as const) {
         if (src[k] !== undefined) {
           ctx.addIssue({
             code: "custom",
-            message: `${k} is not allowed when lazy: true (lazy URL sources are fetched at runtime, not install)`,
+            message: `${k} is not allowed when lazy: true (lazy webpage sources are fetched at runtime, not install)`,
             path: [k],
           });
         }
       }
     } else if (src.delivery === undefined) {
-      // Eager URL still requires delivery (v1 behavior).
+      // Eager webpage still requires delivery (v1 behavior).
       ctx.addIssue({
         code: "custom",
-        message: "delivery is required for non-lazy URL sources",
+        message: "delivery is required for non-lazy webpage sources",
         path: ["delivery"],
       });
     }
   });
+const WebVariant = z
+  .object({
+    ...BaseFields,
+    type: z.literal("web"),
+    url: z.string({ message: "type=web requires url" }).min(1),
+    mode: z.enum(["crawl", "llms-txt", "openapi"]),
+    maxPages: z.number().int().min(1).max(200).optional(),
+    depth: z.number().int().min(1).max(5).optional(),
+    sameOrigin: z.boolean().optional(),
+    include: z.array(z.string()).optional(),
+    exclude: z.array(z.string()).optional(),
+  })
+  .strict()
+  .superRefine((src, ctx) => {
+    if (src.mode !== "crawl") {
+      for (const k of ["maxPages", "depth", "sameOrigin", "include", "exclude"] as const) {
+        if (src[k] !== undefined) {
+          ctx.addIssue({ code: "custom", message: `${k} is only valid when mode=crawl (mode=${src.mode} ignores it)`, path: [k] });
+        }
+      }
+    }
+  });
+const McpVariant = z.object({ ...BaseFields, type: z.literal("mcp"), server: z.string().min(1, "type=mcp requires server"), tool: z.string().min(1, "type=mcp requires tool"),
+  args: z.record(z.string(), z.unknown()).optional()
+    .superRefine((args, ctx) => {
+      if (!args) return;
+      for (const key of Object.keys(args)) {
+        if (CREDENTIAL_KEY_DENYLIST.test(key)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `mcp.args key '${key}' looks credential-shaped — credentials must not travel with shared bundles. Use the MCP server's own auth instead.`,
+            path: [key],
+          });
+        }
+      }
+    }),
+  preset: z.string().min(1).optional(), allowWriteTool: z.boolean().optional() }).strict();
 const GitVariant = z
   .object({
     ...BaseFields,
@@ -227,29 +264,32 @@ export const KnowledgeSourceSchema = z
     FileVariant,
     DirVariant,
     GlobVariant,
-    UrlVariant,
+    WebpageVariant,
+    WebVariant,
     GitVariant,
     NpmVariant,
     ConfluenceVariant,
     JiraVariant,
+    McpVariant,
   ])
   .superRefine((src, ctx) => {
-    // URL format checks (variant-aware: type=url is strict RFC, type=git
-    // also accepts SCP-style ssh shorthand `git@host:path`).
-    if ((src.type === "url" || src.type === "git") && src.url) {
+    // URL format checks (variant-aware: type=webpage and type=web are strict
+    // RFC, type=git also accepts SCP-style ssh shorthand `git@host:path`).
+    if ((src.type === "webpage" || src.type === "web" || src.type === "git") && "url" in src && (src as { url?: string }).url) {
+      const url = (src as { url: string }).url;
       const isRfcUrl = (() => {
         try {
-          new URL(src.url);
+          new URL(url);
           return true;
         } catch {
           return false;
         }
       })();
-      const isScpGit = /^[\w.-]+@[\w.-]+:.+/.test(src.url);
-      if (src.type === "url" && !isRfcUrl) {
+      const isScpGit = /^[\w.-]+@[\w.-]+:.+/.test(url);
+      if ((src.type === "webpage" || src.type === "web") && !isRfcUrl) {
         ctx.addIssue({
           code: "custom",
-          message: "type=url requires a valid URL (https://, http://, etc.)",
+          message: `type=${src.type} requires a valid URL (https://, http://, etc.)`,
           path: ["url"],
         });
       }

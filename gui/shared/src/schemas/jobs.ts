@@ -276,7 +276,7 @@ const KnowledgeAdd = z.object({
   command: z.literal("knowledge.add"),
   agent: z.string().min(1),
   // First positional: either a knowledge type ("file"|"dir"|"glob"|"url"|"git"|
-  // "npm"|"confluence"|"jira") or an http(s) URL (URL-shortcut form).
+  // "npm"|"confluence"|"jira"|"webpage"|"web"|"mcp") or an http(s) URL (URL-shortcut form).
   typeOrUrl: z.string().min(1),
   // Second positional, required UNLESS typeOrUrl is an http(s) URL. The
   // CLI does the actual cross-field validation when the job runs; we
@@ -300,6 +300,19 @@ const KnowledgeAdd = z.object({
   // fetch at install time. The CLI's own validator rejects --lazy on
   // non-URL types; the GUI omits this field for non-URL forms.
   lazy: z.boolean().optional(),
+  // Web-only (type "web"):
+  mode: z.enum(["crawl", "llms-txt", "openapi"]).optional(),
+  maxPagesWeb: z.number().int().positive().optional(),
+  depth: z.number().int().positive().optional(),
+  sameOrigin: z.boolean().optional(),
+  include: z.array(z.string()).optional(),
+  exclude: z.array(z.string()).optional(),
+  // MCP-only (type "mcp"):
+  server: z.string().min(1).optional(),
+  tool: z.string().min(1).optional(),
+  args: z.record(z.string(), z.unknown()).optional(),
+  preset: z.string().optional(),
+  allowWriteTool: z.boolean().optional(),
 });
 
 const KnowledgeRemove = z.object({

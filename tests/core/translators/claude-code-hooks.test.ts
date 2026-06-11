@@ -42,7 +42,7 @@ describe("translateClaudeCode hooks", () => {
           { id: "static", type: "file", path: "/tmp/x.md", delivery: "file" },
           {
             id: "polled",
-            type: "url",
+            type: "webpage",
             url: "https://x",
             delivery: "file",
             refresh: "1h",
@@ -63,7 +63,7 @@ describe("translateClaudeCode hooks", () => {
           { id: "static", type: "file", path: "/tmp/x.md", delivery: "file" },
           {
             id: "live",
-            type: "url",
+            type: "webpage",
             url: "https://x",
             delivery: "file",
             refresh: { mode: "session" },
@@ -121,7 +121,7 @@ describe("translateClaudeCode hooks", () => {
         sources: [
           {
             id: "live",
-            type: "url",
+            type: "webpage",
             url: "https://x",
             delivery: "file",
             refresh: { mode: "session" },

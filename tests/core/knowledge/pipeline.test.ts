@@ -235,7 +235,7 @@ describe("pipeline: url source auth pass-through", () => {
         sources: [
           {
             id: "wiki",
-            type: "url",
+            type: "webpage",
             url: "https://acme.atlassian.net/wiki/x",
             delivery: "file",
             auth: "atlassian",
