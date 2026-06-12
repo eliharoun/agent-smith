@@ -111,51 +111,59 @@ async function tryChunkCode(input: ChunkInput, ext: string): Promise<Chunk[] | n
     const wasm = await loadGrammar(ext);
     if (!wasm) return null;
     const lang = await Language.load(wasm);
+    // Parser/Tree are WASM-backed and NOT GC-reclaimed — .delete() them or the
+    // WASM heap grows unbounded across a build that chunks hundreds of files.
     const parser = new Parser();
-    parser.setLanguage(lang);
-    const tree = parser.parse(input.text);
-    if (!tree) return null; // GUARD: parse() returns Tree | null
-    const raw: Chunk[] = [];
-    for (const node of tree.rootNode.namedChildren) {
-      if (!node) continue; // GUARD: namedChildren is (Node|null)[]
-      const text = input.text.slice(node.startIndex, node.endIndex);
-      const startLine = node.startPosition.row + 1;
-      if (text.length <= MAX_CHUNK_CHARS) {
-        raw.push({
-          relPath: input.relPath,
-          startLine,
-          endLine: node.endPosition.row + 1,
-          kind: "code",
-          text,
-        });
-      } else {
-        const children = node.namedChildren.filter(Boolean);
-        if (children.length === 0) {
-          // Oversized leaf (e.g. a huge string/comment node with no named
-          // children) — split by budget so its content is not silently lost.
-          for (const piece of splitToBudget(text))
-            raw.push({
-              relPath: input.relPath,
-              startLine,
-              endLine: node.endPosition.row + 1,
-              kind: "code",
-              text: piece,
-            });
+    let tree: ReturnType<typeof parser.parse> = null;
+    try {
+      parser.setLanguage(lang);
+      tree = parser.parse(input.text);
+      if (!tree) return null; // GUARD: parse() returns Tree | null
+      const raw: Chunk[] = [];
+      for (const node of tree.rootNode.namedChildren) {
+        if (!node) continue; // GUARD: namedChildren is (Node|null)[]
+        const text = input.text.slice(node.startIndex, node.endIndex);
+        const startLine = node.startPosition.row + 1;
+        if (text.length <= MAX_CHUNK_CHARS) {
+          raw.push({
+            relPath: input.relPath,
+            startLine,
+            endLine: node.endPosition.row + 1,
+            kind: "code",
+            text,
+          });
         } else {
-          for (const child of children) {
-            if (!child) continue; // GUARD: namedChildren is (Node|null)[]
-            raw.push({
-              relPath: input.relPath,
-              startLine: child.startPosition.row + 1,
-              endLine: child.endPosition.row + 1,
-              kind: "code",
-              text: input.text.slice(child.startIndex, child.endIndex),
-            });
+          const children = node.namedChildren.filter(Boolean);
+          if (children.length === 0) {
+            // Oversized leaf (e.g. a huge string/comment node with no named
+            // children) — split by budget so its content is not silently lost.
+            for (const piece of splitToBudget(text))
+              raw.push({
+                relPath: input.relPath,
+                startLine,
+                endLine: node.endPosition.row + 1,
+                kind: "code",
+                text: piece,
+              });
+          } else {
+            for (const child of children) {
+              if (!child) continue; // GUARD: namedChildren is (Node|null)[]
+              raw.push({
+                relPath: input.relPath,
+                startLine: child.startPosition.row + 1,
+                endLine: child.endPosition.row + 1,
+                kind: "code",
+                text: input.text.slice(child.startIndex, child.endIndex),
+              });
+            }
           }
         }
       }
+      return mergeSmall(raw, input.relPath);
+    } finally {
+      tree?.delete();
+      parser.delete();
     }
-    return mergeSmall(raw, input.relPath);
   } catch {
     return null;
   }
