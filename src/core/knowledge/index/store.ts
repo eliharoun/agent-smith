@@ -342,6 +342,16 @@ export class KnowledgeStore {
   hasCode(): boolean {
     return !!this.db.query("SELECT 1 AS x FROM tags LIMIT 1").get();
   }
+  /** The embedder id recorded in the index header (meta table), or null if
+   *  unset. "none" means the index was built lexical-only (no vectors). Used by
+   *  the serve process to decide whether to load a real query embedder. Works
+   *  in readonly mode — a plain SELECT, no migrate. */
+  storedEmbedderId(): string | null {
+    const r = this.db.query("SELECT value FROM meta WHERE key='embedderId'").get() as
+      | { value: string }
+      | undefined;
+    return r?.value ?? null;
+  }
   close(): void {
     this.db.close();
   }
