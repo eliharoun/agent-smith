@@ -1395,33 +1395,62 @@ manually to retry.
 
 ---
 
+## Search & retrieval
+
+Once an agent's knowledge is installed, `smith` builds a per-agent search index
+and exposes it through the agent's knowledge MCP server:
+
+- `knowledge.search(query, k)` — searches the index built from your sources.
+  Lexical (BM25/FTS5) ranking by default; when a source opts into `retrieval:
+  hybrid` and the on-device embedding model is available, semantic vector
+  ranking is fused in via Reciprocal Rank Fusion. Returns ranked hits with
+  `rel_path` and `start_line`/`end_line` so the agent can fetch the exact span.
+- `knowledge.fetch(path, start, end)` — range-bounded file read (unchanged).
+- `knowledge.map(focus?, mapTokens?)` — a ranked structural map of symbols
+  (functions, classes, and where they're referenced) across **code** knowledge
+  sources. Advertised only when the agent has indexed code sources.
+
+The index is built when the agent is installed or refreshed — not at query time
+— and stored under the agent's knowledge cache (`.cache/index/`). The store uses
+Bun's built-in SQLite (no extra dependency). Semantic vectors use an optional
+on-device embedding model and the code map uses optional tree-sitter grammars;
+when those optional components aren't available, search transparently falls back
+to lexical BM25 and `knowledge.map` is simply not offered — nothing else changes.
+
+---
+
 ## Retrieval mode
 
 Each knowledge source in a compiled bundle carries an optional `retrieval.mode`
 field that controls whether the compiled TOC line hints that the source is
-searchable. The three modes:
+searchable, and (for `hybrid`) whether semantic vectors are computed for it.
+The four modes:
 
-- **`bm25`** (default) — `smith knowledge serve` exposes `knowledge.search`
-  (BM25) and `knowledge.fetch` over the agent's whole materialized knowledge
-  tree. The reverse index is built in the server process's memory at startup
-  and rebuilt each session; there is no on-disk index file. Setting `bm25`
-  adds a `(searchable: bm25)` annotation to the source's compiled TOC line,
-  hinting to the agent that search-style queries are appropriate for this
-  source.
+- **`bm25`** (default) — the source is lexically searchable via
+  `knowledge.search`. The index is built when the agent is installed or
+  refreshed and stored on disk under `.cache/index/knowledge.db` (FTS5); the
+  serve process opens it read-only. Adds a `(searchable: bm25)` annotation to
+  the source's compiled TOC line.
+
+- **`hybrid`** — opts the source into **semantic** vector indexing on top of
+  lexical. `knowledge.search` then fuses BM25 and vector results via Reciprocal
+  Rank Fusion. Requires the optional on-device embedding model at build time;
+  when it's unavailable, `hybrid` degrades transparently to `bm25` (lexical
+  only). See [Search & retrieval](#search--retrieval).
 
 - **`external-mcp`** — declare a remote MCP server (with `mcpUrl`) that the
-  agent should query instead of the local BM25 path. Currently the field writes
-  the annotation only; the local BM25 server still indexes the source's files.
+  agent should query instead of the local search path. Currently the field
+  writes the annotation only; the local index still ingests the source's files.
   A future smith release will gate the runtime so the local index skips
   `external-mcp` sources and the agent routes search to the declared URL.
 
 - **`off`** — advisory marker that this source isn't intended for search-style
-  access. Today this only omits the TOC annotation — the local BM25 index still
+  access. Today this only omits the TOC annotation — the local index still
   ingests the file. The agent reads `off` sources via direct
   `knowledge.fetch <path>` rather than `knowledge.search <query>`.
 
-The default is now `bm25`, matching what the BM25 server does: index every
-`.md`/`.txt`/`.json` file in the materialized knowledge tree on startup
+The default is `bm25`: every `.md`/`.txt`/`.json` (and indexable code) file in
+the materialized knowledge tree is lexically indexed at install/refresh
 regardless of any per-source setting. Existing bundles with explicit
 `retrieval: { mode: "bm25" }` continue to work; new bundles stay clean because
 the GUI no longer persists a `retrieval` block when the user picks `bm25`.
