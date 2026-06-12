@@ -18,6 +18,7 @@ import { type JiraSearchOpts, searchJiraIssues } from "../../io/jira";
 import { stateHome } from "../../io/state-home";
 import { redactSecrets } from "../redact";
 import { SmithError } from "../smith-error";
+import { sparsePathsFor } from "./sparse-paths";
 
 // ---------- git spawner (DI for tests) ----------
 
@@ -315,13 +316,15 @@ export async function acquireUrl(
   await writeFile(metaPath, JSON.stringify(newMeta));
 
   const filename = filenameFromUrl(url, ct);
-  return [{
-    filename,
-    relPath: filename,
-    bytes: buf,
-    ...(ct ? { contentType: ct } : {}),
-    sourceUrl: url,
-  }];
+  return [
+    {
+      filename,
+      relPath: filename,
+      bytes: buf,
+      ...(ct ? { contentType: ct } : {}),
+      sourceUrl: url,
+    },
+  ];
 }
 
 // ---------- acquireGit ----------
@@ -353,6 +356,7 @@ export interface AcquireGitOpts {
  *
  * Strategy:
  *  - First fetch: `git clone --depth=1 [--branch=<ref>] <url> <target>`.
+ *  - When subpath/include yields a static path prefix: blobless partial clone (`--filter=blob:none --no-checkout`) + `git sparse-checkout`; falls back to a shallow whole-repo clone on server/git-version incompatibility.
  *  - Subsequent fetch with branch ref: `git fetch origin <ref>` + `git reset --hard origin/<ref>`.
  *  - Subsequent fetch with tag/sha ref (or no ref): no-op (immutable) when rev-parse fails.
  *
@@ -368,6 +372,7 @@ export interface AcquireGitOpts {
  */
 export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact[]> {
   const spawner = opts.spawner ?? defaultGitSpawner;
+  const sparsePaths = sparsePathsFor(opts.subpath, opts.include);
   const cacheRoot = join(opts.cacheDir, "git");
   const repoKey = urlCacheKey(opts.url);
   const repoDir = join(cacheRoot, repoKey);
@@ -407,7 +412,7 @@ export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact
       }
 
       if (!exists) {
-        await cloneRepo(spawner, opts.url, opts.ref, repoDir, cacheRoot);
+        await cloneRepo(spawner, opts.url, opts.ref, repoDir, cacheRoot, sparsePaths);
       } else {
         await refreshRepo(spawner, opts.ref, repoDir);
       }
@@ -470,21 +475,96 @@ async function cloneRepo(
   ref: string | undefined,
   target: string,
   cwd: string,
+  sparsePaths: string[],
 ): Promise<void> {
-  const args = ["clone", "--depth=1"];
+  if (sparsePaths.length > 0) {
+    await cloneSparse(spawner, url, ref, target, cwd, sparsePaths);
+    return;
+  }
+  // Whole-repo shallow clone. Adds --single-branch vs. the historical argv;
+  // otherwise identical (incl. the SHA/tag --branch fallback below).
+  const args = ["clone", "--depth=1", "--single-branch"];
   if (ref) args.push(`--branch=${ref}`);
   args.push(url, target);
   const result = await spawner(args, cwd);
   if (result.code !== 0) {
-    throw new SmithError({
-      code: "validation-failed",
-      what: "git clone",
-      reasons: [
-        `clone failed (exit ${result.code}) for ${redactSecrets(url)}${ref ? ` @ ${ref}` : ""}`,
-        result.stderr.trim(),
-      ].filter((r) => r.length > 0),
-    });
+    // Some refs (SHAs) can't be passed to --branch. Retry without it, then checkout.
+    await rm(target, { recursive: true, force: true });
+    const fallback = await spawner(["clone", "--depth=1", "--single-branch", url, target], cwd);
+    if (fallback.code !== 0) {
+      throw cloneError(url, ref, fallback.code, result.stderr || fallback.stderr);
+    }
+    if (ref) {
+      const co = await spawner(["checkout", ref], target);
+      if (co.code !== 0) throw cloneError(url, ref, co.code, co.stderr);
+    }
   }
+}
+
+async function cloneSparse(
+  spawner: GitSpawner,
+  url: string,
+  ref: string | undefined,
+  target: string,
+  cwd: string,
+  sparsePaths: string[],
+): Promise<void> {
+  // Whole-repo shallow clone fallback, used when the server/git version can't
+  // do a partial or sparse checkout. picomatch still narrows the indexed set,
+  // so coverage is preserved.
+  const fallbackWholeRepo = async () => {
+    await rm(target, { recursive: true, force: true });
+    await cloneRepo(spawner, url, ref, target, cwd, []);
+  };
+
+  const cloneArgs = [
+    "clone",
+    "--depth=1",
+    "--single-branch",
+    "--filter=blob:none",
+    "--no-checkout",
+  ];
+  if (ref) cloneArgs.push(`--branch=${ref}`);
+  cloneArgs.push(url, target);
+  const cloned = await spawner(cloneArgs, cwd);
+  if (cloned.code !== 0) {
+    // Partial-clone unsupported (old/self-hosted server) OR bad --branch ref.
+    await fallbackWholeRepo();
+    return;
+  }
+  const sparse = await spawner(["sparse-checkout", "set", "--no-cone", ...sparsePaths], target);
+  if (sparse.code !== 0) {
+    // git < 2.25 or sparse-checkout v2 unavailable.
+    await fallbackWholeRepo();
+    return;
+  }
+  const co = await spawner(["checkout", ref ?? "HEAD"], target);
+  if (co.code !== 0) {
+    // Checkout failure usually means a bad ref. The whole-repo fallback will
+    // hit the same ref, so if it also fails, surface the original checkout
+    // stderr (more specific than the fallback's generic clone error).
+    try {
+      await fallbackWholeRepo();
+    } catch {
+      throw cloneError(url, ref, co.code, co.stderr);
+    }
+  }
+}
+
+function cloneError(
+  url: string,
+  ref: string | undefined,
+  code: number,
+  stderr: string,
+): SmithError {
+  return new SmithError({
+    code: "validation-failed",
+    what: "git clone",
+    reasons: [
+      `clone failed (exit ${code}) for ${redactSecrets(url)}${ref ? ` @ ${ref}` : ""}`,
+      stderr.trim(),
+    ].filter((r) => r.length > 0),
+  });
 }
 
 async function refreshRepo(

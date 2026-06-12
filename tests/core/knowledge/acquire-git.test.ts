@@ -722,3 +722,69 @@ describe("acquireGit: stale lock recovery", () => {
     expect(elapsed).toBeGreaterThanOrEqual(200);
   });
 });
+
+describe("acquireGit: sparse clone argv", () => {
+  test("blobless+sparse clone when include yields a static prefix", async () => {
+    const calls: StubCall[] = [];
+    const spawner = buildSpawner(
+      [
+        { match: (a) => a[0] === "clone", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "sparse-checkout", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "checkout", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "rev-parse", result: { stdout: "abc123\n", stderr: "", code: 0 } },
+      ],
+      calls,
+    );
+    await acquireGit({
+      url: "https://example.com/x.git",
+      ref: "main",
+      include: ["src/**/*.ts"],
+      cacheDir,
+      spawner,
+    }).catch(() => {});
+    const clone = calls.find((c) => c.args[0] === "clone");
+    expect(clone).toBeDefined();
+    expect(clone!.args).toEqual(
+      expect.arrayContaining([
+        "--depth=1",
+        "--single-branch",
+        "--filter=blob:none",
+        "--no-checkout",
+      ]),
+    );
+    const sparse = calls.find((c) => c.args[0] === "sparse-checkout");
+    expect(sparse).toBeDefined();
+    expect(sparse!.args).toEqual(["sparse-checkout", "set", "--no-cone", "/src/"]);
+    expect(calls.some((c) => c.args[0] === "checkout")).toBe(true);
+  });
+
+  test("plain shallow clone (no sparse) when no static prefix exists", async () => {
+    const calls: StubCall[] = [];
+    const spawner = buildSpawner(
+      [
+        { match: (a) => a[0] === "clone", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "rev-parse", result: { stdout: "abc\n", stderr: "", code: 0 } },
+      ],
+      calls,
+    );
+    await acquireGit({
+      url: "https://example.com/x.git",
+      ref: "main",
+      include: ["**/*.md"],
+      cacheDir,
+      spawner,
+    }).catch(() => {});
+    const clone = calls.find((c) => c.args[0] === "clone");
+    expect(clone).toBeDefined();
+    // Exact array (not arrayContaining) to assert --filter/--no-checkout are ABSENT.
+    expect(clone!.args).toEqual([
+      "clone",
+      "--depth=1",
+      "--single-branch",
+      "--branch=main",
+      "https://example.com/x.git",
+      expect.any(String),
+    ]);
+    expect(calls.some((c) => c.args[0] === "sparse-checkout")).toBe(false);
+  });
+});
