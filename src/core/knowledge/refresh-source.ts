@@ -30,6 +30,7 @@ import { knowledgeDirFor } from "../../io/knowledge-paths";
 import { toMessage } from "../to-message";
 import type { AcquiredArtifact, GitSpawner } from "./acquire";
 import { acquireSource, chooseMaterializer, isAcquirable, runMaterializer } from "./acquire-source";
+import { buildIndexInto } from "./index/build-into";
 import { acquireManifestLock, releaseRefreshLock } from "./refresh-lock";
 import { estimateTokens } from "./tokens";
 import type {
@@ -288,6 +289,9 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
 
   // 4. Acquire (lock-free).
   let artifacts: AcquiredArtifact[];
+  // Declared at function scope so the index build (after the manifest write,
+  // in a different try-block) can see the per-source changed paths.
+  let changedPaths: string[] | null = null;
   try {
     const acquired = await acquireSource(source, {
       bundleDir: opts.bundleDir,
@@ -301,6 +305,7 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
       ...(opts.recordRoute ? { recordRoute: opts.recordRoute } : {}),
     });
     artifacts = acquired.artifacts;
+    changedPaths = acquired.changedPaths;
   } catch (err) {
     throw wrapWithPhase(
       `refresh of source ${sourceId} for agent ${agent} failed during acquire`,
@@ -397,6 +402,10 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
 
     await mkdir(dirname(manifestPath), { recursive: true });
     await writeFile(manifestPath, JSON.stringify(nextManifest, null, 2), "utf8");
+
+    // Refresh the hybrid index incrementally for just this source's changes.
+    const knowledgeDir = knowledgeDirFor(agent, { agentSmithHome });
+    await buildIndexInto(knowledgeDir, changedPaths ?? null);
 
     return {
       kind: "refreshed",
