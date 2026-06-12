@@ -370,7 +370,15 @@ export interface AcquireGitOpts {
  * `gh auth`). If clone fails with an auth error, we surface git's stderr
  * verbatim so the user sees the real reason.
  */
-export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact[]> {
+export interface AcquireGitResult {
+  artifacts: AcquiredArtifact[];
+  /** Paths changed since the last acquire (intersected with the include
+   *  filter), or null to signal "do a full re-walk" (first acquire, or the
+   *  diff could not be computed against shallow history). */
+  changedPaths: string[] | null;
+}
+
+export async function acquireGit(opts: AcquireGitOpts): Promise<AcquireGitResult> {
   const spawner = opts.spawner ?? defaultGitSpawner;
   const sparsePaths = sparsePathsFor(opts.subpath, opts.include);
   const cacheRoot = join(opts.cacheDir, "git");
@@ -395,6 +403,8 @@ export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact
 
   await mkdir(cacheRoot, { recursive: true });
 
+  let prevSha: string | null = null;
+  let newSha: string | null = null;
   await withRepoLock(
     lockPath,
     async () => {
@@ -411,11 +421,14 @@ export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact
         exists = false;
       }
 
+      if (exists) prevSha = await readLastSha(repoDir);
       if (!exists) {
         await cloneRepo(spawner, opts.url, opts.ref, repoDir, cacheRoot, sparsePaths);
       } else {
         await refreshRepo(spawner, opts.ref, repoDir);
       }
+      newSha = await headSha(spawner, repoDir);
+      if (newSha) await writeLastSha(repoDir, newSha);
     },
     opts.onWarning,
   );
@@ -466,7 +479,28 @@ export async function acquireGit(opts: AcquireGitOpts): Promise<AcquiredArtifact
     );
   }
 
-  return out;
+  // changedPaths semantics: null = "can't compute, do a full re-walk";
+  // [] = "computed, nothing in scope changed". The distinction matters to the
+  // incremental indexer downstream.
+  let changedPaths: string[] | null = null;
+  if (prevSha && newSha) {
+    if (prevSha === newSha) {
+      changedPaths = []; // no new commits since the last acquire
+    } else {
+      const names = await gitDiffNames(spawner, repoDir, prevSha, newSha);
+      if (names) {
+        // opts.subpath and git diff output paths are both relative to the repo
+        // root, so relative(subpath, n) correctly strips the subpath prefix.
+        // toPosix keeps parity with the walk's toPosix(relative(...)) on Windows.
+        const rerooted = names
+          .map((n) => (opts.subpath ? toPosix(relative(opts.subpath, n)) : n))
+          .filter((n) => n.length > 0 && !n.startsWith(".."))
+          .filter((n) => matches(n));
+        changedPaths = rerooted;
+      }
+    }
+  }
+  return { artifacts: out, changedPaths };
 }
 
 async function cloneRepo(
@@ -607,6 +641,53 @@ async function refreshRepo(
       ].filter((r) => r.length > 0),
     });
   }
+}
+
+/** Path of the per-repo ingest manifest holding the last-acquired SHA. */
+function ingestManifestPath(repoDir: string): string {
+  return join(repoDir, ".git", "smith-ingest.json");
+}
+
+async function readLastSha(repoDir: string): Promise<string | null> {
+  try {
+    const raw = await readFile(ingestManifestPath(repoDir), "utf8");
+    const j = JSON.parse(raw) as { lastIndexedSha?: string };
+    return typeof j.lastIndexedSha === "string" ? j.lastIndexedSha : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeLastSha(repoDir: string, sha: string): Promise<void> {
+  // Best-effort: the manifest is a cache optimization for incremental indexing,
+  // not a correctness requirement. A failed write simply forces the next
+  // acquire to fall back to a full re-walk (prevSha=null). Swallow errors (e.g.
+  // a missing `.git` dir) rather than failing the whole acquire.
+  try {
+    await writeFile(ingestManifestPath(repoDir), JSON.stringify({ lastIndexedSha: sha }), "utf8");
+  } catch {
+    // ignore
+  }
+}
+
+async function headSha(spawner: GitSpawner, repoDir: string): Promise<string | null> {
+  const r = await spawner(["rev-parse", "HEAD"], repoDir);
+  return r.code === 0 ? r.stdout.trim() : null;
+}
+
+/** Names changed between two SHAs, or null if the diff cannot be computed. */
+async function gitDiffNames(
+  spawner: GitSpawner,
+  repoDir: string,
+  fromSha: string,
+  toSha: string,
+): Promise<string[] | null> {
+  const r = await spawner(["diff", "--name-only", `${fromSha}..${toSha}`], repoDir);
+  if (r.code !== 0) return null; // shallow gap: old SHA not an ancestor
+  return r.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 async function listTopLevel(repoDir: string): Promise<string[]> {

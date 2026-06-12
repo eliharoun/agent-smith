@@ -184,7 +184,7 @@ async function dispatch(
         ...(src.include ? { include: src.include } : {}),
         ...(opts.gitSpawner ? { spawner: opts.gitSpawner } : {}),
       };
-      return acquireGit(gitOpts);
+      return (await acquireGit(gitOpts)).artifacts;
     }
     case "confluence": {
       const cOpts: Parameters<typeof acquireConfluence>[0] = { space: src.space };
