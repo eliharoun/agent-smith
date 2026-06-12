@@ -136,7 +136,9 @@ describe("KnowledgeSourceSchema", () => {
   describe("via routing field (v1.2)", () => {
     it("accepts via with server + tool", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "webpage", id: "x", delivery: "file",
+        type: "webpage",
+        id: "x",
+        delivery: "file",
         url: "https://example.com",
         via: { server: "internal-mcp", tool: "fetch_page" },
       });
@@ -145,7 +147,9 @@ describe("KnowledgeSourceSchema", () => {
 
     it("accepts via with optional args object", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "webpage", id: "x", delivery: "file",
+        type: "webpage",
+        id: "x",
+        delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "y", args: { url: "https://example.com" } },
       });
@@ -154,7 +158,9 @@ describe("KnowledgeSourceSchema", () => {
 
     it("rejects via with empty server", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "webpage", id: "x", delivery: "file",
+        type: "webpage",
+        id: "x",
+        delivery: "file",
         url: "https://example.com",
         via: { server: "", tool: "y" },
       });
@@ -163,7 +169,9 @@ describe("KnowledgeSourceSchema", () => {
 
     it("rejects via with unknown extra keys (strict mode)", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "webpage", id: "x", delivery: "file",
+        type: "webpage",
+        id: "x",
+        delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "y", extra: 1 },
       });
@@ -171,9 +179,20 @@ describe("KnowledgeSourceSchema", () => {
     });
 
     it("rejects via.args containing credential-shaped keys", () => {
-      for (const key of ["authorization", "Authorization", "token", "API_KEY", "cookie", "secret", "password", "bearer"]) {
+      for (const key of [
+        "authorization",
+        "Authorization",
+        "token",
+        "API_KEY",
+        "cookie",
+        "secret",
+        "password",
+        "bearer",
+      ]) {
         const r = KnowledgeSourceSchema.safeParse({
-          type: "webpage", id: "x", delivery: "file",
+          type: "webpage",
+          id: "x",
+          delivery: "file",
           url: "https://example.com",
           via: { server: "x", tool: "y", args: { [key]: "..." } },
         });
@@ -183,7 +202,9 @@ describe("KnowledgeSourceSchema", () => {
 
     it("accepts allowWriteTool flag on via", () => {
       const r = KnowledgeSourceSchema.safeParse({
-        type: "webpage", id: "x", delivery: "file",
+        type: "webpage",
+        id: "x",
+        delivery: "file",
         url: "https://example.com",
         via: { server: "x", tool: "create_thing", allowWriteTool: true },
       });
@@ -225,7 +246,9 @@ describe("KnowledgeSourceSchema", () => {
       expect(r.success).toBe(false);
       if (!r.success) {
         expect(
-          r.error.issues.some((i) => i.path.includes("lazy") || i.message.toLowerCase().includes("lazy")),
+          r.error.issues.some(
+            (i) => i.path.includes("lazy") || i.message.toLowerCase().includes("lazy"),
+          ),
         ).toBe(true);
       }
     });
@@ -274,7 +297,9 @@ describe("KnowledgeSourceSchema", () => {
       if (!r.success) {
         expect(
           r.error.issues.some(
-            (i) => i.message.toLowerCase().includes("delivery") && i.message.toLowerCase().includes("lazy"),
+            (i) =>
+              i.message.toLowerCase().includes("delivery") &&
+              i.message.toLowerCase().includes("lazy"),
           ),
         ).toBe(true);
       }
@@ -871,6 +896,17 @@ describe("KnowledgeSourceSchema: compile-stage fields", () => {
     expect(parsed.summary).toBe("On-call runbook for the data platform");
     expect(parsed.toc).toBe(true);
     expect(parsed.retrieval?.mode).toBe("bm25");
+  });
+
+  test("retrieval.mode accepts 'hybrid'", () => {
+    const parsed = KnowledgeSourceSchema.safeParse({
+      id: "s",
+      type: "file",
+      path: "x.md",
+      delivery: "file",
+      retrieval: { mode: "hybrid" },
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("rejects retrieval.mode values outside the enum", () => {

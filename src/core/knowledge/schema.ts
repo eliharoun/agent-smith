@@ -21,7 +21,10 @@ const RefreshMode = z.enum(["install", "ttl", "session", "always"]);
 const RefreshObject = z
   .object({
     mode: RefreshMode,
-    ttl: z.string().regex(/^\d+(s|m|h|d|w)$/, "ttl must be like '30m', '2h', '1d'").optional(),
+    ttl: z
+      .string()
+      .regex(/^\d+(s|m|h|d|w)$/, "ttl must be like '30m', '2h', '1d'")
+      .optional(),
     timeout: z.number().int().positive().max(60).optional(),
   })
   .strict();
@@ -37,13 +40,16 @@ const ConfluencePageRef = z.union([
 // at acquire/refresh time. Travels with the bundle so recipients route the
 // same way. Credential-shaped argument keys are rejected at schema level —
 // authors must not bake auth into shared bundles.
-export const CREDENTIAL_KEY_DENYLIST = /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
+export const CREDENTIAL_KEY_DENYLIST =
+  /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
 
 const ViaSpec = z
   .object({
     server: z.string().min(1, "via.server must be non-empty"),
     tool: z.string().min(1, "via.tool must be non-empty"),
-    args: z.record(z.string(), z.unknown()).optional()
+    args: z
+      .record(z.string(), z.unknown())
+      .optional()
       .superRefine((args, ctx) => {
         if (!args) return;
         for (const key of Object.keys(args)) {
@@ -63,7 +69,7 @@ const ViaSpec = z
   .strict();
 
 // v2.0 compile-stage retrieval spec. `external-mcp` requires `mcpUrl`.
-const RetrievalMode = z.enum(["off", "bm25", "external-mcp"]);
+const RetrievalMode = z.enum(["off", "bm25", "hybrid", "external-mcp"]);
 const RetrievalSpec = z
   .object({
     mode: RetrievalMode,
@@ -198,26 +204,40 @@ const WebVariant = z
     if (src.mode !== "crawl") {
       for (const k of ["maxPages", "depth", "sameOrigin", "include", "exclude"] as const) {
         if (src[k] !== undefined) {
-          ctx.addIssue({ code: "custom", message: `${k} is only valid when mode=crawl (mode=${src.mode} ignores it)`, path: [k] });
+          ctx.addIssue({
+            code: "custom",
+            message: `${k} is only valid when mode=crawl (mode=${src.mode} ignores it)`,
+            path: [k],
+          });
         }
       }
     }
   });
-const McpVariant = z.object({ ...BaseFields, type: z.literal("mcp"), server: z.string().min(1, "type=mcp requires server"), tool: z.string().min(1, "type=mcp requires tool"),
-  args: z.record(z.string(), z.unknown()).optional()
-    .superRefine((args, ctx) => {
-      if (!args) return;
-      for (const key of Object.keys(args)) {
-        if (CREDENTIAL_KEY_DENYLIST.test(key)) {
-          ctx.addIssue({
-            code: "custom",
-            message: `mcp.args key '${key}' looks credential-shaped — credentials must not travel with shared bundles. Use the MCP server's own auth instead.`,
-            path: [key],
-          });
+const McpVariant = z
+  .object({
+    ...BaseFields,
+    type: z.literal("mcp"),
+    server: z.string().min(1, "type=mcp requires server"),
+    tool: z.string().min(1, "type=mcp requires tool"),
+    args: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .superRefine((args, ctx) => {
+        if (!args) return;
+        for (const key of Object.keys(args)) {
+          if (CREDENTIAL_KEY_DENYLIST.test(key)) {
+            ctx.addIssue({
+              code: "custom",
+              message: `mcp.args key '${key}' looks credential-shaped — credentials must not travel with shared bundles. Use the MCP server's own auth instead.`,
+              path: [key],
+            });
+          }
         }
-      }
-    }),
-  preset: z.string().min(1).optional(), allowWriteTool: z.boolean().optional() }).strict();
+      }),
+    preset: z.string().min(1).optional(),
+    allowWriteTool: z.boolean().optional(),
+  })
+  .strict();
 const GitVariant = z
   .object({
     ...BaseFields,
@@ -275,7 +295,11 @@ export const KnowledgeSourceSchema = z
   .superRefine((src, ctx) => {
     // URL format checks (variant-aware: type=webpage and type=web are strict
     // RFC, type=git also accepts SCP-style ssh shorthand `git@host:path`).
-    if ((src.type === "webpage" || src.type === "web" || src.type === "git") && "url" in src && (src as { url?: string }).url) {
+    if (
+      (src.type === "webpage" || src.type === "web" || src.type === "git") &&
+      "url" in src &&
+      (src as { url?: string }).url
+    ) {
       const url = (src as { url: string }).url;
       const isRfcUrl = (() => {
         try {
@@ -296,8 +320,7 @@ export const KnowledgeSourceSchema = z
       if (src.type === "git" && !isRfcUrl && !isScpGit) {
         ctx.addIssue({
           code: "custom",
-          message:
-            "type=git requires a git URL (https://..., ssh://..., or git@host:path)",
+          message: "type=git requires a git URL (https://..., ssh://..., or git@host:path)",
           path: ["url"],
         });
       }
@@ -324,9 +347,7 @@ const CompileBlock = z
 
 export const KnowledgeBlockSchema = z.object({
   packs: z.array(z.string().regex(KEBAB, "pack name must be kebab-case")).optional(),
-  inlineBudget: z
-    .object({ totalTokens: z.number().int().positive().max(16000) })
-    .optional(),
+  inlineBudget: z.object({ totalTokens: z.number().int().positive().max(16000) }).optional(),
   sources: z.array(KnowledgeSourceSchema).optional(),
   compile: CompileBlock.optional(),
 });
