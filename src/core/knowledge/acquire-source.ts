@@ -80,11 +80,11 @@ export function isAcquirable(type: KnowledgeSource["type"]): boolean {
 export async function acquireSource(
   src: KnowledgeSource,
   opts: AcquireSourceOpts,
-): Promise<{ artifacts: AcquiredArtifact[]; warnings: string[] }> {
+): Promise<{ artifacts: AcquiredArtifact[]; warnings: string[]; changedPaths: string[] | null }> {
   const warnings: string[] = [];
   const warnSink = (m: string) => warnings.push(m);
-  const artifacts = await dispatch(src, opts, warnSink);
-  return { artifacts, warnings };
+  const { artifacts, changedPaths } = await dispatch(src, opts, warnSink);
+  return { artifacts, warnings, changedPaths };
 }
 
 function resolveSourcePath(p: string, bundleDir: string): string {
@@ -99,22 +99,30 @@ function isProbeRecoverable(err: unknown): boolean {
   return code === "network-error" || code === "permission-denied" || code === "http-error";
 }
 
+type DispatchResult = { artifacts: AcquiredArtifact[]; changedPaths: string[] | null };
+
 async function dispatch(
   src: KnowledgeSource,
   opts: AcquireSourceOpts,
   warnSink: (m: string) => void,
-): Promise<AcquiredArtifact[]> {
+): Promise<DispatchResult> {
   switch (src.type) {
     case "file":
-      return acquireFile(resolveSourcePath(src.path, opts.bundleDir));
+      return {
+        artifacts: await acquireFile(resolveSourcePath(src.path, opts.bundleDir)),
+        changedPaths: null,
+      };
     case "dir": {
       const dirOpts: { include?: string[]; exclude?: string[] } = {};
       if (src.include) dirOpts.include = src.include;
       if (src.exclude) dirOpts.exclude = src.exclude;
-      return acquireDir(resolveSourcePath(src.path, opts.bundleDir), dirOpts);
+      return {
+        artifacts: await acquireDir(resolveSourcePath(src.path, opts.bundleDir), dirOpts),
+        changedPaths: null,
+      };
     }
     case "glob":
-      return acquireGlob(src.path, opts.bundleDir);
+      return { artifacts: await acquireGlob(src.path, opts.bundleDir), changedPaths: null };
     case "webpage": {
       // Explicit via wins (Phase 1).
       if (src.via) {
@@ -124,10 +132,13 @@ async function dispatch(
             message: `URL source '${src.id}' has via:${src.via.server}.${src.via.tool} but acquireSource was called without mcpPool/spawnOptsFor. Caller must inject these.`,
           });
         }
-        return acquireViaMcp(src.via, src.url, {
-          pool: opts.mcpPool,
-          spawnOptsFor: opts.spawnOptsFor,
-        });
+        return {
+          artifacts: await acquireViaMcp(src.via, src.url, {
+            pool: opts.mcpPool,
+            spawnOptsFor: opts.spawnOptsFor,
+          }),
+          changedPaths: null,
+        };
       }
 
       // Phase 3: three-layer resolver.
@@ -139,19 +150,25 @@ async function dispatch(
           metaClaims: opts.metaClaims ?? [],
         });
         if (resolved) {
-          return acquireViaMcp(
-            { server: resolved.server, tool: resolved.tool },
-            src.url,
-            { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
-          );
+          return {
+            artifacts: await acquireViaMcp(
+              { server: resolved.server, tool: resolved.tool },
+              src.url,
+              { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
+            ),
+            changedPaths: null,
+          };
         }
       }
 
       // Direct HTTP (Phase 1 baseline).
       try {
-        return await acquireUrl(src.url, opts.cacheDir, {
-          ...(src.auth ? { auth: src.auth } : {}),
-        });
+        return {
+          artifacts: await acquireUrl(src.url, opts.cacheDir, {
+            ...(src.auth ? { auth: src.auth } : {}),
+          }),
+          changedPaths: null,
+        };
       } catch (err) {
         // Phase 3: probe on auth/network failure.
         if (
@@ -165,10 +182,13 @@ async function dispatch(
             if (opts.recordRoute) {
               await opts.recordRoute({ url: src.url, server: probed.server, tool: probed.tool });
             }
-            return acquireViaMcp(probed, src.url, {
-              pool: opts.mcpPool,
-              spawnOptsFor: opts.spawnOptsFor,
-            });
+            return {
+              artifacts: await acquireViaMcp(probed, src.url, {
+                pool: opts.mcpPool,
+                spawnOptsFor: opts.spawnOptsFor,
+              }),
+              changedPaths: null,
+            };
           }
         }
         throw err;
@@ -184,7 +204,8 @@ async function dispatch(
         ...(src.include ? { include: src.include } : {}),
         ...(opts.gitSpawner ? { spawner: opts.gitSpawner } : {}),
       };
-      return (await acquireGit(gitOpts)).artifacts;
+      const res = await acquireGit(gitOpts);
+      return { artifacts: res.artifacts, changedPaths: res.changedPaths };
     }
     case "confluence": {
       const cOpts: Parameters<typeof acquireConfluence>[0] = { space: src.space };
@@ -194,29 +215,37 @@ async function dispatch(
       if (src.format !== undefined) cOpts.format = src.format;
       const result = await acquireConfluence(cOpts);
       for (const w of result.warnings) warnSink(w);
-      return result.artifacts;
+      return { artifacts: result.artifacts, changedPaths: null };
     }
     case "jira": {
       const jOpts: Parameters<typeof acquireJira>[0] = { jql: src.jql };
       if (src.fields) jOpts.fields = src.fields;
       if (src.maxResults !== undefined) jOpts.maxResults = src.maxResults;
-      return acquireJira(jOpts);
+      return { artifacts: await acquireJira(jOpts), changedPaths: null };
     }
     case "web": {
       const { acquireWeb } = await import("./acquire-web");
       const res = await acquireWeb(src, { cacheDir: opts.cacheDir });
       for (const w of res.warnings) warnSink(w);
-      return res.artifacts;
+      return { artifacts: res.artifacts, changedPaths: null };
     }
     case "mcp": {
       if (!opts.mcpPool || !opts.spawnOptsFor) {
         throw new SmithError({ code: "internal-error", message: `mcp source '${src.id}' requires mcpPool/spawnOptsFor; caller must inject these.` });
       }
-      return acquireViaMcp(
-        { server: src.server, tool: src.tool, ...(src.args ? { args: src.args } : {}), ...(src.allowWriteTool ? { allowWriteTool: src.allowWriteTool } : {}) },
-        `mcp://${src.server}/${src.tool}`,
-        { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
-      );
+      return {
+        artifacts: await acquireViaMcp(
+          {
+            server: src.server,
+            tool: src.tool,
+            ...(src.args ? { args: src.args } : {}),
+            ...(src.allowWriteTool ? { allowWriteTool: src.allowWriteTool } : {}),
+          },
+          `mcp://${src.server}/${src.tool}`,
+          { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
+        ),
+        changedPaths: null,
+      };
     }
     default:
       throw new SmithError({
