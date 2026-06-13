@@ -27,8 +27,8 @@ import { useNotifications } from "@/hooks/useNotifications";
  * progress→success/error notification lifecycle.
  *
  * When the just-saved change toggled a source's retrieval mode to or from
- * `hybrid` (see `HybridRestartNotice`), the helper ALSO fires a separate
- * sticky `info` toast advising the user to restart the knowledge MCP server:
+ * `hybrid` (signalled via the `hybridRestart` option), the helper ALSO fires a
+ * separate sticky `info` toast advising the user to restart the knowledge MCP server:
  * the `serve` process reads the index and loads the embedder once at spawn,
  * the AI client owns that process's lifecycle, and the GUI can't restart it.
  * This toast coexists with the saved/drift toast (distinct `dedupKey`).

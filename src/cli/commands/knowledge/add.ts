@@ -739,7 +739,7 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   // client owns its lifecycle. This is advisory (we can't restart it for them).
   if (opts.retrieval === "hybrid" && !opts.lazy) {
     console.log(
-      pc.yellow("note"),
+      pc.yellow("warn"),
       `hybrid retrieval set for '${id}'. Restart the knowledge MCP server for it to take effect — reconnect the '${opts.agentName ?? "<agent>"}-knowledge' server in your AI client (e.g. Claude Code: /mcp → reconnect), or start a new session.`,
     );
   }
