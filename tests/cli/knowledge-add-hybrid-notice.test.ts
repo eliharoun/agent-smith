@@ -54,6 +54,24 @@ describe("knowledgeAdd hybrid restart notice", () => {
     expect(out).toMatch(/\/mcp/);
   });
 
+  it("the hybrid notice also warns that install-mode embeddings go stale", async () => {
+    const out = await captureLogs({
+      bundleDir,
+      agentName: "test-agent",
+      type: "file",
+      pathOrUrl: "./README.md",
+      retrieval: "hybrid",
+      installAfter: false,
+    });
+    // the restart warn (unchanged substring) plus a separate staleness warn
+    expect(out).toMatch(/Restart the knowledge MCP server/);
+    expect(out).toMatch(/refreshes only at install/i);
+    expect(out).toMatch(/stale/i);
+    // remediation points at the real mechanism, not a non-existent `knowledge edit`
+    expect(out).toMatch(/reconfigure/);
+    expect(out).not.toMatch(/knowledge edit/);
+  });
+
   it("does NOT emit the restart notice for --retrieval bm25", async () => {
     const out = await captureLogs({
       bundleDir,

@@ -1708,6 +1708,74 @@ describe("EditKnowledgeSourceModal", () => {
     });
   });
 
+  // ─── Stale-embeds advisory (hybrid + no auto-refresh) ──────────────
+
+  describe("stale-embeds advisory", () => {
+    it("fires a sticky stale toast when a hybrid, non-lazy source has no auto-refresh (install/unset)", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      // Already hybrid, non-lazy, no refresh → defaults to install. Embedded
+      // vectors are built once and drift.
+      const src = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+        retrieval: { mode: "hybrid" },
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      // Trivial edit so Save enables (re-setting hybrid wouldn't dirty it).
+      fireEvent.change(screen.getByLabelText(/^\/\/ description$/i), {
+        target: { value: "the docs" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      await screen.findByText(/embedded content may go stale/i);
+    });
+
+    it("does NOT fire the stale toast when the hybrid source has an auto-refresh mode (ttl)", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+        retrieval: { mode: "hybrid" },
+        refresh: { mode: "ttl", ttl: "7d" },
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ description$/i), {
+        target: { value: "the docs" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      // The normal saved toast still fires; the stale toast must not. Awaiting
+      // the saved toast first guarantees notifyAfterSave has run (the stale
+      // toast, if it fired, would already be present), so queryByText is
+      // deterministic rather than timing-dependent.
+      await screen.findByText(/^saved\.$/i);
+      expect(screen.queryByText(/embedded content may go stale/i)).toBeNull();
+    });
+  });
+
   // ─── Web source type ───────────────────────────────────────────────
 
   describe("web source type", () => {

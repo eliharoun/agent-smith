@@ -623,6 +623,14 @@ export function EditKnowledgeSourceModal({
     !draft.lazy &&
     (draft.retrievalMode === "hybrid") !== (initial.draft.retrievalMode === "hybrid");
 
+  // A hybrid, non-lazy source with no auto-refresh (install/unset) embeds
+  // content that will drift. This is a STATE check (not a transition) so it
+  // also fires when refresh is set back to install on an already-hybrid source.
+  const staleEmbeds =
+    !draft.lazy &&
+    draft.retrievalMode === "hybrid" &&
+    (draft.refreshMode === "" || draft.refreshMode === "install");
+
   function performSave() {
     const built = buildSource(existingSource, draft);
     const sources = (knowledgeBlock.sources ?? []).map((s) =>
@@ -653,10 +661,10 @@ export function EditKnowledgeSourceModal({
         // awaits internally must outlive this component, so the void here
         // is intentional. The notification (and its action closure) live in
         // the persistent NotificationCenter, not this modal.
-        void notifyAfterSave(
-          "Saved",
-          hybridChanged ? { hybridRestart: { sourceId: existingSource.id } } : undefined,
-        );
+        void notifyAfterSave("Saved", {
+          ...(hybridChanged ? { hybridRestart: { sourceId: existingSource.id } } : {}),
+          ...(staleEmbeds ? { staleEmbeds: { sourceId: existingSource.id } } : {}),
+        });
         onClose();
       },
     });

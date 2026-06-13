@@ -177,6 +177,48 @@ describe("knowledgeInfo", () => {
     expect(out).toContain("runtime fetch");
   });
 
+  it("flags a hybrid source with no auto-refresh as stale", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    spies.push(log as unknown as ReturnType<typeof spyOn>);
+    await knowledgeInfo(
+      "x",
+      { agentSmithHome },
+      {
+        loadDeclaredSources: async () => [
+          { id: "alpha", type: "git", retrieval: { mode: "hybrid" } } as never, // no refresh => install
+        ],
+        openStats: async () => ({
+          embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+          chunks: 10, vectors: 10, taggedPaths: 0,
+          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10 }],
+        }),
+      },
+    );
+    const out = log.mock.calls.flat().join("\n").toLowerCase();
+    expect(out).toContain("never auto-refreshed");
+  });
+
+  it("does NOT flag a hybrid source with ttl refresh", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    spies.push(log as unknown as ReturnType<typeof spyOn>);
+    await knowledgeInfo(
+      "x",
+      { agentSmithHome },
+      {
+        loadDeclaredSources: async () => [
+          { id: "alpha", type: "git", retrieval: { mode: "hybrid" }, refresh: { mode: "ttl", ttl: "7d" } } as never,
+        ],
+        openStats: async () => ({
+          embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+          chunks: 10, vectors: 10, taggedPaths: 0,
+          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10 }],
+        }),
+      },
+    );
+    const out = log.mock.calls.flat().join("\n").toLowerCase();
+    expect(out).not.toContain("never auto-refreshed");
+  });
+
   it("shows 'no indexed chunks' for a declared source with no perSource entry", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
