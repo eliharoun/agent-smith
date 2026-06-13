@@ -4,9 +4,10 @@ import { isAbsolute, join, relative } from "node:path";
 import { keyForAgent } from "../../io/mcp-wiring";
 import { Bm25Index } from "./bm25";
 import { CHUNKER_VERSION } from "./index/chunker";
-import { type Embedder, loadEmbedder, NullEmbedder } from "./index/embedder";
+import { type Embedder, embedderCache } from "./index/embedder";
 import { explainSearch, hybridSearch } from "./index/hybrid-search";
 import { indexDbPath } from "./index/index-paths";
+import { ALL_MODELS, roleForModelId } from "./index/model-policy";
 import { REPOMAP_VERSION } from "./index/repomap/extract";
 import { rankFiles } from "./index/repomap/graph";
 import { renderMap } from "./index/repomap/render";
@@ -82,7 +83,14 @@ export interface ServeContext {
    */
   agent: string;
   store: KnowledgeStore | null; // read-only persistent index; null => use `index`
-  embedder: Embedder; // query embedder; NullEmbedder unless the store has real vectors
+  /** Models the index holds (from storedEmbedderIds at build time). Drives
+   *  hybridActive + tool advertisement WITHOUT loading any model. */
+  models: Array<{ id: string; dim: number }>;
+  /** Lazily load (and memoize) the query embedders for `models`. Called on the
+   *  first knowledge.search/explain — NOT at context build, so the MCP handshake
+   *  isn't blocked on model loads. A model that fails to load is dropped
+   *  (filtered out) so retrieval degrades to lexical rather than erroring. */
+  getEmbedders: () => Promise<Embedder[]>;
   hasMap: boolean; // true iff store has code tags (gates knowledge.map)
 }
 
@@ -92,12 +100,12 @@ export async function buildServeContext(
 ): Promise<ServeContext> {
   const index = await buildLegacyBm25(knowledgeDir);
   let store: KnowledgeStore | null = null;
-  let embedder: Embedder = new NullEmbedder();
+  let models: Array<{ id: string; dim: number }> = [];
   let hasMap = false;
   try {
     // In readonly mode the header is NOT written/reconciled (KnowledgeStore.open
-    // skips migrate); these are inert placeholders. The index's actual embedder
-    // id is read separately below via storedEmbedderId().
+    // skips migrate); these are inert placeholders. The models the index holds
+    // are read separately below via storedEmbedderIds().
     store = await KnowledgeStore.open(
       indexDbPath(knowledgeDir),
       {
@@ -110,18 +118,31 @@ export async function buildServeContext(
     );
     if (store) {
       hasMap = store.hasCode();
-      // Only load the (heavy) query embedder when the index actually has
-      // vectors — i.e. it was built with a real embedder. Avoids blocking the
-      // MCP handshake on a model load when the index is lexical-only (§3.1.1).
-      const storedEmb = store.storedEmbedderId();
-      if (storedEmb && storedEmb !== "none") {
-        embedder = await loadEmbedder({});
-      }
+      // Which models the index actually has vectors for. Drives hybridActive +
+      // tool advertisement WITHOUT loading any model (§3.1.1): no heavy model
+      // load blocks the MCP handshake.
+      models = store.storedEmbedderIds();
     }
   } catch {
     store = null; // any failure -> in-memory BM25 fallback
   }
-  return { index, rootDir: knowledgeDir, agent, store, embedder, hasMap };
+  const cache = embedderCache();
+  let loaded: Promise<Embedder[]> | null = null;
+  const getEmbedders = (): Promise<Embedder[]> => {
+    if (loaded) return loaded;
+    loaded = (async () => {
+      const out: Embedder[] = [];
+      for (const m of models) {
+        // Map the stored "<modelId>@1" id back to its HF modelId via ALL_MODELS.
+        const ref = ALL_MODELS.find((r) => r.id === m.id);
+        const emb = ref ? await cache.get(ref.modelId, ref.dim) : await cache.get("none");
+        if (emb.id !== "none") out.push(emb); // drop failed/unknown loads -> lexical degrade
+      }
+      return out;
+    })();
+    return loaded;
+  };
+  return { index, rootDir: knowledgeDir, agent, store, models, getEmbedders, hasMap };
 }
 
 /**
@@ -167,10 +188,11 @@ export async function handleRpc(
 
   if (req.method === "tools/list") {
     // Hybrid (semantic) ranking is active iff the persistent store is present
-    // AND a real query embedder was loaded — matches the routing in
-    // `handleSearch`/`hybridSearch` exactly. Both non-hybrid cases (NullEmbedder
-    // store, or in-memory BM25 fallback) advertise the lexical wording.
-    const hybridActive = ctx.store !== null && ctx.embedder.id !== "none";
+    // AND the index holds at least one embedding model — derived from index
+    // metadata, NOT a loaded handle, so advertisement never blocks on a model
+    // load. Both non-hybrid cases (lexical-only store, or in-memory BM25
+    // fallback) advertise the lexical wording.
+    const hybridActive = ctx.store !== null && ctx.models.length > 0;
     const tools: unknown[] = [
       {
         name: "knowledge.search",
@@ -287,8 +309,10 @@ async function handleSearch(
   const query = typeof args.query === "string" ? args.query : "";
   const rawK = typeof args.k === "number" ? args.k : Number(args.k ?? 5);
   const k = Math.min(20, Math.max(1, Number.isFinite(rawK) ? rawK : 5));
+  // Lazily load the query embedders on first search — not at context build.
+  const embedders = ctx.store ? await ctx.getEmbedders() : [];
   const hits = ctx.store
-    ? await hybridSearch(ctx.store, ctx.embedder, query, k)
+    ? await hybridSearch(ctx.store, embedders, query, k)
     : ctx.index.search(query, k);
   return {
     jsonrpc: "2.0",
@@ -302,10 +326,11 @@ async function handleExplain(
   args: Record<string, unknown>,
   ctx: ServeContext,
 ): Promise<JsonRpcResponse> {
-  // Explain requires the persistent store AND a real query embedder — same gate
-  // as the knowledge.explain advertisement in tools/list. Without a real
-  // embedder there is no semantic arm to decompose.
-  if (!ctx.store || ctx.embedder.id === "none") {
+  // Explain requires the persistent store AND the index to hold at least one
+  // embedding model — same metadata gate as the knowledge.explain
+  // advertisement in tools/list. If all models then fail to load lazily,
+  // explainSearch with [] yields hybrid:false — an acceptable lexical degrade.
+  if (!ctx.store || ctx.models.length === 0) {
     return {
       jsonrpc: "2.0",
       id,
@@ -318,11 +343,27 @@ async function handleExplain(
   const query = typeof args.query === "string" ? args.query : "";
   const rawK = typeof args.k === "number" ? args.k : Number(args.k ?? 5);
   const k = Math.min(20, Math.max(1, Number.isFinite(rawK) ? rawK : 5));
-  const explanation = await explainSearch(ctx.store, ctx.embedder, query, k);
+  const embedders = await ctx.getEmbedders();
+  const explanation = await explainSearch(ctx.store, embedders, query, k);
+  // Label the per-model arms by ROLE (code/prose) rather than the raw HF model
+  // id so the user sees what each arm is for. Unknown ids (e.g. a retired model)
+  // pass through unchanged via roleForModelId.
+  const labeled = {
+    ...explanation,
+    vectors: Object.fromEntries(
+      Object.entries(explanation.vectors).map(([modelId, hits]) => [roleForModelId(modelId), hits]),
+    ),
+    fused: explanation.fused.map((e) => ({
+      ...e,
+      vectorRanks: Object.fromEntries(
+        Object.entries(e.vectorRanks).map(([modelId, r]) => [roleForModelId(modelId), r]),
+      ),
+    })),
+  };
   return {
     jsonrpc: "2.0",
     id,
-    result: { content: [{ type: "text", text: JSON.stringify(explanation, null, 2) }] },
+    result: { content: [{ type: "text", text: JSON.stringify(labeled, null, 2) }] },
   };
 }
 

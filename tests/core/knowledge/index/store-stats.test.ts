@@ -19,7 +19,13 @@ const H = {
   repomapVersion: 1,
 };
 
-function chunk(id: string, sourceId: string, relPath: string, vector?: Float32Array) {
+function chunk(
+  id: string,
+  sourceId: string,
+  relPath: string,
+  vector?: Float32Array,
+  embedderId?: string,
+) {
   return {
     id,
     sourceId,
@@ -29,21 +35,21 @@ function chunk(id: string, sourceId: string, relPath: string, vector?: Float32Ar
     kind: "prose" as const,
     text: `text ${id}`,
     contentHash: `h-${id}`,
-    ...(vector ? { vector } : {}),
+    ...(vector ? { vector, embedderId: embedderId ?? "emb-a", embedderDim: vector.length } : {}),
   };
 }
 
 describe("KnowledgeStore.stats", () => {
-  test("empty index: zero counts, embedderId 'none' (no live vectors)", async () => {
+  test("empty index: zero counts, embedders empty (no live vectors)", async () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
     const stats = s.stats();
     expect(stats.chunks).toBe(0);
     expect(stats.vectors).toBe(0);
     expect(stats.taggedPaths).toBe(0);
-    // embedderId now derives from LIVE vectors (not the header meta); an empty
-    // index has none, so the single-model shim reports "none".
-    expect(stats.embedderId).toBe("none");
+    // embedders now derive from LIVE vectors (not the header meta); an empty
+    // index has none.
+    expect(stats.embedders).toEqual([]);
     expect(stats.perSource).toEqual([]);
     s.close();
   });
@@ -59,10 +65,28 @@ describe("KnowledgeStore.stats", () => {
     const stats = s.stats();
     expect(stats.chunks).toBe(3);
     expect(stats.vectors).toBe(2);
+    // top-level embedders: the only live model id present.
+    expect(stats.embedders).toEqual([{ id: "emb-a", dim: 3 }]);
     expect(stats.perSource).toEqual([
-      { sourceId: "alpha", chunks: 2, vectors: 2 },
-      { sourceId: "beta", chunks: 1, vectors: 0 },
+      { sourceId: "alpha", chunks: 2, vectors: 2, models: ["emb-a"] },
+      { sourceId: "beta", chunks: 1, vectors: 0, models: [] },
     ]);
+    s.close();
+  });
+
+  test("per-source models: each source carries the model ids that embedded its live vectors", async () => {
+    const s = await KnowledgeStore.open(join(dir, "k.db"), H);
+    if (!s) return;
+    await s.upsertChunks([
+      chunk("1", "code-src", "sources/code-src/a.ts", new Float32Array([1, 0, 0]), "code@1"),
+      chunk("2", "prose-src", "sources/prose-src/b.md", new Float32Array([0, 1, 0]), "text@1"),
+    ]);
+    const stats = s.stats();
+    const byId = new Map(stats.perSource.map((p) => [p.sourceId, p]));
+    expect(byId.get("code-src")!.models).toEqual(["code@1"]);
+    expect(byId.get("prose-src")!.models).toEqual(["text@1"]);
+    // top-level embedders covers both distinct live models.
+    expect(stats.embedders.map((e) => e.id).sort()).toEqual(["code@1", "text@1"]);
     s.close();
   });
 
