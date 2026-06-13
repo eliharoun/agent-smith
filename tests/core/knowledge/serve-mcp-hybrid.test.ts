@@ -68,6 +68,75 @@ describe("serve-mcp hybrid wiring", () => {
     const res: any = await call(ctx, "tools/call", { name: "knowledge.map", arguments: {} });
     expect(res.result.content[0].text).toContain("code.ts");
   });
+
+  test("knowledge.explain is NOT advertised in lexical-only mode", async () => {
+    await writeFile(join(kd, "sources", "s", "doc.md"), "rate limiting in the gateway\n");
+    await buildIndexInto(kd, null);
+    const ctx = await buildServeContext(kd, "agent");
+    const list: any = await call(ctx, "tools/list", {});
+    const names = list.result.tools.map((t: any) => t.name);
+    expect(names).not.toContain("knowledge.explain");
+  });
+
+  test("knowledge.explain returns an error when not in hybrid mode", async () => {
+    await writeFile(join(kd, "sources", "s", "doc.md"), "rate limiting in the gateway\n");
+    await buildIndexInto(kd, null);
+    const ctx = await buildServeContext(kd, "agent");
+    const res: any = await call(ctx, "tools/call", {
+      name: "knowledge.explain",
+      arguments: { query: "rate limiting" },
+    });
+    expect(res.error).toBeDefined();
+    expect(res.error.code).toBe(-32601);
+  });
+
+  test("knowledge.explain is advertised and returns per-arm provenance when hybrid is active", async () => {
+    const { KnowledgeStore } = await import("../../../src/core/knowledge/index/store");
+    const s = await KnowledgeStore.open(join(kd, "k.db"), {
+      schemaVersion: 1,
+      embedderId: "fake@1",
+      embedderDim: 3,
+      chunkerVersion: 1,
+      repomapVersion: 1,
+    });
+    if (!s) return;
+    await s.upsertChunks([
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "rate limiting in the gateway",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+      },
+    ]);
+    const fakeEmbedder = { id: "fake@1", dim: 3, embed: async () => [new Float32Array([1, 0, 0])] };
+    const ctx: any = {
+      index: { search: () => [] },
+      rootDir: kd,
+      agent: "agent",
+      store: s,
+      embedder: fakeEmbedder,
+      hasMap: false,
+    };
+    const list: any = await call(ctx, "tools/list", {});
+    const names = list.result.tools.map((t: any) => t.name);
+    expect(names).toContain("knowledge.explain");
+    const res: any = await call(ctx, "tools/call", {
+      name: "knowledge.explain",
+      arguments: { query: "rate limiting" },
+    });
+    const payload = JSON.parse(res.result.content[0].text);
+    expect(payload.query).toBe("rate limiting");
+    expect(payload.hybrid).toBe(true);
+    expect(payload.fused[0].relPath).toBe("a.md");
+    expect(payload.fused[0].lexicalRank).toBe(1);
+    expect(payload.fused[0].vectorRank).toBe(1);
+    s.close();
+  });
 });
 
 describe("searchToolDescription", () => {
