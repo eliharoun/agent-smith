@@ -96,6 +96,7 @@ describe("serve-mcp hybrid wiring", () => {
       schemaVersion: 1,
       embedders: [{ id: "fake@1", dim: 3 }],
       chunkerVersion: 1,
+      modelPolicyVersion: 1,
       repomapVersion: 1,
     });
     if (!s) return;
@@ -149,6 +150,7 @@ describe("serve-mcp hybrid wiring", () => {
       schemaVersion: 1,
       embedders: [{ id: "fake@1", dim: 3 }],
       chunkerVersion: 1,
+      modelPolicyVersion: 1,
       repomapVersion: 1,
     });
     if (!s) return;
@@ -201,6 +203,7 @@ describe("serve-mcp hybrid wiring", () => {
       schemaVersion: 1,
       embedders: [{ id: "fake@1", dim: 3 }],
       chunkerVersion: 1,
+      modelPolicyVersion: 1,
       repomapVersion: 1,
     });
     if (!s) return;
@@ -246,6 +249,7 @@ describe("serve-mcp hybrid wiring", () => {
       schemaVersion: 1,
       embedders: [{ id: CODE_MODEL.id, dim: 3 }],
       chunkerVersion: 1,
+      modelPolicyVersion: 1,
       repomapVersion: 1,
     });
     if (!s) return;

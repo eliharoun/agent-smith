@@ -17,6 +17,7 @@ const H = {
   embedders: [{ id: "emb-a@1", dim: 3 }],
   chunkerVersion: 1,
   repomapVersion: 1,
+  modelPolicyVersion: 1,
 };
 
 describe("KnowledgeStore", () => {
@@ -399,7 +400,7 @@ describe("KnowledgeStore", () => {
   });
 
   test("storedEmbedderIds reports distinct models over LIVE vectors only", async () => {
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     const s = await KnowledgeStore.open(join(dir, "k.db"), h);
     if (!s) return;
     await s.upsertChunks([
@@ -414,7 +415,7 @@ describe("KnowledgeStore", () => {
 
   test("per-model reconcile clears only the changed model's vectors", async () => {
     const dbp = join(dir, "k.db");
-    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     let s = await KnowledgeStore.open(dbp, h1);
     if (!s) return;
     await s.upsertChunks([
@@ -423,7 +424,7 @@ describe("KnowledgeStore", () => {
     ]);
     s.close();
     // Reopen with the TEXT model changed (text@1 -> text@2), code unchanged.
-    const h2 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@2", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h2 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@2", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     s = await KnowledgeStore.open(dbp, h2);
     if (!s) return;
     expect(s.hasVectorFor("a.ts", "code@1")).toBe(true);  // code untouched
@@ -433,7 +434,7 @@ describe("KnowledgeStore", () => {
 
   test("lexical-only (empty embedders) reopen does NOT clear existing vectors", async () => {
     const dbp = join(dir, "k.db");
-    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     let s = await KnowledgeStore.open(dbp, h1);
     if (!s) return;
     await s.upsertChunks([
@@ -441,7 +442,7 @@ describe("KnowledgeStore", () => {
     ]);
     s.close();
     // Reopen lexical-only (no models this session) — must NOT wipe the code vectors.
-    const h2 = { schemaVersion: 1, embedders: [], chunkerVersion: 1, repomapVersion: 1 };
+    const h2 = { schemaVersion: 1, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     s = await KnowledgeStore.open(dbp, h2);
     if (!s) return;
     expect(s.hasVectorFor("a.ts", "code@1")).toBe(true);
@@ -450,7 +451,7 @@ describe("KnowledgeStore", () => {
 
   test("malformed embedders meta does not crash open (degrades, no throw)", async () => {
     const dbp = join(dir, "k.db");
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     const s = await KnowledgeStore.open(dbp, h);
     if (!s) return;
     s.close();
@@ -462,7 +463,7 @@ describe("KnowledgeStore", () => {
 
   test("malformed embedders meta degrades gracefully (open does not throw/return null)", async () => {
     const dbp = join(dir, "k.db");
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1 };
+    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
     let s = await KnowledgeStore.open(dbp, h);
     if (!s) return;
     await s.upsertChunks([{ id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 }]);
@@ -478,5 +479,37 @@ describe("KnowledgeStore", () => {
     // The code vectors must survive (reopen with the SAME running model => no clear).
     expect(s2?.hasVectorFor("a.ts", "code@1")).toBe(true);
     s2?.close();
+  });
+
+  test("a model-policy-version change clears all chunks (forces full re-derive)", async () => {
+    const dbp = join(dir, "k.db");
+    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    let s = await KnowledgeStore.open(dbp, h1);
+    if (!s) return;
+    await s.upsertChunks([
+      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
+    ]);
+    s.close();
+    // Reopen with a bumped model-policy version -> all chunks cleared.
+    const h2 = { ...h1, modelPolicyVersion: 2 };
+    s = await KnowledgeStore.open(dbp, h2);
+    if (!s) return;
+    expect(s.stats().chunks).toBe(0);
+    s.close();
+  });
+
+  test("an unchanged model-policy-version preserves chunks", async () => {
+    const dbp = join(dir, "k.db");
+    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    let s = await KnowledgeStore.open(dbp, h);
+    if (!s) return;
+    await s.upsertChunks([
+      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
+    ]);
+    s.close();
+    s = await KnowledgeStore.open(dbp, h);
+    if (!s) return;
+    expect(s.stats().chunks).toBe(1);
+    s.close();
   });
 });

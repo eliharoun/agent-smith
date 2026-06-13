@@ -31,6 +31,18 @@ const CODE_EXT = new Set([
   ".h",
 ]);
 
+/** The chunk kind a path will produce, derived purely from its extension.
+ *  Mirrors `chunk`'s dispatch exactly (one kind per path), so callers can route
+ *  by model BEFORE chunking. .json→json, code extensions→code, everything
+ *  else→prose. */
+export function kindForPath(relPath: string): ChunkKind {
+  const dotIdx = relPath.lastIndexOf(".");
+  const ext = dotIdx >= 0 ? relPath.slice(dotIdx) : "";
+  if (ext === ".json") return "json";
+  if (CODE_EXT.has(ext)) return "code";
+  return "prose";
+}
+
 export async function chunk(input: ChunkInput): Promise<Chunk[]> {
   const dotIdx = input.relPath.lastIndexOf(".");
   const ext = dotIdx >= 0 ? input.relPath.slice(dotIdx) : ""; // "" for extension-less files
