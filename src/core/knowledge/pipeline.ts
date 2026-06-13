@@ -589,7 +589,10 @@ export async function runKnowledgeStage(
     // Build the hybrid search index over the freshly materialized tree. Runs
     // here (single-writer install path) so the serve process only ever reads.
     // Never throws; degrades to in-memory BM25 at serve time on failure.
-    await buildIndexInto(liveDir, null); // full build on (re)install
+    const hybridSourceIds = new Set(
+      manifest.sources.filter((s) => s.retrieval?.mode === "hybrid").map((s) => s.id),
+    );
+    await buildIndexInto(liveDir, null, hybridSourceIds); // full build on (re)install
 
     return {
       manifest,

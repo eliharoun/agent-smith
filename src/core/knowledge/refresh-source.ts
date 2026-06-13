@@ -405,7 +405,9 @@ export async function refreshSource(opts: RefreshSourceOpts): Promise<RefreshSou
 
     // Refresh the hybrid index incrementally for just this source's changes.
     const knowledgeDir = knowledgeDirFor(agent, { agentSmithHome });
-    await buildIndexInto(knowledgeDir, changedPaths ?? null);
+    const hybridSourceIds =
+      source.retrieval?.mode === "hybrid" ? new Set([source.id]) : new Set<string>();
+    await buildIndexInto(knowledgeDir, changedPaths ?? null, hybridSourceIds);
 
     return {
       kind: "refreshed",
