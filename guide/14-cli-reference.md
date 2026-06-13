@@ -1947,10 +1947,11 @@ Source: `src/cli/commands/knowledge/info.ts`.
 $ smith knowledge info my-agent
 Knowledge index for my-agent:
   retrieval: HYBRID ✓ active (semantic + lexical)
-  embedder: jinaai/jina-embeddings-v2-base-code@1
+  embedders: code → jinaai/jina-embeddings-v2-base-code@1, prose → jinaai/jina-embeddings-v2-base-en@1
   chunks: 2245 • vectors: 1920 (86%) • code-mapped paths: 305
 
   sources:
+    f2-...-src    (git, hybrid)  820/900 vectors  [code+prose]
     f2-...-tests  (git, off)  0/54 vectors
     ...
 
@@ -2100,12 +2101,15 @@ store). Exposes up to four tools:
   sources.** `focus` (optional string) scopes the map to a file or
   symbol; `mapTokens` (optional integer) caps the response size.
 - `knowledge.explain(query, k=5)` — retrieval-audit decomposition of what
-  `knowledge.search` fuses: the lexical (BM25) arm's hits, the semantic
+  `knowledge.search` fuses: the lexical (BM25) arm's hits, each semantic
   (vector) arm's hits, and the RRF-fused result with each entry's
-  `lexicalRank`, `vectorRank` (null if absent from that arm), and
-  `fusedScore`. **Capability-gated: advertised only when hybrid retrieval
-  is active** (index built with a real embedder); lexical-only mode has no
-  semantic arm to decompose.
+  `lexicalRank`, per-arm `vectorRanks` (null if absent from that arm), and
+  `fusedScore`. Vector arms are keyed by **role** (`code`, `prose`) — hybrid
+  embeds code with a code-specialized model and prose/JSON with a
+  text-specialized model — so each rank shows which model produced it.
+  **Capability-gated: advertised only when hybrid retrieval is active**
+  (index built with a real embedder); lexical-only mode has no semantic arm
+  to decompose.
 
 Validates that the agent exists before opening stdio so an unknown name
 doesn't silently serve an empty index.

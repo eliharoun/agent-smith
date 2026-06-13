@@ -1,5 +1,6 @@
 import pc from "picocolors";
 import { indexDbPath } from "../../../core/knowledge/index/index-paths";
+import { roleForModelId } from "../../../core/knowledge/index/model-policy";
 import { SCHEMA_VERSION } from "../../../core/knowledge/index/schema-version";
 import { isStaleHybrid } from "../../../core/knowledge/stale-hybrid";
 import { parseRefresh } from "../../../core/knowledge/refresh-spec";
@@ -78,15 +79,14 @@ export async function knowledgeInfo(
   const openStats = deps.openStats ?? defaultOpenStats;
   const stats = await openStats(dbPath);
 
-  // Hybrid is active iff the index exists AND was built with a real embedder.
-  // This matches serve-mcp.ts's predicate exactly (store !== null &&
-  // embedder.id !== "none") — serve loads the query embedder iff
-  // storedEmbedderId() !== "none". Reporting the same predicate means `info`
-  // never contradicts the agent's live knowledge.search tool description.
-  // Vector coverage is surfaced separately below, so a degenerate
+  // Hybrid is active iff the index exists AND holds at least one embedding
+  // model. This matches serve-mcp.ts's predicate exactly — serve loads query
+  // embedders iff the index records live models. Reporting the same predicate
+  // means `info` never contradicts the agent's live knowledge.search tool
+  // description. Vector coverage is surfaced separately below, so a degenerate
   // real-embedder/zero-vector index shows as HYBRID with 0% rather than being
   // silently downgraded.
-  const hybridActive = stats !== null && stats.embedderId !== "none";
+  const hybridActive = stats !== null && stats.embedders.length > 0;
 
   if (options.json) {
     console.log(
@@ -94,7 +94,7 @@ export async function knowledgeInfo(
         agent,
         materialized: stats !== null,
         hybridActive,
-        embedderId: stats?.embedderId ?? null,
+        embedders: stats?.embedders ?? [],
         stats,
         sources: declared.map((s) => ({ id: s.id, type: s.type, retrieval: retrievalOf(s), staleHybrid: staleHybridFlag(s) })),
       }),
@@ -116,7 +116,12 @@ export async function knowledgeInfo(
     : `${pc.yellow("BM25")} only (lexical) — no query embedder loaded`;
   const percentVectorized = stats.chunks > 0 ? Math.round((stats.vectors / stats.chunks) * 100) : 0;
   console.log(`  retrieval: ${retrievalLabel}`);
-  console.log(pc.dim(`  embedder: ${stats.embedderId ?? "none"}`));
+  if (stats.embedders.length > 0) {
+    const list = stats.embedders.map((m) => `${roleForModelId(m.id)} → ${m.id}`).join(", ");
+    console.log(pc.dim(`  embedders: ${list}`));
+  } else {
+    console.log(pc.dim(`  embedder: none`));
+  }
   console.log(
     pc.dim(
       `  chunks: ${stats.chunks} • vectors: ${stats.vectors} (${percentVectorized}%) • code-mapped paths: ${stats.taggedPaths}`,
@@ -135,8 +140,12 @@ export async function knowledgeInfo(
         : ps
           ? pc.dim(`${ps.vectors}/${ps.chunks} vectors`)
           : pc.dim("no indexed chunks");
+    const modelTag =
+      ps && ps.vectors > 0 && ps.models.length > 0
+        ? `  ${pc.dim(`[${ps.models.map(roleForModelId).sort().join("+")}]`)}`
+        : "";
     const stale = staleHybridFlag(s) ? `  ${pc.yellow("⚠ never auto-refreshed")}` : "";
-    console.log(`    ${pc.bold(s.id)}  ${pc.dim(`(${s.type}, ${mode})`)}  ${counts}${stale}`);
+    console.log(`    ${pc.bold(s.id)}  ${pc.dim(`(${s.type}, ${mode})`)}  ${counts}${modelTag}${stale}`);
   }
 
   if (declared.some(staleHybridFlag)) {

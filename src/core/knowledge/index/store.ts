@@ -66,16 +66,16 @@ export interface OpenOpts {
   readonly?: boolean;
 }
 export interface IndexStats {
-  /** The embedder id recorded in meta ("none" => lexical-only). */
-  embedderId: string | null;
+  /** Distinct models over LIVE vectors (empty => lexical-only / no vectors). */
+  embedders: Array<{ id: string; dim: number }>;
   /** Total chunk rows. */
   chunks: number;
   /** Chunks with a non-null embedding BLOB. */
   vectors: number;
   /** Distinct rel_paths present in the tags table (code-mapped files). */
   taggedPaths: number;
-  /** Per-source chunk/vector counts, sorted by sourceId ascending. */
-  perSource: Array<{ sourceId: string; chunks: number; vectors: number }>;
+  /** Per-source counts + which model ids embedded that source's live vectors. */
+  perSource: Array<{ sourceId: string; chunks: number; vectors: number; models: string[] }>;
 }
 
 /** Minimal structural type for the slice of `bun:sqlite`'s Database we use, so
@@ -429,15 +429,32 @@ export class KnowledgeStore {
     const tagged = this.db
       .query("SELECT count(DISTINCT rel_path) AS c FROM tags")
       .get() as { c: number };
+    // Which live-vector model ids embedded each source. Grouped over live
+    // vectors so a vector-cleared row's stale embedder_id is excluded.
+    const modelsBySource = new Map<string, string[]>();
+    for (const r of this.db
+      .query(
+        "SELECT source_id AS sourceId, embedder_id AS embedderId FROM chunks WHERE embedding IS NOT NULL AND embedder_id IS NOT NULL GROUP BY source_id, embedder_id",
+      )
+      .all() as { sourceId: string; embedderId: string }[]) {
+      const arr = modelsBySource.get(r.sourceId) ?? [];
+      arr.push(r.embedderId);
+      modelsBySource.set(r.sourceId, arr);
+    }
     const perSource = (
       this.db
         .query(
           "SELECT source_id AS sourceId, count(*) AS chunks, sum(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS vectors FROM chunks GROUP BY source_id ORDER BY source_id ASC",
         )
         .all() as { sourceId: string; chunks: number; vectors: number | null }[]
-    ).map((r) => ({ sourceId: r.sourceId, chunks: r.chunks, vectors: r.vectors ?? 0 }));
+    ).map((r) => ({
+      sourceId: r.sourceId,
+      chunks: r.chunks,
+      vectors: r.vectors ?? 0,
+      models: (modelsBySource.get(r.sourceId) ?? []).slice().sort(),
+    }));
     return {
-      embedderId: this.storedEmbedderId(),
+      embedders: this.storedEmbedderIds(),
       chunks: totals.c,
       vectors: totals.v ?? 0,
       taggedPaths: tagged.c,
