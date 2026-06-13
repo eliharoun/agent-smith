@@ -185,7 +185,8 @@ smith knowledge fetch <agent> [--source <id>]   # refresh URL/git caches; --sour
 smith knowledge compile <agent>                 # offline re-derive compile-manifest from materialized files
 smith knowledge wire <agent>                    # wire <agent>-knowledge MCP server into detected AI clients
 smith knowledge unwire <agent>                  # remove that wiring
-smith knowledge serve <agent> --stdio           # stdio MCP server (BM25 search + range-bounded fetch)
+smith knowledge serve <agent> --stdio           # stdio MCP server (hybrid/BM25 search, fetch, map, explain)
+smith knowledge info <agent>                    # index diagnostics: is hybrid active?, embedder, vector coverage
 smith knowledge remove <agent> <source-id>      # remove a knowledge source from a bundle
 
 smith doctor                               # platform health, schema drift, registry hygiene
