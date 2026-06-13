@@ -20,6 +20,22 @@ import { redactSecrets } from "../redact";
 import { SmithError } from "../smith-error";
 import { sparsePathsFor } from "./sparse-paths";
 
+// Defense-in-depth: knowledge `git` source URLs are user-controlled, so harden
+// every git invocation against unexpected transports — git refuses any protocol
+// not explicitly allowed here. `protocol.file.allow=user` keeps local/file://
+// test fixtures and user-initiated clones working without enabling file:// in
+// transitive sub-fetches (submodules, etc.). Mirrors src/io/git-clone.ts.
+const GIT_TRANSPORT_ALLOWLIST: readonly string[] = [
+  "-c",
+  "protocol.allow=never",
+  "-c",
+  "protocol.https.allow=always",
+  "-c",
+  "protocol.ssh.allow=always",
+  "-c",
+  "protocol.file.allow=user",
+];
+
 // ---------- git spawner (DI for tests) ----------
 
 export interface GitRunResult {
@@ -71,7 +87,7 @@ export async function runGitWith(
 ): Promise<GitRunResult> {
   let proc: ReturnType<typeof spawnFn>;
   try {
-    proc = spawnFn(["git", ...args], {
+    proc = spawnFn(["git", ...GIT_TRANSPORT_ALLOWLIST, ...args], {
       cwd,
       stdout: "pipe",
       stderr: "pipe",

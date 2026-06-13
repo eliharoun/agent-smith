@@ -88,6 +88,34 @@ describe("runGitWith: missing git binary", () => {
   });
 });
 
+describe("runGitWith: transport allowlist hardening", () => {
+  test("hardens every git invocation with the transport allowlist", async () => {
+    let captured: string[] = [];
+    const stub = (cmd: string[]) => {
+      captured = cmd;
+      return {
+        exited: Promise.resolve(0),
+        stdout: new Response("").body!,
+        stderr: new Response("").body!,
+      };
+    };
+    await runGitWith(
+      stub as unknown as Parameters<typeof runGitWith>[0],
+      ["clone", "https://example.com/x", "/tmp/x"],
+      "/tmp",
+    );
+    // git binary first, then the protocol hardening, then the subcommand+args
+    expect(captured[0]).toBe("git");
+    expect(captured).toContain("protocol.allow=never");
+    expect(captured).toContain("protocol.https.allow=always");
+    expect(captured).toContain("protocol.ssh.allow=always");
+    expect(captured).toContain("protocol.file.allow=user");
+    // the actual subcommand still present and AFTER the -c flags
+    expect(captured).toContain("clone");
+    expect(captured.indexOf("clone")).toBeGreaterThan(captured.indexOf("protocol.allow=never"));
+  });
+});
+
 describe("acquireGit: fresh clone", () => {
   test("clones to <cacheDir>/git/<sha256(url)> and returns repo files", async () => {
     const calls: StubCall[] = [];
