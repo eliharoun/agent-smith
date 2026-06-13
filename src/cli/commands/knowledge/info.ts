@@ -35,6 +35,8 @@ async function defaultOpenStats(dbPath: string): Promise<IndexStats | null> {
   if (!store) return null;
   try {
     return store.stats();
+  } catch {
+    return null; // stale/unreadable index -> treat as not materialized
   } finally {
     store.close();
   }
@@ -77,7 +79,12 @@ export async function knowledgeInfo(
   const dir = knowledgeDirFor(agent, paths);
   const dbPath = indexDbPath(dir);
   const openStats = deps.openStats ?? defaultOpenStats;
-  const stats = await openStats(dbPath);
+  let stats: IndexStats | null;
+  try {
+    stats = await openStats(dbPath);
+  } catch {
+    stats = null; // never crash the CLI on an index read error
+  }
 
   // Hybrid is active iff the index exists AND holds at least one embedding
   // model. This matches serve-mcp.ts's predicate exactly — serve loads query

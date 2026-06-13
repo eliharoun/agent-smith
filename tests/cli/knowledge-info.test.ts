@@ -221,6 +221,25 @@ describe("knowledgeInfo", () => {
     expect(out).not.toContain("never auto-refreshed");
   });
 
+  it("treats a stale/unreadable index as not-materialized (does not crash)", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    spies.push(log as unknown as ReturnType<typeof spyOn>);
+    // openStats that throws (simulating a column-mismatch on a stale readonly DB)
+    const code = await knowledgeInfo(
+      "x",
+      { agentSmithHome },
+      {
+        loadDeclaredSources: async () => [{ id: "alpha", type: "git" } as never],
+        openStats: async () => {
+          throw new Error("no such column: embedder_id");
+        },
+      },
+    );
+    expect(code).toBe(0); // did not throw
+    const out = log.mock.calls.flat().join("\n").toLowerCase();
+    expect(out).toContain("not materialized");
+  });
+
   it("shows 'no indexed chunks' for a declared source with no perSource entry", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
