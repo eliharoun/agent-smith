@@ -25,14 +25,31 @@ import { useNotifications } from "@/hooks/useNotifications";
  * (lifted into the parent so the hook instance survives the modal's
  * unmount). The action is fire-and-forget here — the hook itself owns the
  * progress→success/error notification lifecycle.
+ *
+ * When the just-saved change toggled a source's retrieval mode to or from
+ * `hybrid` (see `HybridRestartNotice`), the helper ALSO fires a separate
+ * sticky `info` toast advising the user to restart the knowledge MCP server:
+ * the `serve` process reads the index and loads the embedder once at spawn,
+ * the AI client owns that process's lifecycle, and the GUI can't restart it.
+ * This toast coexists with the saved/drift toast (distinct `dedupKey`).
  */
+export interface SaveNotifyOptions {
+  /**
+   * When set, the saved change toggled this source's retrieval mode to or
+   * from `hybrid` and a sticky "restart the knowledge MCP server" toast
+   * should fire alongside the normal saved/drift toast. Omitted/undefined
+   * means no hybrid change — no restart toast.
+   */
+  hybridRestart?: { sourceId: string };
+}
+
 export function useSaveSuccessNotification(
   agent: string,
   reinstall: (targets: Platform[]) => void,
-): (savedTitle: string) => Promise<void> {
+): (savedTitle: string, options?: SaveNotifyOptions) => Promise<void> {
   const { notify } = useNotifications();
   return useCallback(
-    async (savedTitle: string) => {
+    async (savedTitle: string, options?: SaveNotifyOptions) => {
       let drifted: Platform[] = [];
       try {
         const resp = await apiFetch<{ drifted: Platform[] }>(
@@ -68,6 +85,22 @@ export function useSaveSuccessNotification(
             },
           ],
           dedupKey,
+        });
+      }
+      // Hybrid retrieval was toggled (on OR off): the serve process reads the
+      // index + loads the embedder once at spawn and the GUI can't restart it,
+      // so advise the user to reconnect the knowledge MCP server. Sticky (the
+      // modal closes on save, so it must not auto-dismiss) + its own dedupKey
+      // so it coexists with the saved/drift toast and repeated saves replace
+      // rather than stack.
+      if (options?.hybridRestart) {
+        const { sourceId } = options.hybridRestart;
+        notify({
+          kind: "info",
+          title: "Restart needed for hybrid search",
+          body: `Hybrid retrieval for '${sourceId}' takes effect after the knowledge MCP server restarts. Reconnect the '${agent}-knowledge' server in your AI client (e.g. Claude Code: /mcp → reconnect), or start a new session.`,
+          durationMs: "sticky",
+          dedupKey: `hybrid-restart:${agent}:${sourceId}`,
         });
       }
     },

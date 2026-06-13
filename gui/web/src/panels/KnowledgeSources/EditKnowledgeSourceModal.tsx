@@ -613,6 +613,16 @@ export function EditKnowledgeSourceModal({
     draft.lazy &&
     !initial.draft.lazy;
 
+  // True iff hybrid retrieval was just enabled OR just disabled. The serve
+  // process reads the index + loads the embedder once at spawn, so toggling
+  // hybrid requires restarting the knowledge MCP server to take effect — the
+  // save-success notifier surfaces a sticky advisory. Gated on !draft.lazy:
+  // a lazy source drops retrieval on save (see buildSource), so the change is
+  // inert and the restart notice would be misleading.
+  const hybridChanged =
+    !draft.lazy &&
+    (draft.retrievalMode === "hybrid") !== (initial.draft.retrievalMode === "hybrid");
+
   function performSave() {
     const built = buildSource(existingSource, draft);
     const sources = (knowledgeBlock.sources ?? []).map((s) =>
@@ -643,7 +653,10 @@ export function EditKnowledgeSourceModal({
         // awaits internally must outlive this component, so the void here
         // is intentional. The notification (and its action closure) live in
         // the persistent NotificationCenter, not this modal.
-        void notifyAfterSave("Saved");
+        void notifyAfterSave(
+          "Saved",
+          hybridChanged ? { hybridRestart: { sourceId: existingSource.id } } : undefined,
+        );
         onClose();
       },
     });
