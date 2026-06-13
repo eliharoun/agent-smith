@@ -348,25 +348,29 @@ function validateDraft(draft: DraftState, type: SourceType): Record<string, stri
       }
     }
   }
-  // refresh ttl validation when mode=ttl
-  if (draft.refreshMode === "ttl") {
+  // refresh ttl validation when mode=ttl (skipped when lazy — refresh is dropped on save)
+  if (!draft.lazy && draft.refreshMode === "ttl") {
     if (!draft.refreshTtl) errors.refreshTtl = "required when mode=ttl";
     else if (!/^\d+(s|m|h|d|w)$/.test(draft.refreshTtl))
       errors.refreshTtl = "format: 30m, 2h, 1d, 1w";
   }
-  if (draft.refreshTimeout) {
+  // All of refresh/retrieval/inlineBudget are dropped from the saved config when
+  // lazy (see buildSource), so their field validations must NOT block save when
+  // lazy is on — otherwise a leftover malformed value (e.g. a half-typed mcpUrl)
+  // would make the form un-saveable for a source where the field is irrelevant.
+  if (!draft.lazy && draft.refreshTimeout) {
     const n = Number(draft.refreshTimeout);
     if (!Number.isInteger(n) || n < 1 || n > 60) errors.refreshTimeout = "1–60 seconds";
   }
-  if (draft.inlineBudgetTokens) {
+  if (!draft.lazy && draft.inlineBudgetTokens) {
     const n = Number(draft.inlineBudgetTokens);
     if (!Number.isInteger(n) || n < 1 || n > 16000) errors.inlineBudgetTokens = "1–16000";
   }
-  // retrieval external-mcp requires mcpUrl
-  if (draft.retrievalMode === "external-mcp" && !draft.retrievalMcpUrl.trim()) {
+  // retrieval external-mcp requires mcpUrl (skipped when lazy — retrieval is dropped on save)
+  if (!draft.lazy && draft.retrievalMode === "external-mcp" && !draft.retrievalMcpUrl.trim()) {
     errors.retrievalMcpUrl = "required when mode=external-mcp";
   }
-  if (draft.retrievalMcpUrl) {
+  if (!draft.lazy && draft.retrievalMcpUrl) {
     try {
       new URL(draft.retrievalMcpUrl);
     } catch {
@@ -546,6 +550,8 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
     delete base.materialize;
     delete base.extractor;
     delete base.inlineBudgetTokens;
+    delete base.retrieval;
+    delete base.refresh;
   }
 
   return base as unknown as KnowledgeSource;
@@ -1066,6 +1072,8 @@ export function EditKnowledgeSourceModal({
                     { v: "external-mcp", l: "external-mcp (delegate to a remote MCP)" },
                     { v: "off", l: "off (advisory: not search-friendly)" },
                   ]}
+                  disabled={draft.lazy}
+                  disabledTooltip="not used when lazy fetch is on (source isn't indexed)"
                 />
                 {draft.retrievalMode === "external-mcp" && (
                   <FormField
@@ -1075,6 +1083,7 @@ export function EditKnowledgeSourceModal({
                     value={draft.retrievalMcpUrl}
                     onChange={(e) => update("retrievalMcpUrl", e.target.value)}
                     error={errors.retrievalMcpUrl}
+                    disabled={draft.lazy}
                   />
                 )}
                 <Select
@@ -1122,6 +1131,8 @@ export function EditKnowledgeSourceModal({
                           { v: "always", l: "always" },
                         ]
                   }
+                  disabled={draft.lazy}
+                  disabledTooltip="not used when lazy fetch is on (fetched at runtime)"
                 />
                 {draft.refreshMode === "ttl" && (
                   <FormField
@@ -1131,6 +1142,7 @@ export function EditKnowledgeSourceModal({
                     value={draft.refreshTtl}
                     onChange={(e) => update("refreshTtl", e.target.value)}
                     error={errors.refreshTtl}
+                    disabled={draft.lazy}
                   />
                 )}
                 <FormField
@@ -1143,6 +1155,7 @@ export function EditKnowledgeSourceModal({
                   onChange={(e) => update("refreshTimeout", e.target.value)}
                   hint="Per-source fetch budget; default 5s, max 60s."
                   error={errors.refreshTimeout}
+                  disabled={draft.lazy}
                 />
                 <Checkbox
                   label="optional (treat fetch errors as warnings)"
