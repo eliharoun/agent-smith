@@ -168,8 +168,20 @@ export class KnowledgeStore {
 
     // Write the running header FIRST (prevents recursion on any re-entry).
     this.write("schemaVersion", String(this.header.schemaVersion));
-    this.write("embedderId", this.header.embedderId);
-    this.write("embedderDim", String(this.header.embedderDim));
+    // Do NOT clobber a real, recorded embedderId with "none". A lexical-only
+    // build (NullEmbedder → id "none") must not erase the model identity that a
+    // prior hybrid build recorded, or storedEmbedderId() would report "none" and
+    // the serve process would stop loading the query embedder, making existing
+    // vectors unreachable. "none" means "no embedder THIS session", not "the
+    // index has no vectors".
+    if (this.header.embedderId !== "none") {
+      this.write("embedderId", this.header.embedderId);
+      this.write("embedderDim", String(this.header.embedderDim));
+    } else if (storedEmbId === undefined) {
+      // First-ever build with no embedder: record "none" so the header exists.
+      this.write("embedderId", "none");
+      this.write("embedderDim", String(this.header.embedderDim));
+    }
     this.write("chunkerVersion", String(this.header.chunkerVersion));
     this.write("repomapVersion", String(this.header.repomapVersion));
 
@@ -253,6 +265,12 @@ export class KnowledgeStore {
       }
     });
     tx();
+  }
+
+  /** Clear the dense vector for a path (keep the chunks + FTS). Used when a
+   *  source stops being hybrid — its lexical search stays, vectors go. */
+  clearVectorsByPath(relPath: string): void {
+    this.db.query("UPDATE chunks SET embedding = NULL WHERE rel_path = ?").run(relPath);
   }
 
   upsertTags(

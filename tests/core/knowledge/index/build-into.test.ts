@@ -44,3 +44,30 @@ test("buildIndexInto on an empty/nonexistent knowledge dir does not throw", asyn
   await buildIndexInto(join(dir, "does-not-exist"), null);
   await buildIndexInto(join(dir, "does-not-exist"), ["sources/x/y.md"]);
 });
+
+test("buildIndexInto with no hybrid sources stays lexical-only (NullEmbedder, no vectors)", async () => {
+  const kd = join(dir, "knowledge");
+  await mkdir(join(kd, "sources", "s"), { recursive: true });
+  await writeFile(join(kd, "sources", "s", "doc.md"), "alpha lexical content\n");
+  // Empty hybrid set -> no model load -> NullEmbedder -> header embedderId "none".
+  await buildIndexInto(kd, null, new Set());
+  if (existsSync(indexDbPath(kd))) {
+    const { KnowledgeStore } = await import("../../../../src/core/knowledge/index/store");
+    const store = await KnowledgeStore.open(
+      indexDbPath(kd),
+      {
+        schemaVersion: 1,
+        embedderId: "none",
+        embedderDim: 1,
+        chunkerVersion: 1,
+        repomapVersion: 1,
+      },
+      { readonly: true },
+    );
+    if (store) {
+      expect(store.searchLexical(["alpha"], 5)[0]?.relPath).toContain("doc.md");
+      expect(store.hasVector("sources/s/doc.md")).toBe(false); // no vectors when not hybrid
+      store.close();
+    }
+  }
+});

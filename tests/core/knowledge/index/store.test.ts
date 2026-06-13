@@ -249,6 +249,43 @@ describe("KnowledgeStore", () => {
     s.close();
   });
 
+  test("a lexical-only (none) reopen does NOT overwrite a real recorded embedderId", async () => {
+    const p = join(dir, "k.db");
+    const s1 = await KnowledgeStore.open(p, { ...H, embedderId: "real-model@1", embedderDim: 4 });
+    if (!s1) return;
+    await s1.upsertChunks([
+      {
+        id: "1",
+        sourceId: "hy",
+        relPath: "sources/hy/a.md",
+        startLine: 1,
+        endLine: 1,
+        kind: "prose",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0, 0]),
+      },
+    ]);
+    s1.close();
+    // Reopen as lexical-only (NullEmbedder id "none") — simulates a lexical-source refresh.
+    const s2 = await KnowledgeStore.open(p, { ...H, embedderId: "none", embedderDim: 1 });
+    expect(s2).not.toBeNull();
+    expect(s2!.storedEmbedderId()).toBe("real-model@1"); // NOT clobbered to "none"
+    expect(s2!.hasVector("sources/hy/a.md")).toBe(true); // vectors preserved
+    s2!.close();
+  });
+
+  test("first-ever lexical build records embedderId 'none'", async () => {
+    const s = await KnowledgeStore.open(join(dir, "k2.db"), {
+      ...H,
+      embedderId: "none",
+      embedderDim: 1,
+    });
+    if (!s) return;
+    expect(s.storedEmbedderId()).toBe("none");
+    s.close();
+  });
+
   test("vector KNN orders 3+ vectors by ascending distance and respects k", async () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;

@@ -106,8 +106,106 @@ describe("buildIndex", () => {
     expect(s1.hasVector("sources/s/a.md")).toBe(false);
     s1.close();
     const s2 = await KnowledgeStore.open(p, H("fake@1", 4));
-    await buildIndex({ knowledgeDir: kd, store: s2!, embedder: fakeEmb(4), changedPaths: null });
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s2!,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["s"]),
+    });
     expect(s2!.hasVector("sources/s/a.md")).toBe(true);
+    s2!.close();
+  });
+
+  test("embeds ONLY hybrid sources' chunks; non-hybrid stay vector-less", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "hy"), { recursive: true });
+    await mkdir(join(kd, "sources", "lex"), { recursive: true });
+    await writeFile(join(kd, "sources", "hy", "a.md"), "alpha hybrid content\n");
+    await writeFile(join(kd, "sources", "lex", "b.md"), "beta lexical content\n");
+    const store = await KnowledgeStore.open(join(kd, ".cache", "index", "k.db"), H("fake@1", 4));
+    if (!store) return;
+    await buildIndex({
+      knowledgeDir: kd,
+      store,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["hy"]),
+    });
+    expect(store.hasVector("sources/hy/a.md")).toBe(true); // hybrid → embedded
+    expect(store.hasVector("sources/lex/b.md")).toBe(false); // non-hybrid → no vector
+    // both are still lexically searchable regardless
+    expect(store.searchLexical(["alpha"], 5).length).toBe(1);
+    expect(store.searchLexical(["beta"], 5).length).toBe(1);
+    store.close();
+  });
+
+  test("no hybridSourceIds → nothing embedded even with a real embedder", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "s"), { recursive: true });
+    await writeFile(join(kd, "sources", "s", "a.md"), "alpha\n");
+    const store = await KnowledgeStore.open(join(kd, ".cache", "index", "k.db"), H("fake@1", 4));
+    if (!store) return;
+    await buildIndex({ knowledgeDir: kd, store, embedder: fakeEmb(4), changedPaths: null }); // no hybridSourceIds
+    expect(store.hasVector("sources/s/a.md")).toBe(false);
+    store.close();
+  });
+
+  test("flipping a source OFF hybrid clears its orphan vectors on full rebuild", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "hy"), { recursive: true });
+    await writeFile(join(kd, "sources", "hy", "a.md"), "alpha\n");
+    const p = join(kd, ".cache", "index", "k.db");
+    const s1 = await KnowledgeStore.open(p, H("fake@1", 4));
+    if (!s1) return;
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s1,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["hy"]),
+    });
+    expect(s1.hasVector("sources/hy/a.md")).toBe(true);
+    // Full rebuild, same content, but source no longer hybrid:
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s1,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(),
+    });
+    expect(s1.hasVector("sources/hy/a.md")).toBe(false); // orphan vector cleared
+    expect(s1.searchLexical(["alpha"], 5).length).toBe(1); // lexical still works
+    s1.close();
+  });
+
+  test("a hybrid file lacking a vector gets re-embedded on rebuild (embedder-aware skip)", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "hy"), { recursive: true });
+    await writeFile(join(kd, "sources", "hy", "a.md"), "alpha\n");
+    const p = join(kd, ".cache", "index", "k.db");
+    // First build: treat as NON-hybrid (no vectors).
+    const s1 = await KnowledgeStore.open(p, H("fake@1", 4));
+    if (!s1) return;
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s1,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(),
+    });
+    expect(s1.hasVector("sources/hy/a.md")).toBe(false);
+    s1.close();
+    // Second build: now hybrid — same content, but must re-embed (not skip).
+    const s2 = await KnowledgeStore.open(p, H("fake@1", 4));
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s2!,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["hy"]),
+    });
+    expect(s2!.hasVector("sources/hy/a.md")).toBe(true);
     s2!.close();
   });
 });
