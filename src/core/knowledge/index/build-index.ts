@@ -85,7 +85,7 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
     // matches its mode: a hybrid file needs a vector present (re-embed if a
     // newly-available embedder or freshly-flipped mode left it vector-less); a
     // non-hybrid file needs none.
-    const vectorsCurrent = !wantsVector || opts.store.hasVector(rel);
+    const vectorsCurrent = !wantsVector || opts.store.hasVectorFor(rel, opts.embedder.id);
     if (opts.store.contentHashFor(rel) === hash && vectorsCurrent) continue;
 
     opts.store.deleteByPath(rel);
@@ -105,7 +105,9 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
       kind: c.kind,
       text: c.text,
       contentHash: hash,
-      ...(vectors[i] ? { vector: vectors[i] } : {}),
+      ...(vectors[i]
+        ? { vector: vectors[i], embedderId: opts.embedder.id, embedderDim: opts.embedder.dim }
+        : {}),
     }));
     opts.store.upsertChunks(rows);
 

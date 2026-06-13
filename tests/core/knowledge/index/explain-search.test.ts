@@ -16,12 +16,13 @@ afterEach(async () => {
 
 const H = {
   schemaVersion: 1,
-  embedderId: "emb-a",
-  embedderDim: 3,
+  embedders: [{ id: "emb-a", dim: 3 }],
   chunkerVersion: 1,
   repomapVersion: 1,
 };
 
+// Stamp the chunk's embedder_id with the fake embedder's id so the
+// embedder_id-partitioned searchVector matches it (the dense arm filters by id).
 function chunk(id: string, relPath: string, text: string, vector: Float32Array) {
   return {
     id,
@@ -33,6 +34,8 @@ function chunk(id: string, relPath: string, text: string, vector: Float32Array) 
     text,
     contentHash: `h-${id}`,
     vector,
+    embedderId: "fake@1",
+    embedderDim: vector.length,
   };
 }
 

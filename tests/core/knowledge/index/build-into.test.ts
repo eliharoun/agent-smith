@@ -26,8 +26,7 @@ test("buildIndexInto builds an index that lexical search can find, and never thr
       indexDbPath(kd),
       {
         schemaVersion: 1,
-        embedderId: "none",
-        embedderDim: 1,
+        embedders: [],
         chunkerVersion: 1,
         repomapVersion: 1,
       },
@@ -57,8 +56,7 @@ test("buildIndexInto with no hybrid sources stays lexical-only (NullEmbedder, no
       indexDbPath(kd),
       {
         schemaVersion: 1,
-        embedderId: "none",
-        embedderDim: 1,
+        embedders: [],
         chunkerVersion: 1,
         repomapVersion: 1,
       },
