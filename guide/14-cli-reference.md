@@ -64,7 +64,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`knowledge list`](#smith-knowledge-list-agent) | Show installed knowledge for an agent (from the manifest) | [04](./04-knowledge.md) |
 | [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
 | [`knowledge route`](#smith-knowledge-route-agent) | Run the MCP picker against existing URL sources to set `via:` in bulk | [04](./04-knowledge.md) |
-| [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (BM25 search + fetch, stdio) | [16](./16-knowledge-compiler.md) |
+| [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (lexical/hybrid search + fetch + code map, stdio) | [16](./16-knowledge-compiler.md) |
 | [`knowledge wire`](#smith-knowledge-wire-agent) | Wire a bundle's knowledge MCP server into AI client configs (per-agent key) | [16](./16-knowledge-compiler.md) |
 | [`knowledge unwire`](#smith-knowledge-unwire-agent) | Inverse of `wire`: remove the per-agent key from bundle and AI client configs | [16](./16-knowledge-compiler.md) |
 | [`knowledge validate`](#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents | [04](./04-knowledge.md) |
@@ -2030,13 +2030,26 @@ skip other-agent: no knowledge sources to compile
 
 **Synopsis:** `smith knowledge serve <name> [--stdio]`
 
-**Description:** Spawns a stdio MCP server backed by an in-memory BM25
-index over the agent's materialized knowledge dir. Two tools:
-`knowledge.search(query, k=5)` returns top-k `(path, score, snippet)`
-matches; `knowledge.fetch(path, start?, end?)` returns file contents
-range-bounded to 64KB per response (path traversal rejected). The index
-is rebuilt on every spawn. Validates that the agent exists before
-opening stdio so an unknown name doesn't silently serve an empty index.
+**Description:** Spawns a stdio MCP server backed by the per-agent
+search index built at install/refresh time (persistent SQLite FTS5
+store). Exposes up to three tools:
+
+- `knowledge.search(query, k=5)` — ranked hits from the persistent
+  index. Lexical BM25 by default; sources with `retrieval: { mode:
+  "hybrid" }` fuse in semantic vector ranking (Reciprocal Rank Fusion)
+  when the on-device embedding model is available. Returns `rel_path` +
+  `start_line`/`end_line`. Falls back to in-memory BM25 scan when no
+  index exists (agent installed before the indexing feature).
+- `knowledge.fetch(path, start?, end?)` — returns file contents
+  range-bounded to 64KB per response (path traversal rejected).
+- `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map
+  (functions, classes, call sites) built with tree-sitter + PageRank.
+  **Capability-gated: advertised only when the agent has indexed code
+  sources.** `focus` (optional string) scopes the map to a file or
+  symbol; `mapTokens` (optional integer) caps the response size.
+
+Validates that the agent exists before opening stdio so an unknown name
+doesn't silently serve an empty index.
 Source: `src/cli/commands/knowledge/serve.ts`.
 
 Wire it into a platform's MCP config (the same way you'd wire any other

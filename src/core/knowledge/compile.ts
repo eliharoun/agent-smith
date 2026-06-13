@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isLazyUrlSource, lazyTocLine } from "./lazy-url";
-import type { CompileOptions, KnowledgeSource, MaterializedSource } from "./types";
+import type { CompileOptions, KnowledgeSource, MaterializedSource, RetrievalMode } from "./types";
 
 export interface CompiledKnowledge {
   /** The full `## Knowledge` section ready to be appended to the assembled body. */
@@ -20,7 +20,7 @@ export interface CompileManifest {
     type: MaterializedSource["type"];
     relPath: string | null;
     tocLine: string | null;
-    retrievalMode: "off" | "bm25" | "external-mcp";
+    retrievalMode: RetrievalMode;
     /** First file's sha256, used to invalidate the BM25 index. */
     contentSha?: string;
   }>;
@@ -46,25 +46,14 @@ function tocPreamble(rootDir: string, hasLazyEntries: boolean): string {
   );
 }
 
-const MULTI_FILE_TYPES = new Set([
-  "dir",
-  "glob",
-  "git",
-  "confluence",
-  "jira",
-  "web",
-]);
+const MULTI_FILE_TYPES = new Set(["dir", "glob", "git", "confluence", "jira", "web"]);
 
 function summaryFor(s: MaterializedSource): string {
   if (s.description && s.description.length > 0) return s.description;
   return "";
 }
 
-function tocLineFor(
-  s: MaterializedSource,
-  summary: string,
-  declaration?: KnowledgeSource,
-): string {
+function tocLineFor(s: MaterializedSource, summary: string, declaration?: KnowledgeSource): string {
   // Lazy URL: render the lazy-specific line shape using the declaration's
   // url + via, since MaterializedSource has no top-level url.
   if (declaration && isLazyUrlSource(declaration)) {
@@ -88,8 +77,7 @@ function tocLineFor(
   // source regardless of this field). `off` opts out of the annotation
   // explicitly; `external-mcp` carries its own routing hint.
   const effectiveMode = s.retrieval?.mode ?? "bm25";
-  const retrievalPart =
-    effectiveMode === "off" ? "" : ` (searchable: ${effectiveMode})`;
+  const retrievalPart = effectiveMode === "off" ? "" : ` (searchable: ${effectiveMode})`;
   return `- \`${s.id}\` [${s.type}]${summaryPart}${targetPart}${retrievalPart}`;
 }
 
@@ -150,9 +138,7 @@ export function compile(
   }));
 
   // Deterministic hash: sort sources by id, fold their fields.
-  const hashInput = JSON.stringify(
-    [...manifestSources].sort((a, b) => a.id.localeCompare(b.id)),
-  );
+  const hashInput = JSON.stringify([...manifestSources].sort((a, b) => a.id.localeCompare(b.id)));
   const contentHash = sha256Hex(hashInput);
 
   return {

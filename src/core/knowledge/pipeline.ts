@@ -12,6 +12,7 @@ import { acquireSource, chooseMaterializer, runMaterializer } from "./acquire-so
 import { type CompiledKnowledge, compile } from "./compile";
 import { writeCompileManifest } from "./compile-manifest";
 import { buildCompileOptionsFromBundle } from "./compile-options";
+import { buildIndexInto } from "./index/build-into";
 import { isLazyUrlSource, lazyDescriptionWarnings } from "./lazy-url";
 import {
   ensureRelativeSymlink,
@@ -533,7 +534,10 @@ export async function runKnowledgeStage(
     );
     const currentUrlKeys = new Set(
       sources
-        .filter((s): s is Extract<KnowledgeSource, { type: "webpage" | "web" }> => s.type === "webpage" || s.type === "web")
+        .filter(
+          (s): s is Extract<KnowledgeSource, { type: "webpage" | "web" }> =>
+            s.type === "webpage" || s.type === "web",
+        )
         .map((s) => urlCacheKey(s.url)),
     );
     const cacheSweep = await sweepStaleCacheEntries(paths.cacheDir, currentGitKeys, currentUrlKeys);
@@ -581,6 +585,11 @@ export async function runKnowledgeStage(
       compiled = await compileFromManifest(manifest, block, paths.knowledgeDir);
       for (const w of compiled.warnings) warnings.push(w);
     }
+
+    // Build the hybrid search index over the freshly materialized tree. Runs
+    // here (single-writer install path) so the serve process only ever reads.
+    // Never throws; degrades to in-memory BM25 at serve time on failure.
+    await buildIndexInto(liveDir, null); // full build on (re)install
 
     return {
       manifest,

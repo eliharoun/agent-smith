@@ -638,7 +638,13 @@ See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 #### `smith knowledge serve <name>`
 
-Serve an agent's knowledge over MCP — `knowledge.search` (BM25) + `knowledge.fetch` (range-bounded read). Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
+Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Three tools exposed:
+
+- `knowledge.search(query, k=5)` — lexical BM25 by default; `retrieval: hybrid` sources also fuse semantic vector ranking when the on-device embedding model is available.
+- `knowledge.fetch(path, start?, end?)` — range-bounded file read.
+- `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map (tree-sitter + PageRank). **Capability-gated: advertised only when code sources are indexed.**
+
+Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
 
 **Synopsis:** `smith knowledge serve <name> [--stdio]`
 
@@ -648,6 +654,15 @@ Serve an agent's knowledge over MCP — `knowledge.search` (BM25) + `knowledge.f
 | `--stdio` | bool | `true` | Serve over stdio (MCP). Currently the only transport. |
 
 **Exit codes:** `0` — server exited cleanly on stdin EOF. `1` — runtime error. `2` — agent not registered; `--stdio false` passed.
+
+**Retrieval modes** (`retrieval.mode` per source in `agent.config.json`):
+
+| Mode | Effect |
+|---|---|
+| `off` | Source excluded from search TOC annotation; still readable via `knowledge.fetch`. |
+| `bm25` *(default)* | Lexical FTS5 index; TOC annotated `(searchable: bm25)`. |
+| `hybrid` | Lexical + semantic vector ranking (RRF fusion); degrades to `bm25` when embedding model unavailable. |
+| `external-mcp` | Declares an external MCP URL for search; local index still built. Requires `mcpUrl`. |
 
 See [guide/16 — `smith knowledge serve --stdio`](./guide/16-knowledge-compiler.md#smith-knowledge-serve---stdio).
 

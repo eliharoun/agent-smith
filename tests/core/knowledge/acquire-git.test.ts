@@ -111,7 +111,7 @@ describe("acquireGit: fresh clone", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({
+    const { artifacts } = await acquireGit({
       url,
       cacheDir,
       spawner,
@@ -123,10 +123,14 @@ describe("acquireGit: fresh clone", () => {
       "# example",
     );
 
-    expect(calls).toHaveLength(1);
+    // clone, then a `rev-parse HEAD` probe used to stamp the incremental
+    // ingest manifest. This stub has no rev-parse matcher, so that probe
+    // returns nonzero and no manifest is written (changedPaths stays null).
+    expect(calls).toHaveLength(2);
     expect(calls[0]?.args[0]).toBe("clone");
     expect(calls[0]?.args).toContain("--depth=1");
     expect(calls[0]?.args).toContain(url);
+    expect(calls[1]?.args).toEqual(["rev-parse", "HEAD"]);
   });
 
   test("uses ref as --branch when provided", async () => {
@@ -271,9 +275,10 @@ describe("acquireGit: refresh on existing clone", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({ url, ref, cacheDir, spawner: refreshSpawner });
+    const { artifacts } = await acquireGit({ url, ref, cacheDir, spawner: refreshSpawner });
 
-    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse", "fetch", "reset"]);
+    // Trailing rev-parse is the `rev-parse HEAD` manifest-stamp probe.
+    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse", "fetch", "reset", "rev-parse"]);
     expect(calls[1]?.args).toContain("origin");
     expect(calls[1]?.args).toContain("main");
     expect(calls[2]?.args).toContain("origin/main");
@@ -317,9 +322,11 @@ describe("acquireGit: refresh on existing clone", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({ url, ref, cacheDir, spawner: refreshSpawner });
+    const { artifacts } = await acquireGit({ url, ref, cacheDir, spawner: refreshSpawner });
 
-    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse"]);
+    // First rev-parse is the origin/<ref> branch probe (fails → immutable, skip
+    // fetch/reset); second is the `rev-parse HEAD` manifest-stamp probe.
+    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse", "rev-parse"]);
     expect(artifacts.find((a) => a.relPath === "tag-content.md")?.bytes.toString("utf8")).toBe(
       "pinned",
     );
@@ -350,7 +357,7 @@ describe("acquireGit: subpath filter", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({
+    const { artifacts } = await acquireGit({
       url: "https://github.com/acme/x.git",
       subpath: "docs",
       cacheDir,
@@ -471,7 +478,7 @@ describe("acquireGit: include glob filter", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({
+    const { artifacts } = await acquireGit({
       url: "https://github.com/acme/x.git",
       include: ["**/*.md"],
       cacheDir,
@@ -502,7 +509,7 @@ describe("acquireGit: include glob filter", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({
+    const { artifacts } = await acquireGit({
       url: "https://github.com/acme/x.git",
       include: ["**/*.md"],
       cacheDir,
@@ -545,8 +552,8 @@ describe("acquireGit: concurrency safety", () => {
       acquireGit({ url, cacheDir, spawner }),
     ]);
 
-    expect(a.map((x) => x.relPath)).toEqual(["README.md"]);
-    expect(b.map((x) => x.relPath)).toEqual(["README.md"]);
+    expect(a.artifacts.map((x) => x.relPath)).toEqual(["README.md"]);
+    expect(b.artifacts.map((x) => x.relPath)).toEqual(["README.md"]);
     // Critical assertion: the two operations did not run their clones concurrently.
     expect(maxConcurrentClones).toBe(1);
     // And the second caller saw an existing clone, so it took the refresh path
@@ -589,7 +596,7 @@ describe("acquireGit: .git as gitlink file (submodule/worktree)", () => {
       calls,
     );
 
-    const artifacts = await acquireGit({
+    const { artifacts } = await acquireGit({
       url,
       ref: "main",
       cacheDir,
@@ -597,8 +604,9 @@ describe("acquireGit: .git as gitlink file (submodule/worktree)", () => {
     });
 
     // Critical: NO clone invocation. We took the refresh path because
-    // .git existed (as a file, gitlink-style).
-    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse", "fetch", "reset"]);
+    // .git existed (as a file, gitlink-style). Trailing rev-parse is the
+    // `rev-parse HEAD` manifest-stamp probe.
+    expect(calls.map((c) => c.args[0])).toEqual(["rev-parse", "fetch", "reset", "rev-parse"]);
     expect(calls.find((c) => c.args[0] === "clone")).toBeUndefined();
     expect(artifacts.find((a) => a.relPath === "README.md")?.bytes.toString("utf8")).toBe("v2");
   });
@@ -635,7 +643,7 @@ describe("acquireGit: stale lock recovery", () => {
     );
 
     const start = Date.now();
-    const artifacts = await acquireGit({ url, cacheDir, spawner });
+    const { artifacts } = await acquireGit({ url, cacheDir, spawner });
     const elapsed = Date.now() - start;
 
     expect(artifacts.map((a) => a.relPath)).toEqual(["ok.md"]);
@@ -720,5 +728,95 @@ describe("acquireGit: stale lock recovery", () => {
     // Should have waited at least one poll interval — proving the fresh lock
     // was respected and not bypassed as stale.
     expect(elapsed).toBeGreaterThanOrEqual(200);
+  });
+});
+
+describe("acquireGit: sparse clone argv", () => {
+  test("blobless+sparse clone when include yields a static prefix", async () => {
+    const calls: StubCall[] = [];
+    const spawner = buildSpawner(
+      [
+        { match: (a) => a[0] === "clone", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "sparse-checkout", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "checkout", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "rev-parse", result: { stdout: "abc123\n", stderr: "", code: 0 } },
+      ],
+      calls,
+    );
+    await acquireGit({
+      url: "https://example.com/x.git",
+      ref: "main",
+      include: ["src/**/*.ts"],
+      cacheDir,
+      spawner,
+    }).catch(() => {});
+    const clone = calls.find((c) => c.args[0] === "clone");
+    expect(clone).toBeDefined();
+    expect(clone!.args).toEqual(
+      expect.arrayContaining([
+        "--depth=1",
+        "--single-branch",
+        "--filter=blob:none",
+        "--no-checkout",
+      ]),
+    );
+    const sparse = calls.find((c) => c.args[0] === "sparse-checkout");
+    expect(sparse).toBeDefined();
+    expect(sparse!.args).toEqual(["sparse-checkout", "set", "--no-cone", "/src/"]);
+    expect(calls.some((c) => c.args[0] === "checkout")).toBe(true);
+  });
+
+  test("plain shallow clone (no sparse) when no static prefix exists", async () => {
+    const calls: StubCall[] = [];
+    const spawner = buildSpawner(
+      [
+        { match: (a) => a[0] === "clone", result: { stdout: "", stderr: "", code: 0 } },
+        { match: (a) => a[0] === "rev-parse", result: { stdout: "abc\n", stderr: "", code: 0 } },
+      ],
+      calls,
+    );
+    await acquireGit({
+      url: "https://example.com/x.git",
+      ref: "main",
+      include: ["**/*.md"],
+      cacheDir,
+      spawner,
+    }).catch(() => {});
+    const clone = calls.find((c) => c.args[0] === "clone");
+    expect(clone).toBeDefined();
+    // Exact array (not arrayContaining) to assert --filter/--no-checkout are ABSENT.
+    expect(clone!.args).toEqual([
+      "clone",
+      "--depth=1",
+      "--single-branch",
+      "--branch=main",
+      "https://example.com/x.git",
+      expect.any(String),
+    ]);
+    expect(calls.some((c) => c.args[0] === "sparse-checkout")).toBe(false);
+  });
+});
+
+describe("acquireGit: changed-path list", () => {
+  test("first acquire returns changedPaths=null (full re-walk signal)", async () => {
+    const calls: StubCall[] = [];
+    const spawner = buildSpawner(
+      [
+        {
+          match: (a) => a[0] === "clone",
+          result: { stdout: "", stderr: "", code: 0 },
+          sideEffect: async () => {
+            const last = calls[calls.length - 1];
+            const target = last?.args[last.args.length - 1] as string;
+            await mkdir(join(target, ".git"), { recursive: true });
+            await writeFile(join(target, "README.md"), "x");
+          },
+        },
+        { match: (a) => a[0] === "rev-parse", result: { stdout: "sha1\n", stderr: "", code: 0 } },
+      ],
+      calls,
+    );
+    const res = await acquireGit({ url: "https://e.com/x.git", ref: "main", cacheDir, spawner });
+    expect(res.changedPaths).toBeNull();
   });
 });
