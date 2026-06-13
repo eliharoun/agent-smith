@@ -1402,18 +1402,23 @@ and exposes it through the agent's knowledge MCP server:
 
 - `knowledge.search(query, k)` — searches the index built from your sources.
   Lexical (BM25/FTS5) ranking by default; when a source opts into `retrieval:
-  hybrid` and the on-device embedding model is available, semantic vector
-  ranking is fused in via Reciprocal Rank Fusion. Returns ranked hits with
-  `rel_path` and `start_line`/`end_line` so the agent can fetch the exact span.
+  hybrid` and the on-device embedding models are available, semantic vector
+  ranking is fused in via Reciprocal Rank Fusion. Hybrid embeds each chunk with
+  the model suited to its kind — a code-specialized model for code, a
+  text-specialized model for prose/JSON — chosen automatically by chunk kind.
+  Returns ranked hits with `rel_path` and `start_line`/`end_line` so the agent
+  can fetch the exact span.
 - `knowledge.fetch(path, start, end)` — range-bounded file read (unchanged).
 - `knowledge.map(focus?, mapTokens?)` — a ranked structural map of symbols
   (functions, classes, and where they're referenced) across **code** knowledge
   sources. Advertised only when the agent has indexed code sources.
 - `knowledge.explain(query, k)` — decomposes what `knowledge.search` fuses:
-  the lexical (BM25) arm's hits, the semantic (vector) arm's hits, and the
-  RRF-fused result with each entry's `lexicalRank`, `vectorRank`, and
-  `fusedScore`. Advertised only when hybrid retrieval is active (no semantic
-  arm to decompose in lexical-only mode).
+  the lexical (BM25) arm's hits, each semantic (vector) arm's hits, and the
+  RRF-fused result with each entry's `lexicalRank`, per-arm `vectorRanks`, and
+  `fusedScore`. The vector arms are keyed by **role** (`code`, `prose`) rather
+  than the raw model id, so a hit shows which model ranked it. Advertised only
+  when hybrid retrieval is active (no semantic arm to decompose in lexical-only
+  mode).
 
 The index is built when the agent is installed or refreshed — not at query time
 — and stored under the agent's knowledge cache (`.cache/index/`). The store uses
@@ -1439,11 +1444,13 @@ The four modes:
 
 - **`hybrid`** — opts the source into **semantic** vector indexing on top of
   lexical. `knowledge.search` then fuses BM25 and vector results via Reciprocal
-  Rank Fusion. Requires the optional on-device embedding model at build time;
-  when it's unavailable, `hybrid` degrades transparently to `bm25` (lexical
-  only). Use `knowledge.explain` to audit the fusion — it exposes each arm's
-  ranked hits and the per-hit `lexicalRank`/`vectorRank`/`fusedScore` that
-  `knowledge.search` hides. See [Search & retrieval](#search--retrieval).
+  Rank Fusion. Code chunks are embedded with a code-specialized model and
+  prose/JSON chunks with a text-specialized model, picked automatically by chunk
+  kind. Requires the optional on-device embedding models at build time; when
+  they're unavailable, `hybrid` degrades transparently to `bm25` (lexical only).
+  Use `knowledge.explain` to audit the fusion — it exposes each arm's ranked
+  hits and the per-hit `lexicalRank`/role-labelled `vectorRanks`/`fusedScore`
+  that `knowledge.search` hides. See [Search & retrieval](#search--retrieval).
 
 - **`external-mcp`** — declare a remote MCP server (with `mcpUrl`) that the
   agent should query instead of the local search path. Currently the field
@@ -1472,8 +1479,10 @@ gate the BM25 index at runtime. Runtime gating per source is forward work.
 ## Inspecting the index
 
 Run `smith knowledge info <agent>` to confirm whether hybrid retrieval is
-actually built and active (vs BM25-only), see the embedder id and vector
-coverage, and check each source's retrieval mode. It reads the **on-disk**
+actually built and active (vs BM25-only), see the per-role embedding models
+(`code → …`, `prose → …`) and vector coverage, and check each source's
+retrieval mode — each indexed source is tagged with the model role(s) that
+embedded its vectors (e.g. `[code]`, `[code+prose]`). It reads the **on-disk**
 index, so it reports what a fresh server spawn would serve — a server that's
 already running may differ until it restarts (see the restart note above). Pass
 `--json` for scripting.

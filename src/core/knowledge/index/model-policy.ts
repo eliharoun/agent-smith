@@ -27,5 +27,16 @@ export function modelForKind(kind: ChunkKind): ModelRef {
   return kind === "code" ? CODE_MODEL : TEXT_MODEL;
 }
 
+/** Human-facing role label for a recorded embedder id. Used by knowledge info
+ *  and knowledge.explain so users see "code"/"prose" rather than raw HF paths.
+ *  Unknown ids (e.g. a retired model still in an old index) fall back to the id.
+ *  Roles MUST stay unique across models — explain output keys arms by role via
+ *  Object.fromEntries, so two ids mapping to the same role would collide. */
+export function roleForModelId(id: string): string {
+  if (id === CODE_MODEL.id) return "code";
+  if (id === TEXT_MODEL.id) return "prose";
+  return id;
+}
+
 /** All distinct models the policy can produce. */
 export const ALL_MODELS: ModelRef[] = [CODE_MODEL, TEXT_MODEL];

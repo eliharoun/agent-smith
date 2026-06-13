@@ -654,10 +654,10 @@ See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Up to four tools exposed:
 
-- `knowledge.search(query, k=5)` — lexical BM25 by default; `retrieval: hybrid` sources also fuse semantic vector ranking when the on-device embedding model is available.
+- `knowledge.search(query, k=5)` — lexical BM25 by default; `retrieval: hybrid` sources also fuse semantic vector ranking when the on-device embedding models are available (code embedded with a code model, prose/JSON with a text model, by chunk kind).
 - `knowledge.fetch(path, start?, end?)` — range-bounded file read.
 - `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map (tree-sitter + PageRank). **Capability-gated: advertised only when code sources are indexed.**
-- `knowledge.explain(query, k=5)` — retrieval-audit decomposition: lexical, vector, and RRF-fused hits with per-arm `lexicalRank`/`vectorRank`/`fusedScore` provenance. **Gated to hybrid mode** (no semantic arm to decompose otherwise).
+- `knowledge.explain(query, k=5)` — retrieval-audit decomposition: lexical, per-model vector, and RRF-fused hits with `lexicalRank`/role-keyed `vectorRanks` (`code`/`prose`)/`fusedScore` provenance. **Gated to hybrid mode** (no semantic arm to decompose otherwise).
 
 Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
   - **Changing `retrieval.mode` (e.g. hybrid)?** Restart the knowledge MCP server to apply — reconnect `<agent>-knowledge` in your client (`/mcp` → reconnect) or start a new session. The server loads the index + embedder once at spawn.

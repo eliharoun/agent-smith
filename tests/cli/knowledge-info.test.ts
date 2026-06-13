@@ -19,18 +19,20 @@ describe("knowledgeInfo", () => {
   });
 
   const hybridStats: IndexStats = {
-    embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+    embedders: [{ id: "jinaai/jina-embeddings-v2-base-code@1", dim: 768 }],
     chunks: 100,
     vectors: 85,
     taggedPaths: 12,
-    perSource: [{ sourceId: "alpha", chunks: 100, vectors: 85 }],
+    perSource: [
+      { sourceId: "alpha", chunks: 100, vectors: 85, models: ["jinaai/jina-embeddings-v2-base-code@1"] },
+    ],
   };
   const bm25Stats: IndexStats = {
-    embedderId: "none",
+    embedders: [],
     chunks: 50,
     vectors: 0,
     taggedPaths: 0,
-    perSource: [{ sourceId: "alpha", chunks: 50, vectors: 0 }],
+    perSource: [{ sourceId: "alpha", chunks: 50, vectors: 0, models: [] }],
   };
 
   it("throws not-found when the agent is not registered", async () => {
@@ -65,7 +67,7 @@ describe("knowledgeInfo", () => {
     expect(out).toContain("85");
   });
 
-  it("reports BM25-only when embedderId is 'none' (explains why not hybrid)", async () => {
+  it("reports BM25-only when no embedders are present (explains why not hybrid)", async () => {
     const log = spyOn(console, "log").mockImplementation(() => {});
     spies.push(log as unknown as ReturnType<typeof spyOn>);
     const code = await knowledgeInfo(
@@ -120,7 +122,7 @@ describe("knowledgeInfo", () => {
     expect(parsed.agent).toBe("x");
     expect(parsed.hybridActive).toBe(true);
     expect(parsed.stats.vectors).toBe(85);
-    expect(parsed.embedderId).toBe("jinaai/jina-embeddings-v2-base-code@1");
+    expect(parsed.embedders).toEqual([{ id: "jinaai/jina-embeddings-v2-base-code@1", dim: 768 }]);
   });
 
   it("hybridActive matches serve predicate: real embedder with zero vectors is still HYBRID", async () => {
@@ -129,11 +131,11 @@ describe("knowledgeInfo", () => {
     // Degenerate but serve-consistent: a real embedder header with 0 vectors.
     // serve would load the embedder and advertise Hybrid, so info must agree.
     const realEmbedderNoVectors: IndexStats = {
-      embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+      embedders: [{ id: "jinaai/jina-embeddings-v2-base-code@1", dim: 768 }],
       chunks: 10,
       vectors: 0,
       taggedPaths: 0,
-      perSource: [{ sourceId: "alpha", chunks: 10, vectors: 0 }],
+      perSource: [{ sourceId: "alpha", chunks: 10, vectors: 0, models: [] }],
     };
     const code = await knowledgeInfo(
       "x",
@@ -163,7 +165,7 @@ describe("knowledgeInfo", () => {
           { id: "alpha", type: "webpage", lazy: true } as never,
         ],
         openStats: async () => ({
-          embedderId: "none",
+          embedders: [],
           chunks: 0,
           vectors: 0,
           taggedPaths: 0,
@@ -188,9 +190,9 @@ describe("knowledgeInfo", () => {
           { id: "alpha", type: "git", retrieval: { mode: "hybrid" } } as never, // no refresh => install
         ],
         openStats: async () => ({
-          embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+          embedders: [{ id: "jinaai/jina-embeddings-v2-base-code@1", dim: 768 }],
           chunks: 10, vectors: 10, taggedPaths: 0,
-          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10 }],
+          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10, models: ["jinaai/jina-embeddings-v2-base-code@1"] }],
         }),
       },
     );
@@ -209,9 +211,9 @@ describe("knowledgeInfo", () => {
           { id: "alpha", type: "git", retrieval: { mode: "hybrid" }, refresh: { mode: "ttl", ttl: "7d" } } as never,
         ],
         openStats: async () => ({
-          embedderId: "jinaai/jina-embeddings-v2-base-code@1",
+          embedders: [{ id: "jinaai/jina-embeddings-v2-base-code@1", dim: 768 }],
           chunks: 10, vectors: 10, taggedPaths: 0,
-          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10 }],
+          perSource: [{ sourceId: "alpha", chunks: 10, vectors: 10, models: ["jinaai/jina-embeddings-v2-base-code@1"] }],
         }),
       },
     );
@@ -230,11 +232,11 @@ describe("knowledgeInfo", () => {
           { id: "ghost", type: "git", retrieval: { mode: "bm25" } } as never,
         ],
         openStats: async () => ({
-          embedderId: "none",
+          embedders: [],
           chunks: 5,
           vectors: 0,
           taggedPaths: 0,
-          perSource: [{ sourceId: "other", chunks: 5, vectors: 0 }],
+          perSource: [{ sourceId: "other", chunks: 5, vectors: 0, models: [] }],
         }),
       },
     );
