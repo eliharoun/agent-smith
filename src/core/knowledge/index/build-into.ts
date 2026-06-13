@@ -32,7 +32,7 @@ export async function buildIndexInto(
     const store = await KnowledgeStore.open(indexDbPath(knowledgeDir), {
       schemaVersion: 1,
       embedderId: embedder.id,
-      embedderDim: embedder.dim || 1, // 0 -> 1 placeholder for the no-vector (NullEmbedder) case
+      embedderDim: embedder.dim === 0 ? 1 : embedder.dim, // 0 -> 1 placeholder for the no-vector (NullEmbedder) case
       chunkerVersion: CHUNKER_VERSION,
       repomapVersion: REPOMAP_VERSION,
     });

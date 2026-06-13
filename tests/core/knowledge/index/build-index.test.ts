@@ -151,6 +151,34 @@ describe("buildIndex", () => {
     store.close();
   });
 
+  test("flipping a source OFF hybrid clears its orphan vectors on full rebuild", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "hy"), { recursive: true });
+    await writeFile(join(kd, "sources", "hy", "a.md"), "alpha\n");
+    const p = join(kd, ".cache", "index", "k.db");
+    const s1 = await KnowledgeStore.open(p, H("fake@1", 4));
+    if (!s1) return;
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s1,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["hy"]),
+    });
+    expect(s1.hasVector("sources/hy/a.md")).toBe(true);
+    // Full rebuild, same content, but source no longer hybrid:
+    await buildIndex({
+      knowledgeDir: kd,
+      store: s1,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(),
+    });
+    expect(s1.hasVector("sources/hy/a.md")).toBe(false); // orphan vector cleared
+    expect(s1.searchLexical(["alpha"], 5).length).toBe(1); // lexical still works
+    s1.close();
+  });
+
   test("a hybrid file lacking a vector gets re-embedded on rebuild (embedder-aware skip)", async () => {
     const kd = join(dir, "knowledge");
     await mkdir(join(kd, "sources", "hy"), { recursive: true });

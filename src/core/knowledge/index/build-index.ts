@@ -45,9 +45,9 @@ export interface BuildIndexOpts {
   store: KnowledgeStore;
   embedder: Embedder;
   changedPaths: string[] | null;
-  /** Source ids that opted into `retrieval: hybrid`. Only these sources' chunks
-   *  get dense vectors; all other sources stay lexical-only (FTS5). Empty/absent
-   *  means lexical-only for everything (spec §3.9). */
+  /** Source ids that opted into retrieval:hybrid; their chunks get dense vectors.
+   *  Absent/empty = lexical-only (no vectors). Only these sources' chunks get
+   *  dense vectors; all other sources stay lexical-only (FTS5) — spec §3.9. */
   hybridSourceIds?: Set<string>;
 }
 
@@ -119,8 +119,20 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
     }
   }
 
-  if (fullWalk)
-    for (const rel of opts.store.allRelPaths()) if (!seen.has(rel)) opts.store.deleteByPath(rel);
+  if (fullWalk) {
+    for (const rel of opts.store.allRelPaths()) {
+      if (!seen.has(rel)) {
+        opts.store.deleteByPath(rel);
+        continue;
+      }
+      // A path whose source is no longer hybrid must not keep a stale vector.
+      // NOTE: only the full-walk path can fix this comprehensively (it visits
+      // every path). An incremental refresh visits only changedPaths, so a mode
+      // flip without a content change is corrected on the next full install.
+      const stillHybrid = opts.hybridSourceIds?.has(sourceIdOf(rel)) ?? false;
+      if (!stillHybrid && opts.store.hasVector(rel)) opts.store.clearVectorsByPath(rel);
+    }
+  }
 }
 
 function ext(p: string): string {
