@@ -3,25 +3,28 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import pc from "picocolors";
 import { parseConfig } from "../../../core/config-schema";
-import { type AtlassianAuth, resolveAtlassianAuth } from "../../../io/atlassian-auth";
 import { findRoute } from "../../../core/knowledge/routing-registry";
-import type {
-  ConfluenceFormat,
-  ConfluencePageRef,
-  KnowledgeBlock,
-  KnowledgeDelivery,
-  KnowledgeSource,
-  KnowledgeSourceType,
+import {
+  type ConfluenceFormat,
+  type ConfluencePageRef,
+  type KnowledgeBlock,
+  type KnowledgeDelivery,
+  type KnowledgeSource,
+  type KnowledgeSourceType,
+  RETRIEVAL_MODES,
+  type RetrievalMode,
+  type RetrievalSpec,
 } from "../../../core/knowledge/types";
 import { validateKnowledge } from "../../../core/knowledge/validator";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
-import { guardProtectedAgent } from "../protected-confirm";
+import { type AtlassianAuth, resolveAtlassianAuth } from "../../../io/atlassian-auth";
 import type { McpClientOpts } from "../../../io/mcp-client";
 import { McpClientPool } from "../../../io/mcp-client-pool";
 import { type AvailableMap, readAvailableMcpServers } from "../../../io/mcp-config-readers";
 import { createSpawnOptsResolver } from "../../../io/mcp-spawn-resolver";
 import { readToken } from "../../prompt";
+import { guardProtectedAgent } from "../protected-confirm";
 import { pickViaInteractively } from "./pick-via";
 
 /**
@@ -179,6 +182,11 @@ export interface KnowledgeAddOptions {
   preset?: string;
   /** MCP: permit a write-shaped tool name. */
   allowWriteTool?: boolean;
+  // --- Retrieval (all types) ---
+  /** Search mode for this source: off | bm25 | hybrid | external-mcp. */
+  retrieval?: string;
+  /** URL of the external retrieval MCP (required when retrieval=external-mcp). */
+  retrievalMcpUrl?: string;
   // --- DI for auth probe (Task 5) ---
   /** Test override for the atlassian-auth resolver. */
   resolveAuth?: () => AtlassianAuth | null;
@@ -250,24 +258,128 @@ function deriveId(opts: KnowledgeAddOptions): string {
   return slugify(name, "source");
 }
 
-function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource {
+const VALID_RETRIEVAL = new Set<string>(RETRIEVAL_MODES);
+
+/**
+ * Validate `--retrieval`/`--retrieval-mcp-url` and build the `retrieval`
+ * spread to attach to the constructed source. Returns an empty object when
+ * `--retrieval` is unset so existing behavior is unchanged. Throws on an
+ * invalid mode, or on `external-mcp` without a `--retrieval-mcp-url`.
+ */
+export function buildRetrieval(
+  opts: KnowledgeAddOptions,
+): { retrieval: RetrievalSpec } | Record<string, never> {
+  if (!opts.retrieval) {
+    if (opts.retrievalMcpUrl) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "--retrieval-mcp-url",
+        reasons: ["--retrieval-mcp-url requires --retrieval external-mcp"],
+      });
+    }
+    return {};
+  }
+  if (!VALID_RETRIEVAL.has(opts.retrieval)) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "--retrieval",
+      reasons: [
+        `--retrieval must be one of: off, bm25, hybrid, external-mcp (got "${opts.retrieval}")`,
+      ],
+    });
+  }
+  if (opts.retrieval !== "external-mcp" && opts.retrievalMcpUrl) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "--retrieval-mcp-url",
+      reasons: [
+        `--retrieval-mcp-url is only valid with --retrieval external-mcp (got mode "${opts.retrieval}")`,
+      ],
+    });
+  }
+  if (opts.retrieval === "external-mcp" && !opts.retrievalMcpUrl) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "--retrieval external-mcp",
+      reasons: ["--retrieval external-mcp requires --retrieval-mcp-url <url>"],
+    });
+  }
+  return {
+    retrieval: {
+      // Narrowed by the VALID_RETRIEVAL guard above.
+      mode: opts.retrieval as RetrievalMode,
+      ...(opts.retrievalMcpUrl ? { mcpUrl: opts.retrievalMcpUrl } : {}),
+    },
+  };
+}
+
+export function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource {
   const delivery = opts.delivery ?? "auto";
   const description = opts.description ? { description: opts.description } : {};
   const optional = opts.optional ? { optional: true } : {};
+  const retrievalSpec = buildRetrieval(opts);
   const pathOrUrl = opts.pathOrUrl as string; // guaranteed by CLI guard for non-mcp types
   switch (opts.type) {
     case "file":
-      return { id, type: "file", delivery, path: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "file",
+        delivery,
+        path: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "dir":
-      return { id, type: "dir", delivery, path: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "dir",
+        delivery,
+        path: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "glob":
-      return { id, type: "glob", delivery, path: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "glob",
+        delivery,
+        path: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "webpage":
-      return { id, type: "webpage", delivery, url: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "webpage",
+        delivery,
+        url: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "git":
-      return { id, type: "git", delivery, url: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "git",
+        delivery,
+        url: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "npm":
-      return { id, type: "npm", delivery, package: pathOrUrl, ...description, ...optional };
+      return {
+        id,
+        type: "npm",
+        delivery,
+        package: pathOrUrl,
+        ...description,
+        ...optional,
+        ...retrievalSpec,
+      };
     case "confluence": {
       const pages = opts.pages ? parsePagesList(opts.pages) : undefined;
       return {
@@ -281,6 +393,7 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
         ...(opts.format ? { format: opts.format } : {}),
         ...description,
         ...optional,
+        ...retrievalSpec,
       };
     }
     case "jira": {
@@ -294,6 +407,7 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
         ...(opts.maxResults !== undefined ? { maxResults: opts.maxResults } : {}),
         ...description,
         ...optional,
+        ...retrievalSpec,
       };
     }
     case "web": {
@@ -310,11 +424,15 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
         ...(opts.exclude && opts.exclude.length > 0 ? { exclude: opts.exclude } : {}),
         ...description,
         ...optional,
+        ...retrievalSpec,
       };
     }
     case "mcp": {
       if (!opts.server || !opts.tool) {
-        throw new SmithError({ code: "usage-error", message: "type=mcp requires --server and --tool" });
+        throw new SmithError({
+          code: "usage-error",
+          message: "type=mcp requires --server and --tool",
+        });
       }
       return {
         id,
@@ -327,11 +445,16 @@ function constructSource(opts: KnowledgeAddOptions, id: string): KnowledgeSource
         ...(opts.allowWriteTool ? { allowWriteTool: true } : {}),
         ...description,
         ...optional,
+        ...retrievalSpec,
       };
     }
     default: {
       const _x: never = opts.type;
-      throw new SmithError({ code: "validation-failed", what: "knowledge type", reasons: [`unsupported type ${String(_x)}`] });
+      throw new SmithError({
+        code: "validation-failed",
+        what: "knowledge type",
+        reasons: [`unsupported type ${String(_x)}`],
+      });
     }
   }
 }

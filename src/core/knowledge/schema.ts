@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { KEBAB } from "../kebab";
+import { RETRIEVAL_MODES } from "./types";
 
 const KnowledgeDelivery = z.enum(["inline", "file", "auto"]);
 const Materializer = z.enum([
@@ -69,7 +70,7 @@ const ViaSpec = z
   .strict();
 
 // v2.0 compile-stage retrieval spec. `external-mcp` requires `mcpUrl`.
-const RetrievalMode = z.enum(["off", "bm25", "hybrid", "external-mcp"]);
+const RetrievalMode = z.enum(RETRIEVAL_MODES);
 const RetrievalSpec = z
   .object({
     mode: RetrievalMode,

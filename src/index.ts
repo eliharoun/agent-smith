@@ -347,6 +347,12 @@ knowledgeCmd
   .option("--arg <k=v>", "mcp: tool argument (repeatable)", collectKv, {})
   .option("--preset <name>", "mcp: preset connector")
   .option("--allow-write-tool", "mcp: permit a write-shaped tool name")
+  // Retrieval (all types).
+  .option("--retrieval <mode>", "Search mode for this source: off | bm25 | hybrid | external-mcp")
+  .option(
+    "--retrieval-mcp-url <url>",
+    "URL of the external retrieval MCP (required when --retrieval external-mcp)",
+  )
   .action(
     wrap(
       "knowledge add",
@@ -377,6 +383,8 @@ knowledgeCmd
           arg?: Record<string, string>;
           preset?: string;
           allowWriteTool?: boolean;
+          retrieval?: string;
+          retrievalMcpUrl?: string;
         },
       ) => {
         const { knowledgeAdd } = await import("./cli/commands/knowledge/add");
@@ -416,6 +424,8 @@ knowledgeCmd
             ...(opts.description ? { description: opts.description } : {}),
             ...(opts.optional ? { optional: true } : {}),
             ...(opts.lazy === true ? { lazy: true } : {}),
+            ...(opts.retrieval ? { retrieval: opts.retrieval } : {}),
+            ...(opts.retrievalMcpUrl ? { retrievalMcpUrl: opts.retrievalMcpUrl } : {}),
           };
 
           switch (parsed.kind) {
@@ -535,6 +545,8 @@ knowledgeCmd
           ...(opts.arg && Object.keys(opts.arg).length > 0 ? { args: opts.arg } : {}),
           ...(opts.preset ? { preset: opts.preset } : {}),
           ...(opts.allowWriteTool ? { allowWriteTool: true } : {}),
+          ...(opts.retrieval ? { retrieval: opts.retrieval } : {}),
+          ...(opts.retrievalMcpUrl ? { retrievalMcpUrl: opts.retrievalMcpUrl } : {}),
         });
       },
     ),

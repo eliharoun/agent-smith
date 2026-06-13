@@ -45,6 +45,10 @@ export interface BuildIndexOpts {
   store: KnowledgeStore;
   embedder: Embedder;
   changedPaths: string[] | null;
+  /** Source ids that opted into retrieval:hybrid; their chunks get dense vectors.
+   *  Absent/empty = lexical-only (no vectors). Only these sources' chunks get
+   *  dense vectors; all other sources stay lexical-only (FTS5) — spec §3.9. */
+  hybridSourceIds?: Set<string>;
 }
 
 export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
@@ -66,12 +70,22 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
       continue;
     }
     const hash = createHash("sha256").update(text).digest("hex");
+    // A file gets vectors only if the embedder is real AND its owning source
+    // opted into hybrid retrieval. `wantsVector` drives both the skip check and
+    // the embed decision below so they can never diverge.
+    const isHybrid = opts.hybridSourceIds?.has(sourceIdOf(rel)) ?? false;
+    const wantsVector = opts.embedder.id !== "none" && isHybrid;
     // `hasVector` is "ANY chunk for this path has a vector", not "all". A build
     // interrupted mid-embed (chunks deleted+re-added, then embed throws before
     // upsert) leaves the path with NO chunks at all (see the embed note below),
     // so the any-vs-all distinction can't strand a half-embedded file in
     // practice — the next build re-chunks from scratch (contentHashFor → null).
-    const vectorsCurrent = opts.embedder.id === "none" || opts.store.hasVector(rel);
+    //
+    // A file is "current" only if its content is unchanged AND its vector state
+    // matches its mode: a hybrid file needs a vector present (re-embed if a
+    // newly-available embedder or freshly-flipped mode left it vector-less); a
+    // non-hybrid file needs none.
+    const vectorsCurrent = !wantsVector || opts.store.hasVector(rel);
     if (opts.store.contentHashFor(rel) === hash && vectorsCurrent) continue;
 
     opts.store.deleteByPath(rel);
@@ -81,8 +95,7 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
     // until the next build re-chunks it (contentHashFor → null forces redo).
     // That's a consistent (never partial) state; we don't catch per-file so the
     // failure surfaces to the caller rather than silently shipping a gap.
-    const vectors =
-      opts.embedder.id !== "none" ? await opts.embedder.embed(chunks.map((c) => c.text)) : [];
+    const vectors = wantsVector ? await opts.embedder.embed(chunks.map((c) => c.text)) : [];
     const rows: ChunkRow[] = chunks.map((c, i) => ({
       id: `${rel}#${i}`,
       sourceId: sourceIdOf(rel),
@@ -106,8 +119,20 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
     }
   }
 
-  if (fullWalk)
-    for (const rel of opts.store.allRelPaths()) if (!seen.has(rel)) opts.store.deleteByPath(rel);
+  if (fullWalk) {
+    for (const rel of opts.store.allRelPaths()) {
+      if (!seen.has(rel)) {
+        opts.store.deleteByPath(rel);
+        continue;
+      }
+      // A path whose source is no longer hybrid must not keep a stale vector.
+      // NOTE: only the full-walk path can fix this comprehensively (it visits
+      // every path). An incremental refresh visits only changedPaths, so a mode
+      // flip without a content change is corrected on the next full install.
+      const stillHybrid = opts.hybridSourceIds?.has(sourceIdOf(rel)) ?? false;
+      if (!stillHybrid && opts.store.hasVector(rel)) opts.store.clearVectorsByPath(rel);
+    }
+  }
 }
 
 function ext(p: string): string {

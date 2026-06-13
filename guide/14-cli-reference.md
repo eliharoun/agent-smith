@@ -1692,7 +1692,7 @@ per-subcommand `--help`. Every subcommand is invoked as
 
 ### `smith knowledge add <agent> <type-or-url> [path-or-url]`
 
-**Synopsis:** `smith knowledge add <agent> <type-or-url> [path-or-url] [--id <id>] [--delivery <delivery>] [--description <text>] [--optional] [--lazy] [--no-install] [--pages <list>] [--max-pages <n>] [--include-children] [--format <fmt>] [--fields <list>] [--max-results <n>]`
+**Synopsis:** `smith knowledge add <agent> <type-or-url> [path-or-url] [--id <id>] [--delivery <delivery>] [--description <text>] [--optional] [--lazy] [--retrieval <mode>] [--retrieval-mcp-url <url>] [--no-install] [--pages <list>] [--max-pages <n>] [--include-children] [--format <fmt>] [--fields <list>] [--max-results <n>]`
 
 **Description:** Add a knowledge source to an agent's
 `agent.config.json`, then auto-run `smith agent install <agent>` to materialize
@@ -1731,6 +1731,8 @@ Source: `src/cli/commands/knowledge/add.ts`.
 - `--description <text>` — human-readable description.
 - `--optional` — set `optional: true` on the new source. At install time, runtime/IO failures (network, missing file, git auth) on this source degrade to warnings instead of aborting. `validation-failed` SmithErrors still abort regardless. See [guide/04-knowledge.md § Optional sources](./04-knowledge.md#optional-sources).
 - `--lazy` — URL sources only (`type=webpage`). Skip materialization at install/fetch; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types.
+- `--retrieval <mode>` — set the source's search mode: `off | bm25 | hybrid | external-mcp`. Default (unset) leaves no `retrieval` block, which behaves as `bm25`. `hybrid` opts the source into on-device semantic vector search fused with lexical (degrades to `bm25` when the embedding model is unavailable). See [guide/04-knowledge.md § Retrieval mode](./04-knowledge.md#retrieval-mode).
+- `--retrieval-mcp-url <url>` — the external MCP URL; **required** when `--retrieval external-mcp`, and **rejected** with any other mode (or when `--retrieval` is unset).
 - `--no-install` — skip the auto-materialize step. The source is still saved to `agent.config.json`; run `smith agent install <agent>` later to materialize.
 
 **Exit codes:**
