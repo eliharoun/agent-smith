@@ -44,6 +44,42 @@ describe("constructSource retrieval", () => {
     expect(src.retrieval).toEqual({ mode: "external-mcp", mcpUrl: "https://x" });
   });
 
+  it("throws when --retrieval-mcp-url is set without --retrieval", () => {
+    let thrown: unknown;
+    try {
+      constructSource({ ...base, retrievalMcpUrl: "https://x" }, "readme");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    const payload = (thrown as { payload: { reasons: string[] } }).payload;
+    expect(payload.reasons.join(" ")).toMatch(/requires --retrieval external-mcp/);
+  });
+
+  it("throws when --retrieval-mcp-url is set with --retrieval bm25", () => {
+    let thrown: unknown;
+    try {
+      constructSource({ ...base, retrieval: "bm25", retrievalMcpUrl: "https://x" }, "readme");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    const payload = (thrown as { payload: { reasons: string[] } }).payload;
+    expect(payload.reasons.join(" ")).toMatch(/only valid with --retrieval external-mcp/);
+  });
+
+  it("throws when --retrieval-mcp-url is set with --retrieval hybrid", () => {
+    let thrown: unknown;
+    try {
+      constructSource({ ...base, retrieval: "hybrid", retrievalMcpUrl: "https://x" }, "readme");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    const payload = (thrown as { payload: { reasons: string[] } }).payload;
+    expect(payload.reasons.join(" ")).toMatch(/only valid with --retrieval external-mcp/);
+  });
+
   it("throws on an invalid --retrieval mode", () => {
     let thrown: unknown;
     try {

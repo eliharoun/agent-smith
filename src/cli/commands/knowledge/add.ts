@@ -4,15 +4,16 @@ import { basename, join } from "node:path";
 import pc from "picocolors";
 import { parseConfig } from "../../../core/config-schema";
 import { findRoute } from "../../../core/knowledge/routing-registry";
-import type {
-  ConfluenceFormat,
-  ConfluencePageRef,
-  KnowledgeBlock,
-  KnowledgeDelivery,
-  KnowledgeSource,
-  KnowledgeSourceType,
-  RetrievalMode,
-  RetrievalSpec,
+import {
+  type ConfluenceFormat,
+  type ConfluencePageRef,
+  type KnowledgeBlock,
+  type KnowledgeDelivery,
+  type KnowledgeSource,
+  type KnowledgeSourceType,
+  RETRIEVAL_MODES,
+  type RetrievalMode,
+  type RetrievalSpec,
 } from "../../../core/knowledge/types";
 import { validateKnowledge } from "../../../core/knowledge/validator";
 import { SmithError } from "../../../core/smith-error";
@@ -257,7 +258,7 @@ function deriveId(opts: KnowledgeAddOptions): string {
   return slugify(name, "source");
 }
 
-const VALID_RETRIEVAL = new Set(["off", "bm25", "hybrid", "external-mcp"]);
+const VALID_RETRIEVAL = new Set<string>(RETRIEVAL_MODES);
 
 /**
  * Validate `--retrieval`/`--retrieval-mcp-url` and build the `retrieval`
@@ -268,13 +269,31 @@ const VALID_RETRIEVAL = new Set(["off", "bm25", "hybrid", "external-mcp"]);
 export function buildRetrieval(
   opts: KnowledgeAddOptions,
 ): { retrieval: RetrievalSpec } | Record<string, never> {
-  if (!opts.retrieval) return {};
+  if (!opts.retrieval) {
+    if (opts.retrievalMcpUrl) {
+      throw new SmithError({
+        code: "validation-failed",
+        what: "--retrieval-mcp-url",
+        reasons: ["--retrieval-mcp-url requires --retrieval external-mcp"],
+      });
+    }
+    return {};
+  }
   if (!VALID_RETRIEVAL.has(opts.retrieval)) {
     throw new SmithError({
       code: "validation-failed",
       what: "--retrieval",
       reasons: [
         `--retrieval must be one of: off, bm25, hybrid, external-mcp (got "${opts.retrieval}")`,
+      ],
+    });
+  }
+  if (opts.retrieval !== "external-mcp" && opts.retrievalMcpUrl) {
+    throw new SmithError({
+      code: "validation-failed",
+      what: "--retrieval-mcp-url",
+      reasons: [
+        `--retrieval-mcp-url is only valid with --retrieval external-mcp (got mode "${opts.retrieval}")`,
       ],
     });
   }
