@@ -45,7 +45,7 @@ const ConfluencePageRef = z.union([
 // validator is the source of truth.
 const RetrievalSpec = z
   .object({
-    mode: z.enum(["off", "bm25", "external-mcp"]),
+    mode: z.enum(["off", "bm25", "hybrid", "external-mcp"]),
     mcpUrl: z.url().optional(),
   })
   .strict();

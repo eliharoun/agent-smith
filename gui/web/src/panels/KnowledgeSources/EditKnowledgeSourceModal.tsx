@@ -32,6 +32,8 @@ import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 type SourceType = KnowledgeSource["type"];
 
 type Delivery = "auto" | "inline" | "file";
+// Mirror of RetrievalMode in src/core/knowledge/types.ts — inlined because the
+// GUI cannot cross-import CLI code (rootDir boundary).
 type RetrievalMode = "off" | "bm25" | "hybrid" | "external-mcp";
 type RefreshMode = "install" | "ttl" | "session" | "always";
 type Materialize = "markdown" | "text" | "html-to-md" | "json" | "passthrough";
@@ -1060,7 +1062,7 @@ export function EditKnowledgeSourceModal({
                   onChange={(v) => update("retrievalMode", v as RetrievalMode)}
                   options={[
                     { v: "bm25", l: "bm25 (default — lexical search)" },
-                    { v: "hybrid", l: "hybrid (semantic + lexical search)" },
+                    { v: "hybrid", l: "hybrid (semantic + lexical; needs embedding model)" },
                     { v: "external-mcp", l: "external-mcp (delegate to a remote MCP)" },
                     { v: "off", l: "off (advisory: not search-friendly)" },
                   ]}

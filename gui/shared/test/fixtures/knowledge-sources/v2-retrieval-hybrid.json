@@ -1,0 +1,9 @@
+{
+  "id": "v2-hybrid",
+  "type": "url",
+  "delivery": "file",
+  "url": "https://example.com/big-doc.html",
+  "retrieval": {
+    "mode": "hybrid"
+  }
+}
