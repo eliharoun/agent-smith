@@ -8,8 +8,8 @@ import { FieldHelp } from "@/ui/FieldHelp";
 import { FormField } from "@/ui/FormField";
 import { Toggle } from "@/ui/Toggle";
 import { Tooltip } from "@/ui/Tooltip";
-import { RoutingPicker, type ViaPick } from "./sourceForms/RoutingPicker";
 import { StaleArtifactsConfirmModal } from "./StaleArtifactsConfirmModal";
+import { RoutingPicker, type ViaPick } from "./sourceForms/RoutingPicker";
 import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 
 /**
@@ -32,7 +32,7 @@ import { useSaveSuccessNotification } from "./useSaveSuccessNotification";
 type SourceType = KnowledgeSource["type"];
 
 type Delivery = "auto" | "inline" | "file";
-type RetrievalMode = "off" | "bm25" | "external-mcp";
+type RetrievalMode = "off" | "bm25" | "hybrid" | "external-mcp";
 type RefreshMode = "install" | "ttl" | "session" | "always";
 type Materialize = "markdown" | "text" | "html-to-md" | "json" | "passthrough";
 type Extractor = "pdf-parse" | "mupdf";
@@ -54,8 +54,7 @@ function isStaticType(type: string): boolean {
 // field. An empty list means the description is fine.
 const LAZY_DESC_MIN = 30;
 const LAZY_DESC_MAX = 1024;
-const LAZY_FIRST_OR_SECOND_PERSON =
-  /^(I |I'|you |you'|this skill|this source|this knowledge)/i;
+const LAZY_FIRST_OR_SECOND_PERSON = /^(I |I'|you |you'|this skill|this source|this knowledge)/i;
 
 function lazyDescriptionWarnings(description: string): string[] {
   const warnings: string[] = [];
@@ -210,17 +209,16 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
   // config that bypassed validation). Reset to "install" and surface a warning.
   let invalidRefreshMode: InitialDraft["invalidRefreshMode"];
   let resolvedRefreshMode: "" | RefreshMode = refreshObj?.mode ?? (refreshStr ? "" : "");
-  if (
-    isStaticType(s.type) &&
-    resolvedRefreshMode !== "" &&
-    resolvedRefreshMode !== "install"
-  ) {
+  if (isStaticType(s.type) && resolvedRefreshMode !== "" && resolvedRefreshMode !== "install") {
     invalidRefreshMode = { type: s.type, loadedMode: resolvedRefreshMode };
     resolvedRefreshMode = "install";
   }
   const draft: DraftState = {
     path: s.type === "file" || s.type === "dir" || s.type === "glob" ? (s.path as string) : "",
-    url: s.type === "url" || s.type === "webpage" || s.type === "git" || s.type === "web" ? (s.url as string) : "",
+    url:
+      s.type === "url" || s.type === "webpage" || s.type === "git" || s.type === "web"
+        ? (s.url as string)
+        : "",
     pkg: s.type === "npm" ? (s.package as string) : "",
     space: s.type === "confluence" ? (s.space as string) : "",
     jql: s.type === "jira" ? (s.jql as string) : "",
@@ -257,9 +255,12 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
     // mcp-specific
     server: s.type === "mcp" ? s.server : "",
     tool: s.type === "mcp" ? s.tool : "",
-    argsStr: s.type === "mcp" && s.args
-      ? Object.entries(s.args).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n")
-      : "",
+    argsStr:
+      s.type === "mcp" && s.args
+        ? Object.entries(s.args)
+            .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+            .join("\n")
+        : "",
     preset: s.type === "mcp" && s.preset ? s.preset : "",
     allowWriteTool: s.type === "mcp" && s.allowWriteTool === true,
     description: s.description ?? "",
@@ -310,7 +311,10 @@ function validateDraft(draft: DraftState, type: SourceType): Record<string, stri
   if ((type === "file" || type === "dir" || type === "glob") && !draft.path.trim()) {
     errors.path = "required";
   }
-  if ((type === "url" || type === "webpage" || type === "git" || type === "web") && !draft.url.trim()) {
+  if (
+    (type === "url" || type === "webpage" || type === "git" || type === "web") &&
+    !draft.url.trim()
+  ) {
     errors.url = "required";
   }
   if (type === "npm" && !draft.pkg.trim()) errors.pkg = "required";
@@ -328,7 +332,8 @@ function validateDraft(draft: DraftState, type: SourceType): Record<string, stri
   if (type === "mcp" && !draft.tool.trim()) errors.tool = "required";
   // mcp: reject credential-shaped args keys + malformed lines
   if (type === "mcp" && draft.argsStr.trim()) {
-    const credentialRe = /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
+    const credentialRe =
+      /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
     for (const line of draft.argsStr.split("\n").filter((l) => l.trim())) {
       if (!line.includes("=")) {
         errors.argsStr = "each line must be key=value";
@@ -565,8 +570,7 @@ export function EditKnowledgeSourceModal({
   // initial draft is auto-reset — the editor should treat that as dirty so
   // Save is enabled and the corrected value gets persisted.
   const dirty = useMemo(
-    () =>
-      JSON.stringify(draft) !== JSON.stringify(initial.draft) || !!initial.invalidRefreshMode,
+    () => JSON.stringify(draft) !== JSON.stringify(initial.draft) || !!initial.invalidRefreshMode,
     [draft, initial],
   );
   const errors = useMemo(
@@ -597,7 +601,9 @@ export function EditKnowledgeSourceModal({
   // path consults this to decide whether to cache-status-check + show the
   // 3-button confirm dialog.
   const flippingNonLazyToLazy =
-    (existingSource.type === "url" || existingSource.type === "webpage") && draft.lazy && !initial.draft.lazy;
+    (existingSource.type === "url" || existingSource.type === "webpage") &&
+    draft.lazy &&
+    !initial.draft.lazy;
 
   function performSave() {
     const built = buildSource(existingSource, draft);
@@ -781,16 +787,11 @@ export function EditKnowledgeSourceModal({
                 {draft.lazy && (
                   <>
                     <p className="font-mono text-[10px] text-matrix-green-muted">
-                      // when lazy is on, the agent reads this description at runtime to
-                      decide whether to fetch the URL — write what the source contains
-                      and when to use it.
+                      // when lazy is on, the agent reads this description at runtime to decide
+                      whether to fetch the URL — write what the source contains and when to use it.
                     </p>
                     {lazyDescriptionWarnings(draft.description).map((w) => (
-                      <p
-                        key={w}
-                        className="font-mono text-[10px] text-matrix-amber"
-                        role="status"
-                      >
+                      <p key={w} className="font-mono text-[10px] text-matrix-amber" role="status">
                         // {w}
                       </p>
                     ))}
@@ -1058,7 +1059,8 @@ export function EditKnowledgeSourceModal({
                   value={draft.retrievalMode}
                   onChange={(v) => update("retrievalMode", v as RetrievalMode)}
                   options={[
-                    { v: "bm25", l: "bm25 (default — local in-memory index)" },
+                    { v: "bm25", l: "bm25 (default — lexical search)" },
+                    { v: "hybrid", l: "hybrid (semantic + lexical search)" },
                     { v: "external-mcp", l: "external-mcp (delegate to a remote MCP)" },
                     { v: "off", l: "off (advisory: not search-friendly)" },
                   ]}
@@ -1094,9 +1096,9 @@ export function EditKnowledgeSourceModal({
                     className="font-mono text-[10px] text-matrix-amber border border-matrix-amber/40 px-2 py-1"
                     role="status"
                   >
-                    // This source is `type: {initial.invalidRefreshMode.type}` — only
-                    `install` mode is allowed; the existing `
-                    {initial.invalidRefreshMode.loadedMode}` value will be cleared on save.
+                    // This source is `type: {initial.invalidRefreshMode.type}` — only `install`
+                    mode is allowed; the existing `{initial.invalidRefreshMode.loadedMode}` value
+                    will be cleared on save.
                   </div>
                 )}
                 <Select

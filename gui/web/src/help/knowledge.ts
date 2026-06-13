@@ -42,7 +42,7 @@ export const knowledgeHelp: Record<string, FieldHelpEntry> = {
     help: "Whether to include this source in the compiled `## Knowledge` TOC. Default yes; turn off for sources you want compiled to disk but not advertised in the prompt.",
   },
   "knowledge.retrieval.mode": {
-    help: "How agents search this source.\nbm25 (default): in-memory BM25 index; adds search hint to TOC.\nexternal-mcp: delegate to a remote MCP server.\noff: advisory (source still indexed locally, but no TOC annotation).",
+    help: "How agents search this source.\nbm25 (default): lexical (BM25/FTS5) search over the on-disk index built at install.\nhybrid: semantic vector search fused with lexical (needs the on-device embedding model; degrades to bm25 if unavailable).\nexternal-mcp: delegate to a remote MCP server.\noff: advisory (source still indexed locally, but no TOC annotation).",
   },
   "knowledge.retrieval.mcpUrl": {
     help: "URL of the external retrieval MCP server. Required when mode is `external-mcp`. Today this lands in the compiled TOC as a routing hint; runtime delegation lands in a future smith release.",

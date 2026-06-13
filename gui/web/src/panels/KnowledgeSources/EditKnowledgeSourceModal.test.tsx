@@ -452,6 +452,43 @@ describe("EditKnowledgeSourceModal", () => {
     expect(save.hasAttribute("disabled")).toBe(true);
   });
 
+  it("persists retrieval mode hybrid without requiring mcpUrl", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // The dropdown offers a hybrid option.
+    const select = screen.getByLabelText(/^\/\/ retrieval mode$/i) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toContain("hybrid");
+    fireEvent.change(select, { target: { value: "hybrid" } });
+    // hybrid needs no mcpUrl — no field shown and Save is enabled.
+    expect(screen.queryByLabelText(/^\/\/ retrieval\.mcpUrl$/i)).not.toBeInTheDocument();
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    // hybrid is non-default, so it IS written — with no mcpUrl.
+    expect(written.retrieval).toEqual({ mode: "hybrid" });
+  });
+
   it("validates refresh.ttl format when refresh mode is ttl", () => {
     globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
     const src: KnowledgeSource = {
@@ -1471,9 +1508,7 @@ describe("EditKnowledgeSourceModal", () => {
           calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
         ).toBeDefined();
       });
-      const put = calls.find(
-        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
-      )!;
+      const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
       const body = JSON.parse(put.init!.body as string);
       const saved = body.knowledge.sources[0];
       expect(saved.type).toBe("web");
@@ -1555,7 +1590,9 @@ describe("EditKnowledgeSourceModal", () => {
       );
       expect(screen.getByLabelText(/^\/\/ server$/i)).toHaveValue("notion");
       expect(screen.getByLabelText(/^\/\/ tool$/i)).toHaveValue("search");
-      expect(screen.getByLabelText(/^\/\/ args \(one key=value per line\)$/i)).toHaveValue("query=x");
+      expect(screen.getByLabelText(/^\/\/ args \(one key=value per line\)$/i)).toHaveValue(
+        "query=x",
+      );
     });
 
     it("round-trips mcp source fields on save", async () => {
@@ -1585,9 +1622,7 @@ describe("EditKnowledgeSourceModal", () => {
           calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
         ).toBeDefined();
       });
-      const put = calls.find(
-        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
-      )!;
+      const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
       const body = JSON.parse(put.init!.body as string);
       const saved = body.knowledge.sources[0];
       expect(saved.type).toBe("mcp");
@@ -1675,9 +1710,7 @@ describe("EditKnowledgeSourceModal", () => {
           calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
         ).toBeDefined();
       });
-      const put = calls.find(
-        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
-      )!;
+      const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
       const body = JSON.parse(put.init!.body as string);
       const saved = body.knowledge.sources[0];
       expect(saved.preset).toBe("team-shared");
@@ -1715,9 +1748,7 @@ describe("EditKnowledgeSourceModal", () => {
           calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
         ).toBeDefined();
       });
-      const put = calls.find(
-        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
-      )!;
+      const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
       const body = JSON.parse(put.init!.body as string);
       const saved = body.knowledge.sources[0];
       expect(saved.include).toEqual(["/docs/**"]);
@@ -1772,9 +1803,7 @@ describe("EditKnowledgeSourceModal", () => {
           calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
         ).toBeDefined();
       });
-      const put = calls.find(
-        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
-      )!;
+      const put = calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT")!;
       const body = JSON.parse(put.init!.body as string);
       const saved = body.knowledge.sources[0];
       expect(saved.type).toBe("webpage");
@@ -1826,13 +1855,35 @@ describe("EditKnowledgeSourceModal — exhaustive type coverage (regression guar
     file: { id: "f", type: "file", path: "/x.md", delivery: "auto" } as KnowledgeSource,
     dir: { id: "d", type: "dir", path: "/notes", delivery: "auto" } as KnowledgeSource,
     glob: { id: "g", type: "glob", path: "**/*.md", delivery: "auto" } as KnowledgeSource,
-    webpage: { id: "w", type: "webpage", url: "https://x.com/p", delivery: "auto" } as KnowledgeSource,
-    web: { id: "wc", type: "web", url: "https://x.com/", mode: "crawl", delivery: "file" } as unknown as KnowledgeSource,
-    git: { id: "gi", type: "git", url: "https://github.com/x/y", delivery: "auto" } as KnowledgeSource,
+    webpage: {
+      id: "w",
+      type: "webpage",
+      url: "https://x.com/p",
+      delivery: "auto",
+    } as KnowledgeSource,
+    web: {
+      id: "wc",
+      type: "web",
+      url: "https://x.com/",
+      mode: "crawl",
+      delivery: "file",
+    } as unknown as KnowledgeSource,
+    git: {
+      id: "gi",
+      type: "git",
+      url: "https://github.com/x/y",
+      delivery: "auto",
+    } as KnowledgeSource,
     npm: { id: "n", type: "npm", package: "@scope/pkg", delivery: "auto" } as KnowledgeSource,
     confluence: { id: "c", type: "confluence", space: "TEAM", delivery: "auto" } as KnowledgeSource,
     jira: { id: "j", type: "jira", jql: "project=X", delivery: "auto" } as KnowledgeSource,
-    mcp: { id: "m", type: "mcp", server: "notion", tool: "search", delivery: "file" } as unknown as KnowledgeSource,
+    mcp: {
+      id: "m",
+      type: "mcp",
+      server: "notion",
+      tool: "search",
+      delivery: "file",
+    } as unknown as KnowledgeSource,
   };
 
   // A probe is a regex applied via getByLabelText that uniquely identifies
