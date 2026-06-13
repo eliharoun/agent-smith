@@ -1449,6 +1449,8 @@ The four modes:
   ingests the file. The agent reads `off` sources via direct
   `knowledge.fetch <path>` rather than `knowledge.search <query>`.
 
+**Restart the knowledge server after changing a source's mode.** The `smith knowledge serve` process reads the pre-built index and loads the query embedder **once, at startup** — and your AI client owns that process's lifecycle (it spawns `<agent>-knowledge` on session start). So changing a source's `retrieval.mode` (most notably enabling or disabling `hybrid`) only takes effect after the server restarts: reconnect the `<agent>-knowledge` MCP server in your client (Claude Code: `/mcp` → reconnect) or start a new session. A still-running server keeps serving the mode it loaded at spawn. `smith` can't restart it for you — the client owns it.
+
 The default is `bm25`: every `.md`/`.txt`/`.json` (and indexable code) file in
 the materialized knowledge tree is lexically indexed at install/refresh
 regardless of any per-source setting. Existing bundles with explicit
