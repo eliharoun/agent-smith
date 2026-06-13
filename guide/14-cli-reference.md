@@ -1947,7 +1947,7 @@ Source: `src/cli/commands/knowledge/info.ts`.
 $ smith knowledge info my-agent
 Knowledge index for my-agent:
   retrieval: HYBRID ✓ active (semantic + lexical)
-  embedders: code → jinaai/jina-embeddings-v2-base-code@1, prose → jinaai/jina-embeddings-v2-base-en@1
+  embedders: code → jinaai/jina-embeddings-v2-base-code@1, prose → Xenova/jina-embeddings-v2-base-en@1
   chunks: 2245 • vectors: 1920 (86%) • code-mapped paths: 305
 
   sources:
