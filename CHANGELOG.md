@@ -4,6 +4,55 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] — 2026-06-13
+
+### Added
+
+- **Hybrid (semantic + lexical) knowledge search.** A knowledge source can opt
+  into `retrieval: { mode: "hybrid" }` to add on-device semantic vector ranking
+  on top of the lexical BM25 index, fused via Reciprocal Rank Fusion. Lexical
+  BM25 remains the default; hybrid degrades to BM25 when the embedding model is
+  unavailable. Set it with the new `--retrieval` flag on `smith knowledge add`
+  or the retrieval-mode dropdown in the GUI. Git sources are also acquired with
+  a blobless, sparse clone instead of a full checkout.
+- **Per-kind embedding models.** Hybrid sources now embed code chunks with a
+  code-specialized model and prose/JSON chunks with a text-specialized model,
+  chosen automatically by chunk kind — so semantic search over documentation is
+  no longer handicapped by a code model. Fully automatic; no new setting. Each
+  model's vectors stay in their own space and are never compared across models,
+  with queries searching each space separately before fusing.
+- **`smith knowledge info <agent>`** — index diagnostics reporting whether
+  hybrid retrieval is active, which model embedded each source, vector coverage,
+  and per-source retrieval modes. Supports `--json`.
+- **`knowledge.explain` MCP tool** (hybrid-only) — decomposes a query into its
+  lexical and per-model semantic arms with per-arm ranks, making the fused
+  ranking auditable.
+- **`knowledge.map` MCP tool** — a ranked structural map of code symbols across
+  a source's files (tree-sitter + PageRank), advertised when code is indexed.
+
+### Changed
+
+- The `knowledge.search` tool description now reflects whether hybrid or lexical
+  ranking is active. The CLI and GUI advise restarting the knowledge MCP server
+  after a retrieval-mode change (the server reads its index and model once at
+  spawn), and warn when a hybrid source has no auto-refresh (its embeddings can
+  drift) or when `--retrieval` is combined with `--lazy` (a no-op on lazy
+  sources). Lazy sources disable their inert retrieval/refresh fields in the GUI.
+- **Index schema upgrade.** The on-disk knowledge index gains per-chunk model
+  tagging; an index built by an earlier version is rebuilt once automatically on
+  the next `smith agent install`/`knowledge fetch` (no action required, no data
+  loss). Hybrid-prose sources download a text embedding model on first use.
+
+### Fixed
+
+- Reading a knowledge index built by an older version no longer crashes
+  `smith knowledge info` or the knowledge MCP server: a stale on-disk schema is
+  detected and degrades cleanly (lexical fallback / "not materialized") until
+  the next install/refresh rebuilds it.
+- The prose/JSON embedding model now loads correctly. It previously pointed at a
+  model repo without quantized ONNX weights, so it silently failed to load and
+  prose sources got no semantic vectors.
+
 ## [1.18.1] — 2026-06-09
 
 ### Changed
