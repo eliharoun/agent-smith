@@ -7,7 +7,7 @@ import { CHUNKER_VERSION } from "./index/chunker";
 import { type Embedder, embedderCache } from "./index/embedder";
 import { explainSearch, hybridSearch } from "./index/hybrid-search";
 import { indexDbPath } from "./index/index-paths";
-import { ALL_MODELS, roleForModelId } from "./index/model-policy";
+import { ALL_MODELS, MODEL_POLICY_VERSION, roleForModelId } from "./index/model-policy";
 import { REPOMAP_VERSION } from "./index/repomap/extract";
 import { rankFiles } from "./index/repomap/graph";
 import { renderMap } from "./index/repomap/render";
@@ -112,6 +112,7 @@ export async function buildServeContext(
         schemaVersion: SCHEMA_VERSION,
         embedders: [],
         chunkerVersion: CHUNKER_VERSION,
+        modelPolicyVersion: MODEL_POLICY_VERSION,
         repomapVersion: REPOMAP_VERSION,
       },
       { readonly: true },

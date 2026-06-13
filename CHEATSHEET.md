@@ -677,7 +677,7 @@ Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["k
 |---|---|
 | `off` | Source excluded from search TOC annotation; still readable via `knowledge.fetch`. |
 | `bm25` *(default)* | Lexical FTS5 index; TOC annotated `(searchable: bm25)`. |
-| `hybrid` | Lexical + semantic vector ranking (RRF fusion); degrades to `bm25` when embedding model unavailable. |
+| `hybrid` | Lexical + semantic vector ranking (RRF fusion); code and prose embedded by their own model (by chunk kind); degrades to `bm25` when embedding models unavailable. |
 | `external-mcp` | Declares an external MCP URL for search; local index still built. Requires `mcpUrl`. |
 
 See [guide/16 — `smith knowledge serve --stdio`](./guide/16-knowledge-compiler.md#smith-knowledge-serve---stdio).

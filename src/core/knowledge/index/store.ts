@@ -40,6 +40,11 @@ export interface StoreHeader {
    *  embedderId/embedderDim. */
   embedders: Array<{ id: string; dim: number }>;
   chunkerVersion: number;
+  /** Bumped when the model policy (which model embeds which kind) changes.
+   *  Like chunkerVersion, a mismatch broadly invalidates the index so the next
+   *  build fully re-derives every chunk under the new policy — an incremental
+   *  refresh alone would leave the affected partition stale/empty. */
+  modelPolicyVersion: number;
   repomapVersion: number;
 }
 export interface SearchRow {
@@ -185,6 +190,7 @@ export class KnowledgeStore {
   private reconcileHeader(): void {
     const storedSchema = this.read("schemaVersion");
     const storedChunker = this.read("chunkerVersion");
+    const storedPolicy = this.read("modelPolicyVersion");
     const storedRepomap = this.read("repomapVersion");
     // Parse the prior model set defensively: unparseable/missing => empty,
     // never throw (a throw bubbles to open()'s catch -> silent BM25 fallback,
@@ -203,6 +209,7 @@ export class KnowledgeStore {
     // Write running header FIRST (recursion-safe).
     this.write("schemaVersion", String(this.header.schemaVersion));
     this.write("chunkerVersion", String(this.header.chunkerVersion));
+    this.write("modelPolicyVersion", String(this.header.modelPolicyVersion));
     this.write("repomapVersion", String(this.header.repomapVersion));
     // Persist the running model set, but NEVER clobber a recorded non-empty set
     // with an empty (lexical-only this-session) one — "empty" means "no models
@@ -221,8 +228,13 @@ export class KnowledgeStore {
       this.ddlBase();
       return; // meta already holds new values; no re-reconcile.
     }
-    if (storedChunker && Number(storedChunker) !== this.header.chunkerVersion) {
-      // Chunk boundaries changed -> all chunks (and their embeddings) are stale.
+    const chunkerChanged = storedChunker && Number(storedChunker) !== this.header.chunkerVersion;
+    const policyChanged = storedPolicy && Number(storedPolicy) !== this.header.modelPolicyVersion;
+    if (chunkerChanged || policyChanged) {
+      // Chunk boundaries OR the model policy changed -> all chunks (and their
+      // embeddings) are stale. Broad clear so the next build fully re-derives;
+      // avoids a stale/empty semantic partition that an incremental refresh
+      // (changedPaths only) would never refill (§model-policy invalidation).
       this.db.exec("DELETE FROM chunks; DELETE FROM fts;");
     } else if (this.header.embedders.length > 0) {
       // Per-model clear: any previously-recorded model NOT in the running set
