@@ -32,6 +32,11 @@ import { useNotifications } from "@/hooks/useNotifications";
  * the `serve` process reads the index and loads the embedder once at spawn,
  * the AI client owns that process's lifecycle, and the GUI can't restart it.
  * This toast coexists with the saved/drift toast (distinct `dedupKey`).
+ *
+ * When the saved source is hybrid + non-lazy but has no auto-refresh (signalled
+ * via the `staleEmbeds` option), the helper ALSO fires a separate sticky `info`
+ * toast advising the user to set a refresh mode, since the embedded vectors are
+ * built once at install and will drift as the source changes upstream.
  */
 export interface SaveNotifyOptions {
   /**
@@ -41,6 +46,12 @@ export interface SaveNotifyOptions {
    * means no hybrid change — no restart toast.
    */
   hybridRestart?: { sourceId: string };
+  /**
+   * When set, the saved source uses hybrid retrieval but has no auto-refresh
+   * (refresh mode install/unset), so its embedded vectors will drift as the
+   * source changes upstream. Fires a sticky advisory to set a refresh mode.
+   */
+  staleEmbeds?: { sourceId: string };
 }
 
 export function useSaveSuccessNotification(
@@ -101,6 +112,19 @@ export function useSaveSuccessNotification(
           body: `Hybrid retrieval for '${sourceId}' takes effect after the knowledge MCP server restarts. Reconnect the '${agent}-knowledge' server in your AI client (e.g. Claude Code: /mcp → reconnect), or start a new session.`,
           durationMs: "sticky",
           dedupKey: `hybrid-restart:${agent}:${sourceId}`,
+        });
+      }
+      // Hybrid source with no auto-refresh: vectors are built once at install
+      // and drift. Advise setting a refresh mode. Sticky + own dedupKey so it
+      // coexists with the saved/drift and hybrid-restart toasts.
+      if (options?.staleEmbeds) {
+        const { sourceId } = options.staleEmbeds;
+        notify({
+          kind: "info",
+          title: "Embedded content may go stale",
+          body: `'${sourceId}' uses hybrid search but refreshes only at install, so its vectors will drift. Set the source's refresh mode to ttl or session (and grant refresh hooks with 'smith agent reconfigure ${agent}') to keep them current.`,
+          durationMs: "sticky",
+          dedupKey: `stale-embeds:${agent}:${sourceId}`,
         });
       }
     },
