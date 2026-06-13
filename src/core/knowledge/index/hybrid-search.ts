@@ -69,7 +69,7 @@ export async function explainSearch(
   let dense: SearchRow[] = [];
   if (embedder.id !== "none") {
     const [qv] = await embedder.embed([query]);
-    if (qv) dense = store.searchVector(qv, Math.max(k, 20));
+    if (qv) dense = store.searchVector(qv, Math.max(k, 20), embedder.id);
   }
   const lexRank = new Map<string, number>();
   lexical.forEach((r, i) => lexRank.set(r.chunkId, i + 1));
@@ -118,7 +118,7 @@ export async function hybridSearch(
   let dense: SearchRow[] = [];
   if (embedder.id !== "none") {
     const [qv] = await embedder.embed([query]);
-    if (qv) dense = store.searchVector(qv, Math.max(k, 20));
+    if (qv) dense = store.searchVector(qv, Math.max(k, 20), embedder.id);
   }
   const byId = new Map<string, SearchRow>();
   for (const r of [...lexical, ...dense]) byId.set(r.chunkId, r);

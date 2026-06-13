@@ -30,11 +30,15 @@ export interface ChunkRow {
   text: string;
   contentHash: string;
   vector?: Float32Array;
+  embedderId?: string;
+  embedderDim?: number;
 }
 export interface StoreHeader {
   schemaVersion: number;
-  embedderId: string;
-  embedderDim: number;
+  /** Models that should be present this build, by recorded id. Empty =>
+   *  lexical-only (NullEmbedder) session. Replaces the old scalar
+   *  embedderId/embedderDim. */
+  embedders: Array<{ id: string; dim: number }>;
   chunkerVersion: number;
   repomapVersion: number;
 }
@@ -46,6 +50,9 @@ export interface SearchRow {
   kind: ChunkKind;
   text: string;
   rank: number;
+  /** Raw cosine similarity for vector hits (for RRF floor gating). Unset on
+   *  lexical rows from searchLexical. */
+  sim?: number;
 }
 export interface TagRow {
   relPath: string;
@@ -94,6 +101,8 @@ interface RawChunkRow {
   kind: ChunkKind;
   text: string;
   embedding: Uint8Array | null;
+  embedderId: string | null;
+  embedderDim: number | null;
 }
 
 export class KnowledgeStore {
@@ -141,9 +150,11 @@ export class KnowledgeStore {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS chunks (
         id TEXT PRIMARY KEY, source_id TEXT, rel_path TEXT, start_line INTEGER,
-        end_line INTEGER, kind TEXT, text TEXT, content_hash TEXT, embedding BLOB
+        end_line INTEGER, kind TEXT, text TEXT, content_hash TEXT,
+        embedding BLOB, embedder_id TEXT, embedder_dim INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_chunks_relpath ON chunks(rel_path);
+      CREATE INDEX IF NOT EXISTS idx_chunks_embedder ON chunks(embedder_id);
       CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(text, content='chunks', content_rowid='rowid');
       CREATE TABLE IF NOT EXISTS tags (
         rel_path TEXT, content_hash TEXT, name TEXT, role TEXT, line INTEGER, signature TEXT
@@ -173,29 +184,35 @@ export class KnowledgeStore {
    *  never dropped, so a re-entry would see the NEW values and stop. */
   private reconcileHeader(): void {
     const storedSchema = this.read("schemaVersion");
-    const storedEmbId = this.read("embedderId");
-    const storedDim = this.read("embedderDim");
     const storedChunker = this.read("chunkerVersion");
     const storedRepomap = this.read("repomapVersion");
-
-    // Write the running header FIRST (prevents recursion on any re-entry).
-    this.write("schemaVersion", String(this.header.schemaVersion));
-    // Do NOT clobber a real, recorded embedderId with "none". A lexical-only
-    // build (NullEmbedder → id "none") must not erase the model identity that a
-    // prior hybrid build recorded, or storedEmbedderId() would report "none" and
-    // the serve process would stop loading the query embedder, making existing
-    // vectors unreachable. "none" means "no embedder THIS session", not "the
-    // index has no vectors".
-    if (this.header.embedderId !== "none") {
-      this.write("embedderId", this.header.embedderId);
-      this.write("embedderDim", String(this.header.embedderDim));
-    } else if (storedEmbId === undefined) {
-      // First-ever build with no embedder: record "none" so the header exists.
-      this.write("embedderId", "none");
-      this.write("embedderDim", String(this.header.embedderDim));
+    // Parse the prior model set defensively: unparseable/missing => empty,
+    // never throw (a throw bubbles to open()'s catch -> silent BM25 fallback,
+    // making the whole persistent index vanish from serve).
+    let storedModels: Array<{ id: string; dim: number }> = [];
+    try {
+      const raw = this.read("embedders");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) storedModels = parsed;
+      }
+    } catch {
+      storedModels = [];
     }
+
+    // Write running header FIRST (recursion-safe).
+    this.write("schemaVersion", String(this.header.schemaVersion));
     this.write("chunkerVersion", String(this.header.chunkerVersion));
     this.write("repomapVersion", String(this.header.repomapVersion));
+    // Persist the running model set, but NEVER clobber a recorded non-empty set
+    // with an empty (lexical-only this-session) one — "empty" means "no models
+    // loaded this session", not "the index has no vectors". Mirrors the old
+    // "none must not clobber a real id" guard, now per-set.
+    if (this.header.embedders.length > 0) {
+      this.write("embedders", JSON.stringify(this.header.embedders));
+    } else if (this.read("embedders") === undefined) {
+      this.write("embedders", JSON.stringify([]));
+    }
 
     if (storedSchema && Number(storedSchema) !== this.header.schemaVersion) {
       this.db.exec(
@@ -207,21 +224,21 @@ export class KnowledgeStore {
     if (storedChunker && Number(storedChunker) !== this.header.chunkerVersion) {
       // Chunk boundaries changed -> all chunks (and their embeddings) are stale.
       this.db.exec("DELETE FROM chunks; DELETE FROM fts;");
-    } else {
-      // Embedder change clears the embedding column (re-embed on next build) —
-      // but ONLY between two real, different ids. 'none' = "unavailable this
-      // session"; never clear vectors on it.
-      const idChanged =
-        storedEmbId &&
-        storedEmbId !== "none" &&
-        this.header.embedderId !== "none" &&
-        storedEmbId !== this.header.embedderId;
-      const dimChanged = storedDim && Number(storedDim) !== this.header.embedderDim;
-      if (
-        idChanged ||
-        (dimChanged && this.header.embedderId !== "none" && storedEmbId !== "none")
-      ) {
-        this.db.exec("UPDATE chunks SET embedding = NULL");
+    } else if (this.header.embedders.length > 0) {
+      // Per-model clear: any previously-recorded model NOT in the running set
+      // (its kind's model changed/removed) has its vectors cleared so the next
+      // build re-embeds with the new model. Code-model change must not touch
+      // prose vectors, and vice versa. Guarded by length>0 so a lexical-only
+      // session never clears anything.
+      const runningIds = new Set(this.header.embedders.map((m) => m.id));
+      for (const sm of storedModels) {
+        if (sm.id && sm.id !== "none" && !runningIds.has(sm.id)) {
+          this.db
+            .query(
+              "UPDATE chunks SET embedding = NULL, embedder_id = NULL, embedder_dim = NULL WHERE embedder_id = ?",
+            )
+            .run(sm.id);
+        }
       }
     }
     if (storedRepomap && Number(storedRepomap) !== this.header.repomapVersion) {
@@ -231,7 +248,7 @@ export class KnowledgeStore {
 
   upsertChunks(rows: ChunkRow[]): void {
     const insChunk = this.db.query(
-      "INSERT INTO chunks(id,source_id,rel_path,start_line,end_line,kind,text,content_hash,embedding) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET text=excluded.text, content_hash=excluded.content_hash, embedding=excluded.embedding",
+      "INSERT INTO chunks(id,source_id,rel_path,start_line,end_line,kind,text,content_hash,embedding,embedder_id,embedder_dim) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET text=excluded.text, content_hash=excluded.content_hash, embedding=excluded.embedding, embedder_id=excluded.embedder_id, embedder_dim=excluded.embedder_dim",
     );
     // FTS5 external-content tables do NOT auto-sync on UPDATE. On the re-upsert
     // (incremental reindex) path the rowid is reused but the OLD posting would
@@ -257,6 +274,8 @@ export class KnowledgeStore {
           r.text,
           r.contentHash,
           r.vector ? toBlob(r.vector) : null,
+          r.vector ? (r.embedderId ?? null) : null,
+          r.vector ? (r.embedderDim ?? null) : null,
         );
         insFts.run(r.id);
       }
@@ -320,23 +339,25 @@ export class KnowledgeStore {
       .all(match, k) as SearchRow[];
   }
 
-  /** In-JS cosine KNN over the embedding BLOB column. Returns the top-k by
-   *  ascending distance (1 - cosine), so smaller `rank` is nearer — matching
-   *  the lexical `bm25` convention. Rows whose stored vector dim != the query
-   *  dim are skipped (stale-dim guard). */
-  searchVector(query: Float32Array, k: number): SearchRow[] {
+  /** In-JS cosine KNN over ONE model's vectors. `embedderId` partitions the
+   *  scan so a query in model A's space is never compared against model B's
+   *  vectors (incompatible spaces, even at equal dimension). Returns top-k by
+   *  ascending distance; `sim` is the raw cosine similarity (for RRF floor
+   *  gating). The dim check remains as a cheap backstop, but the embedder_id
+   *  filter is the real cross-model guard. */
+  searchVector(query: Float32Array, k: number, embedderId: string): SearchRow[] {
     const rows = this.db
       .query(
-        "SELECT id AS chunkId, rel_path AS relPath, start_line AS startLine, end_line AS endLine, kind AS kind, text AS text, embedding FROM chunks WHERE embedding IS NOT NULL",
+        "SELECT id AS chunkId, rel_path AS relPath, start_line AS startLine, end_line AS endLine, kind AS kind, text AS text, embedding FROM chunks WHERE embedding IS NOT NULL AND embedder_id = ?",
       )
-      .all() as RawChunkRow[];
+      .all(embedderId) as RawChunkRow[];
     const qNorm = norm(query);
     if (qNorm === 0) return [];
     const scored: SearchRow[] = [];
     for (const row of rows) {
       if (!row.embedding) continue;
       const vec = fromBlob(row.embedding);
-      if (vec.length !== query.length) continue; // stale-dim guard
+      if (vec.length !== query.length) continue; // backstop; embedder_id filter is the real guard
       const sim = cosine(query, vec, qNorm);
       scored.push({
         chunkId: row.chunkId,
@@ -346,6 +367,7 @@ export class KnowledgeStore {
         kind: row.kind,
         text: row.text,
         rank: 1 - sim, // distance: smaller is nearer
+        sim,
       });
     }
     scored.sort((a, b) => a.rank - b.rank);
@@ -364,6 +386,12 @@ export class KnowledgeStore {
       .get(relPath) as { x: number } | undefined;
     return !!r;
   }
+  hasVectorFor(relPath: string, embedderId: string): boolean {
+    const r = this.db
+      .query("SELECT 1 AS x FROM chunks WHERE rel_path=? AND embedding IS NOT NULL AND embedder_id=? LIMIT 1")
+      .get(relPath, embedderId) as { x: number } | undefined;
+    return !!r;
+  }
   allRelPaths(): string[] {
     return (
       this.db.query("SELECT DISTINCT rel_path AS r FROM chunks").all() as { r: string }[]
@@ -372,15 +400,21 @@ export class KnowledgeStore {
   hasCode(): boolean {
     return !!this.db.query("SELECT 1 AS x FROM tags LIMIT 1").get();
   }
-  /** The embedder id recorded in the index header (meta table), or null if
-   *  unset. "none" means the index was built lexical-only (no vectors). Used by
-   *  the serve process to decide whether to load a real query embedder. Works
-   *  in readonly mode — a plain SELECT, no migrate. */
+  /** Distinct models over LIVE vectors (embedding present). Drives serve's
+   *  model load + hybridActive. A vector-cleared row's stale embedder_id is
+   *  excluded by the `embedding IS NOT NULL` filter. */
+  storedEmbedderIds(): Array<{ id: string; dim: number }> {
+    return this.db
+      .query(
+        "SELECT DISTINCT embedder_id AS id, embedder_dim AS dim FROM chunks WHERE embedding IS NOT NULL AND embedder_id IS NOT NULL",
+      )
+      .all() as Array<{ id: string; dim: number }>;
+  }
+
+  /** @deprecated single-model shim; prefer storedEmbedderIds(). Returns the
+   *  first live model id, or "none" when lexical-only. */
   storedEmbedderId(): string | null {
-    const r = this.db.query("SELECT value FROM meta WHERE key='embedderId'").get() as
-      | { value: string }
-      | undefined;
-    return r?.value ?? null;
+    return this.storedEmbedderIds()[0]?.id ?? "none";
   }
   /** Aggregate index health for diagnostics (read-only; safe in readonly mode).
    *  Vector count uses `embedding IS NOT NULL`; taggedPaths counts distinct

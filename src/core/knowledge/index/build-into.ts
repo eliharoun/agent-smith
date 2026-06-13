@@ -3,6 +3,7 @@ import { CHUNKER_VERSION } from "./chunker";
 import { loadEmbedder } from "./embedder";
 import { indexDbPath } from "./index-paths";
 import { REPOMAP_VERSION } from "./repomap/extract";
+import { SCHEMA_VERSION } from "./schema-version";
 import { KnowledgeStore } from "./store";
 
 /** Build the hybrid index for an agent's knowledge dir. Runs in the install/
@@ -30,9 +31,13 @@ export async function buildIndexInto(
     const embedder =
       hybridSourceIds.size > 0 ? await loadEmbedder({}) : await loadEmbedder({ forceNull: true });
     const store = await KnowledgeStore.open(indexDbPath(knowledgeDir), {
-      schemaVersion: 1,
-      embedderId: embedder.id,
-      embedderDim: embedder.dim === 0 ? 1 : embedder.dim, // 0 -> 1 placeholder for the no-vector (NullEmbedder) case
+      schemaVersion: SCHEMA_VERSION,
+      // Minimal single-model header for now (Task 1.5 wires per-kind routing).
+      // Empty set == lexical-only (NullEmbedder, id "none").
+      embedders:
+        embedder.id === "none"
+          ? []
+          : [{ id: embedder.id, dim: embedder.dim === 0 ? 1 : embedder.dim }],
       chunkerVersion: CHUNKER_VERSION,
       repomapVersion: REPOMAP_VERSION,
     });
