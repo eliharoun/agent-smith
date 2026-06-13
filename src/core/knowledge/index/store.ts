@@ -135,6 +135,19 @@ export class KnowledgeStore {
       if (opts.readonly) {
         if (!existsSync(dbPath)) return null;
         const db = new Database(dbPath, { readonly: true });
+        // Readonly opens skip migrate(), so a stale on-disk schema (e.g. built
+        // before a column was added) would make column-specific queries throw.
+        // The `meta` table exists in every schema version, so read the stored
+        // schemaVersion and refuse to use a mismatched index — callers then
+        // degrade cleanly (serve -> in-memory BM25; info -> not materialized)
+        // until the next writable open rebuilds it.
+        const row = db
+          .query("SELECT value FROM meta WHERE key='schemaVersion'")
+          .get() as { value: string } | undefined;
+        if (!row || Number(row.value) !== header.schemaVersion) {
+          db.close();
+          return null;
+        }
         return new KnowledgeStore(db, header, true);
       }
       mkdirSync(dirname(dbPath), { recursive: true });

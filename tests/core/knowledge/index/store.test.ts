@@ -498,6 +498,51 @@ describe("KnowledgeStore", () => {
     s.close();
   });
 
+  test("readonly open of a stale-schema DB returns null (no column-mismatch crash)", async () => {
+    const { Database } = await import("bun:sqlite");
+    const dbp = join(dir, "stale.db");
+    // Hand-build an OLD schema-1 chunks table WITHOUT embedder_id/embedder_dim.
+    const raw = new Database(dbp, { create: true });
+    raw.exec("PRAGMA journal_mode = WAL");
+    raw.exec(
+      "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);" +
+        "CREATE TABLE chunks (id TEXT PRIMARY KEY, source_id TEXT, rel_path TEXT, start_line INTEGER, end_line INTEGER, kind TEXT, text TEXT, content_hash TEXT, embedding BLOB);" +
+        "CREATE VIRTUAL TABLE fts USING fts5(text, content=chunks, content_rowid=rowid);" +
+        "CREATE TABLE tags (rel_path TEXT, content_hash TEXT, name TEXT, role TEXT, line INTEGER, signature TEXT);",
+    );
+    raw.query("INSERT INTO meta(key,value) VALUES(?,?)").run("schemaVersion", "1");
+    raw.close();
+    // Running header is SCHEMA_VERSION (2). Readonly open must return null, not a
+    // store whose stats()/storedEmbedderIds() would throw on the missing column.
+    const store = await KnowledgeStore.open(
+      dbp,
+      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      { readonly: true },
+    );
+    expect(store).toBeNull();
+  });
+
+  test("readonly open of a current-schema DB still succeeds", async () => {
+    const dbp = join(dir, "ok.db");
+    // Create a current-schema DB via a normal (writable) open, then reopen readonly.
+    const w = await KnowledgeStore.open(dbp, {
+      schemaVersion: 2,
+      embedders: [],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    });
+    if (!w) return;
+    w.close();
+    const ro = await KnowledgeStore.open(
+      dbp,
+      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      { readonly: true },
+    );
+    expect(ro).not.toBeNull();
+    ro?.close();
+  });
+
   test("an unchanged model-policy-version preserves chunks", async () => {
     const dbp = join(dir, "k.db");
     const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
