@@ -469,6 +469,13 @@ describe("runDaemon — top-level error handlers (DAEMON-1, DAEMON-8)", () => {
       return undefined as never;
     };
 
+    // Snapshot the pre-existing listeners so we can pick out the one THIS
+    // daemon registers, rather than assuming it lands at [length-1]. Other
+    // daemon tests in the same process may have registered (and not yet fully
+    // removed) handlers, so positional indexing is order-dependent and flakes
+    // on CI; a set-difference is robust regardless of execution order.
+    const beforeUncaught = new Set(process.listeners("uncaughtException"));
+
     const handle = await runDaemon({
       loadRegistry: async () => fakeRegistry([fakeSource()]),
       loadAllBundles: async () => ({ bundles: [], failures: [] }),
@@ -489,9 +496,10 @@ describe("runDaemon — top-level error handlers (DAEMON-1, DAEMON-8)", () => {
       exit: fakeExit,
     });
 
-    // Snapshot listeners we just registered.
-    const uncaughtListeners = process.listeners("uncaughtException");
-    const ourHandler = uncaughtListeners[uncaughtListeners.length - 1] as (err: Error) => void;
+    // The handler THIS daemon just added (set-difference, not [length-1]).
+    const ourHandler = process
+      .listeners("uncaughtException")
+      .find((l) => !beforeUncaught.has(l)) as (err: Error) => void;
 
     // Invoke as if Node had caught a thrown error in async code.
     ourHandler(new Error("boom: test uncaught"));
@@ -517,6 +525,11 @@ describe("runDaemon — top-level error handlers (DAEMON-1, DAEMON-8)", () => {
     let watcherClosed = false;
     let exitCalled = false;
 
+    // Set-difference (not [length-1]) to find THIS daemon's handler — robust
+    // against handlers left registered by other daemon tests in the same
+    // process, which made positional indexing order-dependent and flaky on CI.
+    const beforeUnhandled = new Set(process.listeners("unhandledRejection"));
+
     const handle = await runDaemon({
       loadRegistry: async () => fakeRegistry([fakeSource()]),
       loadAllBundles: async () => ({ bundles: [], failures: [] }),
@@ -539,10 +552,9 @@ describe("runDaemon — top-level error handlers (DAEMON-1, DAEMON-8)", () => {
       },
     });
 
-    const unhandledListeners = process.listeners("unhandledRejection");
-    const ourHandler = unhandledListeners[unhandledListeners.length - 1] as (
-      reason: unknown,
-    ) => void;
+    const ourHandler = process
+      .listeners("unhandledRejection")
+      .find((l) => !beforeUnhandled.has(l)) as (reason: unknown) => void;
 
     ourHandler(new Error("kaboom: test rejection"));
     await new Promise((resolve) => setTimeout(resolve, 20));

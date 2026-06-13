@@ -44,6 +44,13 @@ beforeEach(async () => {
   errSpy = spyOn(console, "error").mockImplementation(() => {});
 });
 afterEach(async () => {
+  // Restore the console spies so each test starts with fresh mock.calls.
+  // Without this, spyOn accumulates calls across the whole file lifetime, so
+  // tests that index into logSpy.mock.calls (e.g. findIndex for a skill name)
+  // see prior tests' output — making their result depend on execution order,
+  // which differs between environments (green locally, red on the CI runner).
+  logSpy.mockRestore();
+  errSpy.mockRestore();
   await rm(dir, { recursive: true, force: true });
 });
 
