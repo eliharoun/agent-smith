@@ -73,3 +73,66 @@ describe("knowledgeAdd --lazy", () => {
     expect(logs.join("\n")).toMatch(/description.*lazy|lazy.*description/i);
   });
 });
+
+describe("knowledgeAdd --lazy + --retrieval", () => {
+  async function captureLogs(opts: Parameters<typeof knowledgeAdd>[0]): Promise<string> {
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    try {
+      await knowledgeAdd(opts);
+    } finally {
+      console.log = orig;
+    }
+    return logs.join("\n");
+  }
+
+  it("warns that --retrieval is ignored when combined with --lazy", async () => {
+    const out = await captureLogs({
+      bundleDir,
+      type: "webpage",
+      pathOrUrl: "https://wiki.example/x",
+      lazy: true,
+      retrieval: "hybrid",
+      description: "Platform architecture wiki. Use when answering deployment questions.",
+      installAfter: false,
+    });
+    expect(out).toMatch(/--retrieval hybrid is ignored on lazy sources/);
+  });
+
+  it("does NOT warn for --retrieval off combined with --lazy", async () => {
+    const out = await captureLogs({
+      bundleDir,
+      type: "webpage",
+      pathOrUrl: "https://wiki.example/x",
+      lazy: true,
+      retrieval: "off",
+      description: "Platform architecture wiki. Use when answering deployment questions.",
+      installAfter: false,
+    });
+    expect(out).not.toMatch(/ignored on lazy sources/);
+  });
+
+  it("does NOT warn for --lazy alone (no --retrieval)", async () => {
+    const out = await captureLogs({
+      bundleDir,
+      type: "webpage",
+      pathOrUrl: "https://wiki.example/x",
+      lazy: true,
+      description: "Platform architecture wiki. Use when answering deployment questions.",
+      installAfter: false,
+    });
+    expect(out).not.toMatch(/ignored on lazy sources/);
+  });
+
+  it("does NOT warn for --retrieval without --lazy", async () => {
+    const out = await captureLogs({
+      bundleDir,
+      type: "file",
+      pathOrUrl: "./README.md",
+      retrieval: "hybrid",
+      installAfter: false,
+    });
+    expect(out).not.toMatch(/ignored on lazy sources/);
+  });
+});

@@ -821,6 +821,58 @@ describe("EditKnowledgeSourceModal", () => {
     ).toBe(true);
   });
 
+  it("flipping lazy ON disables retrieval-mode and refresh-mode inputs", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    expect((screen.getByLabelText(/^\/\/ retrieval mode$/i) as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByLabelText(/^\/\/ refresh mode$/i) as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it("flipping lazy ON re-enables retrieval-mode and refresh-mode when flipped OFF", () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    const toggle = screen.getByRole("switch", { name: /lazy fetch/i });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    expect((screen.getByLabelText(/^\/\/ retrieval mode$/i) as HTMLSelectElement).disabled).toBe(
+      false,
+    );
+    expect((screen.getByLabelText(/^\/\/ refresh mode$/i) as HTMLSelectElement).disabled).toBe(
+      false,
+    );
+  });
+
   it("flipping lazy ON shows the green hint paragraph", () => {
     globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
     const src: KnowledgeSource = {
@@ -946,6 +998,88 @@ describe("EditKnowledgeSourceModal", () => {
     expect("materialize" in written).toBe(false);
     expect("extractor" in written).toBe(false);
     expect("inlineBudgetTokens" in written).toBe(false);
+  });
+
+  it("save with lazy:true writes NEITHER retrieval NOR refresh even if set before toggling", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // Set a non-default retrieval mode (hybrid) and a refresh mode (ttl + value)
+    // BEFORE flipping lazy on. These must be dropped from the saved config.
+    fireEvent.change(screen.getByLabelText(/^\/\/ retrieval mode$/i), {
+      target: { value: "hybrid" },
+    });
+    fireEvent.change(screen.getByLabelText(/^\/\/ refresh mode$/i), { target: { value: "ttl" } });
+    fireEvent.change(screen.getByLabelText(/^\/\/ refresh ttl/i), { target: { value: "30m" } });
+    // Now flip lazy ON and save.
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    )!;
+    const body = JSON.parse(put.init!.body as string);
+    const written = body.knowledge.sources[0];
+    expect(written.lazy).toBe(true);
+    expect("retrieval" in written).toBe(false);
+    expect("refresh" in written).toBe(false);
+  });
+
+  it("lazy ON makes a source saveable even with a malformed retrieval.mcpUrl typed before toggling", async () => {
+    globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+    const src: KnowledgeSource = {
+      id: "docs",
+      type: "url",
+      url: "https://example.com/x",
+      delivery: "auto",
+    };
+    wrap(
+      <EditKnowledgeSourceModal
+        agent="a1"
+        existingSource={src}
+        knowledgeBlock={{ sources: [src] }}
+        onClose={() => {}}
+      />,
+    );
+    // external-mcp + a malformed mcpUrl would normally block save (format error)…
+    fireEvent.change(screen.getByLabelText(/^\/\/ retrieval mode$/i), {
+      target: { value: "external-mcp" },
+    });
+    fireEvent.change(screen.getByLabelText(/^\/\/ retrieval\.mcpUrl$/i), {
+      target: { value: "not-a-url" },
+    });
+    // …but flipping lazy ON drops retrieval entirely, so the form must be saveable.
+    fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+    const saveBtn = screen.getByRole("button", { name: /^save$/i });
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(
+        calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+      ).toBeDefined();
+    });
+    const put = calls.find(
+      (c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT",
+    )!;
+    const written = JSON.parse(put.init!.body as string).knowledge.sources[0];
+    expect(written.lazy).toBe(true);
+    expect("retrieval" in written).toBe(false);
   });
 
   it("save with lazy:false omits the lazy key entirely", async () => {
