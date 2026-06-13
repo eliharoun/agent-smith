@@ -206,7 +206,7 @@ const knowledgeCmd = program
     wrap("knowledge", async () => {
       throw new SmithError({
         code: "usage-error",
-        message: "requires a subcommand: list, fetch, add, validate, wire, or unwire",
+        message: "requires a subcommand: list, info, fetch, add, validate, wire, or unwire",
         suggestedCommand: "smith knowledge list <agent>",
       });
     }),

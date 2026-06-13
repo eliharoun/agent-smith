@@ -1462,6 +1462,17 @@ gate the BM25 index at runtime. Runtime gating per source is forward work.
 
 ---
 
+## Inspecting the index
+
+Run `smith knowledge info <agent>` to confirm whether hybrid retrieval is
+actually built and active (vs BM25-only), see the embedder id and vector
+coverage, and check each source's retrieval mode. It reads the **on-disk**
+index, so it reports what a fresh server spawn would serve — a server that's
+already running may differ until it restarts (see the restart note above). Pass
+`--json` for scripting.
+
+---
+
 ## Troubleshooting
 
 When a session-mode source doesn't refresh, or a hook silently fails to

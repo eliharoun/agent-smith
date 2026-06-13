@@ -62,6 +62,7 @@ duplication and surfaces only in tests, not user-visible output.
 | [`knowledge migrate-codex`](#smith-knowledge-migrate-codex) | Take ownership of a pre-existing `~/.codex/hooks.json` (upgrade helper) | [04](./04-knowledge.md) |
 | [`knowledge refresh-session`](#smith-knowledge-refresh-session) | Refresh session-mode sources for installed agents (soft-fail; for hook use) | [04](./04-knowledge.md) |
 | [`knowledge list`](#smith-knowledge-list-agent) | Show installed knowledge for an agent (from the manifest) | [04](./04-knowledge.md) |
+| [`knowledge info`](#smith-knowledge-info-agent) | Show an agent's knowledge index diagnostics (hybrid status, embedder, vector coverage) | [04](./04-knowledge.md) |
 | [`knowledge remove`](#smith-knowledge-remove-agent-source-id) | Remove a knowledge source from an agent's bundle | [04](./04-knowledge.md) |
 | [`knowledge route`](#smith-knowledge-route-agent) | Run the MCP picker against existing URL sources to set `via:` in bulk | [04](./04-knowledge.md) |
 | [`knowledge serve`](#smith-knowledge-serve-name) | Serve an agent's knowledge over MCP (lexical/hybrid search + fetch + code map, stdio) | [16](./16-knowledge-compiler.md) |
@@ -1908,6 +1909,53 @@ Source: `src/cli/commands/knowledge/list.ts`.
 
 ```bash
 $ smith knowledge list my-agent
+```
+
+**See also:** [Knowledge](./04-knowledge.md).
+
+---
+
+### `smith knowledge info <agent>`
+
+**Synopsis:** `smith knowledge info [--json] <agent>`
+
+**Description:** Read-only diagnostics for an agent's on-disk knowledge
+index — it answers "is hybrid retrieval actually active?" Prints whether
+retrieval is **HYBRID** (semantic + lexical) or BM25-only, the embedder
+id, total chunks, vector count and coverage percentage, code-mapped path
+count, and a per-source list (each with its retrieval mode and vector
+count; lazy webpage sources show as "not indexed (runtime fetch)"). The
+hybrid-active determination matches the serve process exactly: the index
+must be present **and** built with a real embedder. Because it reads the
+on-disk index, it reports what a **fresh** knowledge-server spawn would
+serve — a server that's already running only reflects this after a
+restart (see the restart note in [04 — Retrieval mode](./04-knowledge.md#retrieval-mode)).
+
+Source: `src/cli/commands/knowledge/info.ts`.
+
+**Arguments:**
+
+- `<agent>` — agent name.
+
+**Flags:**
+
+- `--json` — emit machine-readable JSON instead of human output.
+
+**Examples:**
+
+```bash
+$ smith knowledge info my-agent
+Knowledge index for my-agent:
+  retrieval: HYBRID ✓ active (semantic + lexical)
+  embedder: jinaai/jina-embeddings-v2-base-code@1
+  chunks: 2245 • vectors: 1920 (86%) • code-mapped paths: 305
+
+  sources:
+    f2-...-tests  (git, off)  0/54 vectors
+    ...
+
+  note: a running knowledge MCP server reflects this only after a restart
+        (Claude Code: /mcp → reconnect, or start a new session)
 ```
 
 **See also:** [Knowledge](./04-knowledge.md).

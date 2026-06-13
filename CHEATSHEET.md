@@ -593,6 +593,20 @@ Print materialized knowledge for one agent, or — if the agent declares sources
 **Notes:**
 - Exits `0` for declared-but-unmaterialized agents (with the install hint). Only exits `1` when the agent itself isn't registered.
 
+#### `smith knowledge info <agent>`
+
+Read-only index diagnostics — is hybrid retrieval active (vs BM25-only)? Shows the embedder, total chunks, vector count + coverage %, code-mapped path count, and per-source retrieval modes (lazy webpage sources show as "not indexed (runtime fetch)").
+
+**Synopsis:** `smith knowledge info [--json] <agent>`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--json` | bool | `false` | Emit machine-readable JSON instead of human output. |
+
+**Notes:**
+- Reads the on-disk index, so it reports what a fresh knowledge-server spawn would serve — restart a running server to pick up changes.
+
 #### `smith knowledge fetch <agent>`
 
 Re-acquire `<agent>`'s knowledge sources and re-render its prompts. With `--source <id>`, surgically refreshes only that source — other sources' caches and content are untouched. After every successful refresh, writes `~/.cache/agent-smith/agents/<agent>/sources/<id>.meta.json` so the GUI's refresh-history view has data.
