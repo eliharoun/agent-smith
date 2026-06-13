@@ -5,7 +5,7 @@ import { keyForAgent } from "../../io/mcp-wiring";
 import { Bm25Index } from "./bm25";
 import { CHUNKER_VERSION } from "./index/chunker";
 import { type Embedder, loadEmbedder, NullEmbedder } from "./index/embedder";
-import { hybridSearch } from "./index/hybrid-search";
+import { explainSearch, hybridSearch } from "./index/hybrid-search";
 import { indexDbPath } from "./index/index-paths";
 import { REPOMAP_VERSION } from "./index/repomap/extract";
 import { rankFiles } from "./index/repomap/graph";
@@ -212,6 +212,21 @@ export async function handleRpc(
         },
       });
     }
+    if (hybridActive) {
+      tools.push({
+        name: "knowledge.explain",
+        description:
+          "Debug hybrid retrieval: for a query, returns the lexical (BM25) arm's ranked hits, the semantic (vector) arm's ranked hits, and the RRF-fused result with each item's per-arm rank and fused score. Use to see which results came from semantic vs lexical matching.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            k: { type: "integer", minimum: 1, maximum: 20 },
+          },
+          required: ["query"],
+        },
+      });
+    }
     return { jsonrpc: "2.0", id, result: { tools } };
   }
 
@@ -247,6 +262,9 @@ export async function handleRpc(
       const map = renderMap(rankFiles(tags, focus !== undefined ? { focus } : {}), mapTokens);
       return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: map }] } };
     }
+    if (params.name === "knowledge.explain") {
+      return handleExplain(id, params.arguments ?? {}, ctx);
+    }
     return {
       jsonrpc: "2.0",
       id,
@@ -276,6 +294,35 @@ async function handleSearch(
     jsonrpc: "2.0",
     id,
     result: { content: [{ type: "text", text: JSON.stringify(hits, null, 2) }] },
+  };
+}
+
+async function handleExplain(
+  id: number | string | null,
+  args: Record<string, unknown>,
+  ctx: ServeContext,
+): Promise<JsonRpcResponse> {
+  // Explain requires the persistent store AND a real query embedder — same gate
+  // as the knowledge.explain advertisement in tools/list. Without a real
+  // embedder there is no semantic arm to decompose.
+  if (!ctx.store || ctx.embedder.id === "none") {
+    return {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32601,
+        message: "knowledge.explain unavailable (hybrid retrieval is not active)",
+      },
+    };
+  }
+  const query = typeof args.query === "string" ? args.query : "";
+  const rawK = typeof args.k === "number" ? args.k : Number(args.k ?? 5);
+  const k = Math.min(20, Math.max(1, Number.isFinite(rawK) ? rawK : 5));
+  const explanation = await explainSearch(ctx.store, ctx.embedder, query, k);
+  return {
+    jsonrpc: "2.0",
+    id,
+    result: { content: [{ type: "text", text: JSON.stringify(explanation, null, 2) }] },
   };
 }
 

@@ -58,6 +58,18 @@ export interface TagRow {
 export interface OpenOpts {
   readonly?: boolean;
 }
+export interface IndexStats {
+  /** The embedder id recorded in meta ("none" => lexical-only). */
+  embedderId: string | null;
+  /** Total chunk rows. */
+  chunks: number;
+  /** Chunks with a non-null embedding BLOB. */
+  vectors: number;
+  /** Distinct rel_paths present in the tags table (code-mapped files). */
+  taggedPaths: number;
+  /** Per-source chunk/vector counts, sorted by sourceId ascending. */
+  perSource: Array<{ sourceId: string; chunks: number; vectors: number }>;
+}
 
 /** Minimal structural type for the slice of `bun:sqlite`'s Database we use, so
  *  this module type-checks without a hard top-level import of `bun:sqlite`. */
@@ -369,6 +381,34 @@ export class KnowledgeStore {
       | { value: string }
       | undefined;
     return r?.value ?? null;
+  }
+  /** Aggregate index health for diagnostics (read-only; safe in readonly mode).
+   *  Vector count uses `embedding IS NOT NULL`; taggedPaths counts distinct
+   *  rel_paths in `tags`. perSource is sorted by sourceId for deterministic
+   *  output. */
+  stats(): IndexStats {
+    const totals = this.db
+      .query(
+        "SELECT count(*) AS c, sum(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS v FROM chunks",
+      )
+      .get() as { c: number; v: number | null };
+    const tagged = this.db
+      .query("SELECT count(DISTINCT rel_path) AS c FROM tags")
+      .get() as { c: number };
+    const perSource = (
+      this.db
+        .query(
+          "SELECT source_id AS sourceId, count(*) AS chunks, sum(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS vectors FROM chunks GROUP BY source_id ORDER BY source_id ASC",
+        )
+        .all() as { sourceId: string; chunks: number; vectors: number | null }[]
+    ).map((r) => ({ sourceId: r.sourceId, chunks: r.chunks, vectors: r.vectors ?? 0 }));
+    return {
+      embedderId: this.storedEmbedderId(),
+      chunks: totals.c,
+      vectors: totals.v ?? 0,
+      taggedPaths: tagged.c,
+      perSource,
+    };
   }
   close(): void {
     this.db.close();

@@ -147,11 +147,12 @@ The command exits `2` only when the named bundle has no `knowledge` block or no 
 smith knowledge serve <name> --stdio
 ```
 
-Spawns a stdio MCP server backed by the per-agent search index built at install/refresh time. The server exposes up to three tools:
+Spawns a stdio MCP server backed by the per-agent search index built at install/refresh time. The server exposes up to four tools:
 
 - **`knowledge.search(query, k=5)`** — ranked hits from the persistent index (SQLite FTS5). Lexical BM25 by default; when a source has `retrieval: { mode: "hybrid" }` and the on-device embedding model is available, semantic vector ranking is fused in via Reciprocal Rank Fusion. Returns `rel_path` + `start_line`/`end_line` so the agent can fetch the exact span. Falls back to a legacy in-memory BM25 scan when no index exists (agent installed before this feature).
 - **`knowledge.fetch(path, start?, end?)`** — read a file under the agent's knowledge dir; range-bounded to 64KB per response to avoid blowing the context window on a single fetch. Path traversal is rejected.
 - **`knowledge.map(focus?, mapTokens?)`** — a ranked structural symbol map (functions, classes, call sites) across code knowledge sources, built with tree-sitter and PageRank. **Advertised only when the agent has indexed code sources**; when no code sources are indexed, this tool is not offered.
+- **`knowledge.explain(query, k=5)`** — a retrieval-audit decomposition of what `knowledge.search` fuses. Returns the lexical (BM25) arm's ranked hits, the semantic (vector) arm's ranked hits, and the RRF-fused result where each entry carries its `lexicalRank`, `vectorRank` (null if that arm didn't surface it), and `fusedScore` — so you can see whether a hit came from semantic or lexical matching and how Reciprocal Rank Fusion combined them. **Advertised only when hybrid retrieval is active** (the persistent index exists and was built with a real embedder); in lexical-only/BM25 mode there's no semantic arm to decompose, so the tool is not offered (and returns an error if force-called).
 
 Wire it into a bundle's `mcpServers` declaration so each platform spawns the server at session start. The key is **per-agent** — derived as `<agent>-knowledge` so multiple bundles wired into the same AI client coexist without clobbering each other:
 

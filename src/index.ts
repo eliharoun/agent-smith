@@ -206,7 +206,7 @@ const knowledgeCmd = program
     wrap("knowledge", async () => {
       throw new SmithError({
         code: "usage-error",
-        message: "requires a subcommand: list, fetch, add, validate, wire, or unwire",
+        message: "requires a subcommand: list, info, fetch, add, validate, wire, or unwire",
         suggestedCommand: "smith knowledge list <agent>",
       });
     }),
@@ -237,6 +237,33 @@ knowledgeCmd
             return bundle.config.knowledge?.sources ?? [];
           },
           readRefreshCache: (sourceId) => readRefreshCache(cacheRoot, agent, sourceId),
+        },
+        { json: opts.json ?? false },
+      );
+    }),
+  );
+
+knowledgeCmd
+  .command("info <agent>")
+  .description("Show <agent>'s knowledge index diagnostics (hybrid status, embedder, vector coverage)")
+  .option("--json", "Emit machine-readable JSON instead of human output")
+  .action(
+    wrap("knowledge info", async (agent: string, opts: { json?: boolean }) => {
+      const { knowledgeInfo } = await import("./cli/commands/knowledge/info");
+      const { defaultKnowledgePaths } = await import("./cli/install-paths");
+      const { canonicalRegistryPath, loadRegistry } = await import("./io/registry");
+      const { loadAllBundles } = await import("./cli/load-all");
+      return knowledgeInfo(
+        agent,
+        defaultKnowledgePaths(),
+        {
+          loadDeclaredSources: async (name) => {
+            const reg = await loadRegistry(canonicalRegistryPath());
+            const all = await loadAllBundles(reg);
+            const bundle = all.bundles.find((b) => b.config.name === name);
+            if (!bundle) return null;
+            return bundle.config.knowledge?.sources ?? [];
+          },
         },
         { json: opts.json ?? false },
       );

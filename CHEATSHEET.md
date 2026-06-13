@@ -593,6 +593,20 @@ Print materialized knowledge for one agent, or — if the agent declares sources
 **Notes:**
 - Exits `0` for declared-but-unmaterialized agents (with the install hint). Only exits `1` when the agent itself isn't registered.
 
+#### `smith knowledge info <agent>`
+
+Read-only index diagnostics — is hybrid retrieval active (vs BM25-only)? Shows the embedder, total chunks, vector count + coverage %, code-mapped path count, and per-source retrieval modes (lazy webpage sources show as "not indexed (runtime fetch)").
+
+**Synopsis:** `smith knowledge info [--json] <agent>`
+
+**Flags:**
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--json` | bool | `false` | Emit machine-readable JSON instead of human output. |
+
+**Notes:**
+- Reads the on-disk index, so it reports what a fresh knowledge-server spawn would serve — restart a running server to pick up changes.
+
 #### `smith knowledge fetch <agent>`
 
 Re-acquire `<agent>`'s knowledge sources and re-render its prompts. With `--source <id>`, surgically refreshes only that source — other sources' caches and content are untouched. After every successful refresh, writes `~/.cache/agent-smith/agents/<agent>/sources/<id>.meta.json` so the GUI's refresh-history view has data.
@@ -638,11 +652,12 @@ See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 #### `smith knowledge serve <name>`
 
-Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Three tools exposed:
+Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Up to four tools exposed:
 
 - `knowledge.search(query, k=5)` — lexical BM25 by default; `retrieval: hybrid` sources also fuse semantic vector ranking when the on-device embedding model is available.
 - `knowledge.fetch(path, start?, end?)` — range-bounded file read.
 - `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map (tree-sitter + PageRank). **Capability-gated: advertised only when code sources are indexed.**
+- `knowledge.explain(query, k=5)` — retrieval-audit decomposition: lexical, vector, and RRF-fused hits with per-arm `lexicalRank`/`vectorRank`/`fusedScore` provenance. **Gated to hybrid mode** (no semantic arm to decompose otherwise).
 
 Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
   - **Changing `retrieval.mode` (e.g. hybrid)?** Restart the knowledge MCP server to apply — reconnect `<agent>-knowledge` in your client (`/mcp` → reconnect) or start a new session. The server loads the index + embedder once at spawn.
