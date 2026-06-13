@@ -6,7 +6,7 @@ describe("buildCompileOptionsFromBundle", () => {
   it("populates sourceDeclarations from block.sources", () => {
     const block: KnowledgeBlock = {
       sources: [
-        { id: "wiki", type: "url", url: "https://example.com/x", delivery: "auto", lazy: true },
+        { id: "wiki", type: "webpage", url: "https://example.com/x", delivery: "auto", lazy: true },
         { id: "doc", type: "file", path: "./d.md", delivery: "file" },
       ],
       compile: { progressive: true, tocMaxLines: 200, emitAgentsMd: true },

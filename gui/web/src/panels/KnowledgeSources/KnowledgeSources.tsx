@@ -1,4 +1,4 @@
-import type { KnowledgeSource, Platform as PlatformId } from "gui-shared";
+import { NETWORK_KNOWLEDGE_TYPES, type KnowledgeSource, type Platform as PlatformId } from "gui-shared";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { agentsApi } from "@/api/agents";
@@ -19,6 +19,8 @@ import { EditKnowledgeSourceModal } from "./EditKnowledgeSourceModal";
 import { KnowledgeSourceRow } from "./KnowledgeSourceRow";
 import { McpWiringModal } from "./McpWiringModal";
 import { RefreshConsentBanner } from "./RefreshConsentBanner";
+
+const NETWORK_TYPES = new Set<string>(NETWORK_KNOWLEDGE_TYPES);
 
 /**
  * Per-agent MCP server key. Each bundle owns a server name derived from
@@ -221,7 +223,6 @@ export function KnowledgeSources({ agent }: Props) {
   // confusing — the bundled agent-smith companion (single `dir` source
   // delivered as `file`) hit this case and showed the banner forever
   // even though "refresh" was a no-op.
-  const NETWORK_TYPES = new Set(["url", "git", "confluence", "jira"]);
   const REFRESH_MODES = new Set(["session", "always"]);
   const needsConsent = sources.some(
     (j) =>

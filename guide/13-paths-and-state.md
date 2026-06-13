@@ -223,9 +223,9 @@ Two distinct sub-trees live here. Both honor `XDG_CACHE_HOME` and both survive `
 |---|---|---|---|
 | `${XDG_CACHE_HOME:-~/.cache}/agent-smith/opencode-schema-cache.json` | Cached upstream OpenCode config schema | 24 h | `smith doctor --no-cache` |
 | `${XDG_CACHE_HOME:-~/.cache}/agent-smith/locks/<safe>.lock` | Per-source refresh lock (prevents concurrent refresh of the same source) | none (held during refresh) | `rm` the file |
-| `${XDG_CACHE_HOME:-~/.cache}/agent-smith/agents/<name>/sources/<source-id>.meta.json` | Per-source refresh bookkeeping: `last_refreshed_at`, `etag`/`last_modified` (for `url` sources). Shared by the daemon TTL tick, `smith knowledge refresh-session`, and `smith knowledge fetch`. | none (refreshed in-place) | `rm` the file (or the whole `agents/<name>/` subtree) |
+| `${XDG_CACHE_HOME:-~/.cache}/agent-smith/agents/<name>/sources/<source-id>.meta.json` | Per-source refresh bookkeeping: `last_refreshed_at`, `etag`/`last_modified` (for `webpage` sources). Shared by the daemon TTL tick, `smith knowledge refresh-session`, and `smith knowledge fetch`. | none (refreshed in-place) | `rm` the file (or the whole `agents/<name>/` subtree) |
 
-Note: this is **not** the legacy per-agent fetch cache. The byte-cache that backs `url`/`git` materialization lives next to the knowledge content at `~/.config/agent-smith/knowledge/<name>/.cache/` (see [Per-agent knowledge directories](#per-agent-knowledge-directories) below). The `~/.cache/agent-smith/agents/.../sources/*.meta.json` files are bookkeeping only — they record *when* a source was last refreshed and the conditional-GET headers to send next time, not the response body.
+Note: this is **not** the legacy per-agent fetch cache. The byte-cache that backs `webpage`/`git` materialization lives next to the knowledge content at `~/.config/agent-smith/knowledge/<name>/.cache/` (see [Per-agent knowledge directories](#per-agent-knowledge-directories) below). The `~/.cache/agent-smith/agents/.../sources/*.meta.json` files are bookkeeping only — they record *when* a source was last refreshed and the conditional-GET headers to send next time, not the response body.
 
 Path resolution (`src/cli/commands/doctor.ts`):
 

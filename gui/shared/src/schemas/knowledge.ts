@@ -104,6 +104,9 @@ const GlobSrc = SourceBase.extend({
 // Kept as a single ZodObject (rather than a nested union) so the outer
 // `discriminatedUnion("type", …)` still works: zod 4 forbids two options
 // sharing the same discriminator value and rejects nested unions wholesale.
+//
+// "url" is DEPRECATED — new sources should use type: "webpage". Kept for
+// backward-compat parsing of existing bundles.
 const UrlSrc = SourceBase.extend({
   type: z.literal("url"),
   url: z.url(),
@@ -124,6 +127,33 @@ const UrlSrc = SourceBase.extend({
       }
     }
   });
+// Single-page fetch (replaces deprecated "url" type in new bundles).
+const WebpageSrc = SourceBase.extend({
+  type: z.literal("webpage"),
+  url: z.url(),
+  auth: z.enum(["atlassian", "none"]).optional(),
+  lazy: z.boolean().optional(),
+}).strict();
+// Multi-page web crawl / llms.txt / openapi discovery.
+const WebSrc = SourceBase.extend({
+  type: z.literal("web"),
+  url: z.url(),
+  mode: z.enum(["crawl", "llms-txt", "openapi"]),
+  maxPages: z.number().int().optional(),
+  depth: z.number().int().optional(),
+  sameOrigin: z.boolean().optional(),
+  include: z.array(z.string()).optional(),
+  exclude: z.array(z.string()).optional(),
+}).strict();
+// MCP-tool-backed knowledge source.
+const McpSrc = SourceBase.extend({
+  type: z.literal("mcp"),
+  server: z.string().min(1),
+  tool: z.string().min(1),
+  args: z.record(z.string(), z.unknown()).optional(),
+  preset: z.string().optional(),
+  allowWriteTool: z.boolean().optional(),
+}).strict();
 const GitSrc = SourceBase.extend({
   type: z.literal("git"),
   url: z.string().min(1),
@@ -155,6 +185,9 @@ export const KnowledgeSource = z.discriminatedUnion("type", [
   DirSrc,
   GlobSrc,
   UrlSrc,
+  WebpageSrc,
+  WebSrc,
+  McpSrc,
   GitSrc,
   NpmSrc,
   ConfluenceSrc,
@@ -162,15 +195,33 @@ export const KnowledgeSource = z.discriminatedUnion("type", [
 ]);
 export type KnowledgeSource = z.infer<typeof KnowledgeSource>;
 
+// ─── Network knowledge types ─────────────────────────────────────────────
+// Types that require network fetching at refresh/install time (as opposed to
+// local-only types: file, dir, glob, npm). Shared constant used by both the
+// GUI panels and tests to prevent drift.
+export const NETWORK_KNOWLEDGE_TYPES = [
+  "url",
+  "webpage",
+  "web",
+  "git",
+  "confluence",
+  "jira",
+  "mcp",
+] as const;
+export type NetworkKnowledgeType = (typeof NETWORK_KNOWLEDGE_TYPES)[number];
+
 export const KnowledgeSourceType = z.enum([
   "file",
   "dir",
   "glob",
-  "url",
+  "webpage",
+  "web",
   "git",
   "npm",
   "confluence",
   "jira",
+  "mcp",
+  "url", // deprecated — kept for backward-compat parsing
 ]);
 export type KnowledgeSourceType = z.infer<typeof KnowledgeSourceType>;
 

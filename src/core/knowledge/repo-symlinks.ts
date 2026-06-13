@@ -133,7 +133,7 @@ export async function sweepStaleRepoSymlinks(
  *
  * Cache-key derivation is the caller's responsibility:
  *   currentGitKeys = sources.filter(s => s.type === "git").map(s => urlCacheKey(s.url))
- *   currentUrlKeys = sources.filter(s => s.type === "url").map(s => urlCacheKey(s.url))
+ *   currentUrlKeys = sources.filter(s => s.type === "webpage").map(s => urlCacheKey(s.url))
  *
  * Build the key sets from DECLARED sources, not from successfully-processed
  * ones — a transient clone failure should preserve the cache for next run.

@@ -7,7 +7,7 @@ const baseSource = (overrides: Partial<MaterializedSource>): MaterializedSource 
   return {
     id,
     scope: "agent",
-    type: "url",
+    type: "webpage",
     delivery: "file",
     files: [{ relPath: `sources/${id}/index.md`, bytes: 100, sha256: "a".repeat(64) }],
     tokensInline: 0,
@@ -22,7 +22,7 @@ describe("compile", () => {
       { progressive: true, tocMaxLines: 150, emitAgentsMd: false },
       { rootDir: "knowledge" },
     );
-    expect(result.tocStanza).toContain("- `runbook` [url] — On-call runbook → `sources/runbook/index.md`");
+    expect(result.tocStanza).toContain("- `runbook` [webpage] — On-call runbook → `sources/runbook/index.md`");
   });
 
   it("uses summary > description > id fallback", () => {
@@ -45,7 +45,7 @@ describe("compile", () => {
       { progressive: true, tocMaxLines: 150, emitAgentsMd: false },
       { rootDir: "knowledge" },
     );
-    expect(idOnly.tocStanza).toContain("- `c` [url]");
+    expect(idOnly.tocStanza).toContain("- `c` [webpage]");
   });
 
   it("omits sources with toc=false from the stanza but keeps them in the manifest", () => {
@@ -114,5 +114,22 @@ describe("compile", () => {
     const a = compile([baseSource({ id: "x" })], { progressive: true, tocMaxLines: 150, emitAgentsMd: false }, { rootDir: "k" });
     const b = compile([baseSource({ id: "x" })], { progressive: true, tocMaxLines: 150, emitAgentsMd: false }, { rootDir: "k" });
     expect(a.manifest.contentHash).toBe(b.manifest.contentHash);
+  });
+
+  it("renders a web source as multi-file (directory path) in the TOC", () => {
+    const result = compile(
+      [baseSource({
+        id: "crawled-site",
+        type: "web",
+        description: "Crawled docs",
+        files: [
+          { relPath: "sources/crawled-site/page1.md", bytes: 100, sha256: "a".repeat(64) },
+          { relPath: "sources/crawled-site/page2.md", bytes: 200, sha256: "b".repeat(64) },
+        ],
+      })],
+      { progressive: true, tocMaxLines: 150, emitAgentsMd: false },
+      { rootDir: "knowledge" },
+    );
+    expect(result.tocStanza).toContain("- `crawled-site` [web] — Crawled docs → `sources/crawled-site/ (2 files)`");
   });
 });

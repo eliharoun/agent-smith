@@ -92,7 +92,7 @@ export async function importApmBundle(opts: ApmImportOptions): Promise<ApmImport
       if (r.url) {
         return {
           id: `ref-${i + 1}`,
-          type: "url" as const,
+          type: "webpage" as const,
           url: r.url,
           delivery: "file" as const,
           summary: r.url,

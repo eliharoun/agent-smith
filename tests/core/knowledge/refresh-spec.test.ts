@@ -102,7 +102,7 @@ describe("isModeAllowedForType", () => {
   });
 
   test.each([
-    "url",
+    "webpage",
     "git",
     "confluence",
     "jira",

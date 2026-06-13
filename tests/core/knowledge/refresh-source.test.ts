@@ -10,7 +10,7 @@ import type {
   KnowledgeManifest,
   KnowledgeSource,
   NpmSource,
-  UrlSource,
+  WebpageSource,
 } from "../../../src/core/knowledge/types";
 import { knowledgeDirFor } from "../../../src/io/knowledge-paths";
 import { McpClientPool } from "../../../src/io/mcp-client-pool";
@@ -646,9 +646,9 @@ describe("refreshSource: via routing", () => {
     const bundleDir = await makeBundle();
     const cacheRoot = await makeCache();
     pool = new McpClientPool();
-    const source: UrlSource = {
+    const source: WebpageSource = {
       id: "via-src",
-      type: "url",
+      type: "webpage",
       delivery: "file",
       url: "https://example.com/x",
       via: { server: "echo", tool: "Fetch" },
@@ -682,9 +682,9 @@ describe("refreshSource: via routing", () => {
     const home = await makeHome();
     const bundleDir = await makeBundle();
     const cacheRoot = await makeCache();
-    const source: UrlSource = {
+    const source: WebpageSource = {
       id: "via-no-pool",
-      type: "url",
+      type: "webpage",
       delivery: "file",
       url: "https://example.com/x",
       via: { server: "echo", tool: "Fetch" },

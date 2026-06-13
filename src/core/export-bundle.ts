@@ -67,6 +67,7 @@ interface KnowledgeSourceLike {
   spaceKey?: string;
   jql?: string;
   remote?: string;
+  server?: string;
 }
 
 function hostnameOf(s: string): string {
@@ -88,8 +89,12 @@ function declareRemoteKnowledge(cfg: Record<string, unknown>): {
   let jiraCount = 0;
 
   for (const s of sources) {
-    if (s.type === "url" && typeof s.url === "string") {
-      remote.push({ id: s.id, type: "url", endpoint: hostnameOf(s.url) });
+    if (s.type === "webpage" && typeof s.url === "string") {
+      remote.push({ id: s.id, type: "webpage", endpoint: hostnameOf(s.url) });
+    } else if (s.type === "web" && typeof s.url === "string") {
+      remote.push({ id: s.id, type: "web", endpoint: hostnameOf(s.url) });
+    } else if (s.type === "mcp") {
+      remote.push({ id: s.id, type: "mcp", endpoint: s.server ?? "(MCP server must be available)" });
     } else if (s.type === "git" && typeof s.remote === "string") {
       remote.push({ id: s.id, type: "git", endpoint: hostnameOf(s.remote) });
     } else if (s.type === "confluence") {

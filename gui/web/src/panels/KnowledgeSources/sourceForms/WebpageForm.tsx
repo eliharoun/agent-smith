@@ -18,7 +18,7 @@ import type { SourceFormProps } from "./types";
  * `mcpServers[]` extension. The Edit modal does not need that logic
  * because RoutingPicker is presentational; routing semantics belong here.
  */
-export function UrlForm({ existingIds, onSubmit, formId, agent }: SourceFormProps) {
+export function WebpageForm({ existingIds, onSubmit, formId, agent }: SourceFormProps) {
   const [c, setC] = useState<CommonFields>({ id: "", description: "" });
   const [url, setUrl] = useState("");
   const [via, setVia] = useState<ViaPick | null>(null);

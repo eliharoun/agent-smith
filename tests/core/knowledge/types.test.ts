@@ -88,7 +88,7 @@ describe("KnowledgeManifestSourceEntry", () => {
     const entry: KnowledgeManifestSourceEntry = {
       id: "wiki",
       scope: "agent",
-      type: "url",
+      type: "webpage",
       delivery: "lazy",
       url: "https://wiki.internal.example.com/x",
       files: [],

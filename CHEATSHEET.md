@@ -562,6 +562,21 @@ Remove a model-resolution config value from `~/.config/agent-smith/.env` (revert
 
 Bare `smith knowledge` exits `2` with a hint to pass a subcommand.
 
+**Knowledge source types:**
+
+| Type | What it fetches |
+|---|---|
+| `file` | A single file from disk |
+| `dir` | All files in a folder (optionally filtered) |
+| `glob` | Files matching a wildcard pattern across folders |
+| `webpage` | A single web page |
+| `web` | Multiple pages from a website (crawl links, read llms.txt, or parse an OpenAPI spec) |
+| `git` | Selected files from a cloned git repo |
+| `npm` | *(not yet implemented)* |
+| `confluence` | Pages from a Confluence wiki space |
+| `jira` | Issues from a Jira search query |
+| `mcp` | Data from an external tool (Notion, Slack, GitHub, …) via an MCP connector |
+
 Materialized URL sources land as `.html` / `.md` files with YAML frontmatter (`title`, `source_url`, `fetched_at`). Use this metadata to cite sources or audit when a corpus was last refreshed.
 
 #### `smith knowledge list <agent>`
@@ -745,7 +760,7 @@ Append a knowledge source to `agent.config.json` and (by default) auto-run `smit
 **Synopsis (generic):** `smith knowledge add [flags] <agent> <type-or-url> [path-or-url]`
 
 Two invocation forms:
-- **Flag form:** second positional is a known `<type>` (`file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`); third positional is the type-specific identifier and is required.
+- **Flag form:** second positional is a known `<type>` (`file`, `dir`, `glob`, `webpage`, `web`, `git`, `confluence`, `jira`, `mcp`); third positional is the type-specific identifier and is required.
 - **URL shortcut:** second positional is a full `http(s)://...` URL; smith infers the type from the URL shape, third positional is omitted. See [URL shortcut](#url-shortcut) below.
 
 **Args:**
@@ -753,7 +768,7 @@ Two invocation forms:
 |---|---|---|
 | `<agent>` | yes | Bundle name. |
 | `<type-or-url>` | yes | Either a `<type>` keyword (see below) or a full `http(s)://` URL (triggers the URL shortcut). |
-| `<path-or-url>` | only with flag form | Type-specific identifier. For `file`/`dir`/`glob` a path; for `url`/`git` a URL; for `confluence` a space key; for `jira` a JQL query. Omit when using the URL shortcut. |
+| `<path-or-url>` | only with flag form | Type-specific identifier. For `file`/`dir`/`glob` a path; for `webpage`/`web`/`git` a URL; for `confluence` a space key; for `jira` a JQL query; for `mcp` omitted (use flags). Omit when using the URL shortcut. |
 
 **Allowed `<type>` values:**
 | Type | Identifier shape | Notes |
@@ -761,7 +776,9 @@ Two invocation forms:
 | `file` | path | Single file. |
 | `dir` | path | Directory; recursed. |
 | `glob` | glob pattern | e.g. `src/**/*.ts`. |
-| `url` | URL | Fetched + cached. |
+| `webpage` | URL | Single page fetched + cached. |
+| `web` | URL | Crawl / llms-txt / openapi structured fetch. |
+| `mcp` | — | MCP server connector. |
 | `git` | git URL | Cloned + cached. |
 | `confluence` | space key | See [confluence-specific flags](#smith-knowledge-add-confluence) below. |
 | `jira` | JQL query | See [jira-specific flags](#smith-knowledge-add-jira) below. |
@@ -775,7 +792,7 @@ Two invocation forms:
 | `--description <text>` | string | empty | Human-readable note shown in `smith knowledge list`. |
 | `--optional` | bool | `false` | Demote this source's runtime/IO failures (network, missing file, git auth) to warnings instead of aborting `smith agent install`. Mirrors npm `optionalDependencies`. Author bugs (schema violations) still abort. |
 | `--no-install` | bool | `false` (i.e. install runs) | Skip the auto-`smith agent install <agent>` step that normally runs after `add`. Use this when you're staging multiple sources before materializing. |
-| `--lazy` | bool | `false` | URL sources only (`type=url`). Skip materialization at install; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types. |
+| `--lazy` | bool | `false` | URL sources only (`type=webpage`). Skip materialization at install; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types. |
 
 > Schema fields like `summary`, `toc`, `materialize`, `extractor`, `refresh`, `retrieval`, `retrievalMcpUrl`, `inlineBudgetTokens`, and `via` are **not** CLI flags on `knowledge add`. Edit them via the GUI's per-source Edit modal (`/knowledge/:agent`), via `smith knowledge route` (for `via:` only), or by hand-editing `agent.config.json` and re-running `smith agent install <agent>`.
 
@@ -786,9 +803,12 @@ Two invocation forms:
 
 **Example:**
 ```bash
-smith knowledge add code-reviewer url https://opencode.ai/docs --description "Live OpenCode docs"
+smith knowledge add code-reviewer webpage https://opencode.ai/docs --description "Live OpenCode docs"
 smith knowledge add code-reviewer git git@github.com:acme/coding-standards.git --optional
 smith knowledge add code-reviewer dir ~/work/runbooks --no-install   # stage; install later
+smith knowledge add code-reviewer web https://docs.stripe.com/ --mode crawl --max-pages 50 --depth 3
+smith knowledge add code-reviewer web https://example.com/llms.txt --mode llms-txt
+smith knowledge add code-reviewer mcp --server notion --tool search --arg query="onboarding" --preset notion
 ```
 
 ##### `smith knowledge add <agent> confluence <space>`
@@ -856,7 +876,7 @@ Paste any Atlassian URL straight from your browser as the second positional argu
 | `/wiki/spaces/<SPACE>/blog/YYYY/MM/DD/<ID>/...`                | `confluence` (pages: `id:<ID>`, format: markdown)  |
 | `/browse/<KEY-N>`                                              | `jira` (jql: `key = <KEY-N>`)                      |
 | `/issues/?jql=<urlencoded>`                                    | `jira` (jql: decoded)                              |
-| any other http(s) URL                                          | `url` (plain web fetch)                            |
+| any other http(s) URL                                          | `webpage` (plain web fetch)                        |
 
 The success line tells you which kind was created, e.g. `→ added Confluence page knowledge source ...`. If a typo'd Atlassian URL falls through to `plain web URL`, you'll see it immediately.
 
@@ -906,7 +926,7 @@ Lint knowledge configuration. Validates every source's schema fields and (for gi
 Source URLs that need credentials smith can't supply (internal wikis, ticketing, document stores) can be fetched via a declared MCP server's tool instead of direct HTTP. Add `via` to the source:
 
 ```json
-{ "id": "internal-wiki", "type": "url", "url": "https://wiki.internal.example.com/page",
+{ "id": "internal-wiki", "type": "webpage", "url": "https://wiki.internal.example.com/page",
   "delivery": "file", "via": { "server": "internal-mcp", "tool": "fetch_page" } }
 ```
 

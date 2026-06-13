@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import pc from "picocolors";
 import { parseConfig } from "../../../core/config-schema";
-import type { KnowledgeBlock, KnowledgeSource, UrlSource } from "../../../core/knowledge/types";
+import type { KnowledgeBlock, KnowledgeSource, WebpageSource } from "../../../core/knowledge/types";
 import { validateKnowledge } from "../../../core/knowledge/validator";
 import { SmithError } from "../../../core/smith-error";
 import { toMessage } from "../../../core/to-message";
@@ -39,8 +39,8 @@ export interface KnowledgeRouteOptions {
   pool?: McpClientPool;
 }
 
-function isUrlSource(s: KnowledgeSource): s is UrlSource {
-  return s.type === "url";
+function isUrlSource(s: KnowledgeSource): s is WebpageSource {
+  return s.type === "webpage";
 }
 
 function truncateUrl(s: string, max = 80): string {
@@ -169,7 +169,7 @@ export async function knowledgeRoute(opts: KnowledgeRouteOptions): Promise<numbe
   }
 
   // Pick the candidates to prompt about.
-  let candidates: UrlSource[];
+  let candidates: WebpageSource[];
   if (opts.sourceId) {
     const match = urlSources.find((s) => s.id === opts.sourceId);
     if (!match) {

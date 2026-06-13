@@ -114,7 +114,13 @@ export function validate(input: ValidatorInput): ValidatorResult {
 
   // Knowledge block validation: rejects unsupported source types/materializers
   // (npm, pdf-extract), duplicate ids, oversized inline budgets, etc.
-  const k = validateKnowledge(input.config.knowledge);
+  const k = validateKnowledge(input.config.knowledge, {
+    declaredMcpServers: [
+      ...(input.config.mcp?.required ?? []),
+      ...(input.config.mcp?.peer ?? []),
+      ...(input.config.mcpServers ?? []),
+    ],
+  });
   errors.push(...k.errors);
   warnings.push(...k.warnings);
 

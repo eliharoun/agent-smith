@@ -34,12 +34,12 @@ interface CompileEnv {
 
 function tocPreamble(rootDir: string, hasLazyEntries: boolean): string {
   const lazyClause = hasLazyEntries
-    ? ` \`[url, lazy]\` entries are NOT downloaded — fetch them at runtime when the description suggests they're relevant, using the tool listed under \`fetch via:\`. The description is your only signal until you fetch, so use it to decide.`
+    ? ` \`[webpage, lazy]\` entries are NOT downloaded — fetch them at runtime when the description suggests they're relevant, using the tool listed under \`fetch via:\`. The description is your only signal until you fetch, so use it to decide.`
     : "";
   return (
     `Your knowledge root is \`${rootDir}/\`. The bullet paths below are RELATIVE ` +
     `to that root — when calling Read, prepend the root to the bullet's path. ` +
-    `Each entry points at a file (single-file sources) or a directory (\`dir\`/\`glob\`/\`git\`/\`confluence\`/\`jira\` sources, which expand to many files under \`<root>/sources/<id>/\`). ` +
+    `Each entry points at a file (single-file sources) or a directory (\`dir\`/\`glob\`/\`git\`/\`confluence\`/\`jira\`/\`web\` sources, which expand to many files under \`<root>/sources/<id>/\`). ` +
     `When a (searchable: ...) hint is shown, prefer the matching MCP tool over scanning files.` +
     lazyClause +
     ` Never reconstruct paths from memory; the bullets below are the only authoritative listing.`
@@ -52,6 +52,7 @@ const MULTI_FILE_TYPES = new Set([
   "git",
   "confluence",
   "jira",
+  "web",
 ]);
 
 function summaryFor(s: MaterializedSource): string {
@@ -70,9 +71,9 @@ function tocLineFor(
     return lazyTocLine(declaration);
   }
   const summaryPart = summary ? ` — ${summary}` : "";
-  // For multi-file sources (dir/glob/git/confluence/jira), point at the
+  // For multi-file sources (dir/glob/git/confluence/jira/web), point at the
   // source directory `sources/<id>/` so the agent doesn't anchor on the
-  // first file's path. For single-file sources (file/url/npm), point at
+  // first file's path. For single-file sources (file/webpage/npm), point at
   // the materialized file directly.
   let target: string | null;
   if (MULTI_FILE_TYPES.has(s.type)) {

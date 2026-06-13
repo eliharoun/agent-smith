@@ -116,7 +116,7 @@ describe("install: lazy URL sources end-to-end", () => {
             sources: [
               {
                 id: "wiki",
-                type: "url",
+                type: "webpage",
                 url: fakeUrl,
                 lazy: true,
                 description:
@@ -187,7 +187,7 @@ describe("install: lazy URL sources end-to-end", () => {
         join(claudeDir, "test-agent.md"),
         "utf8",
       );
-      expect(ccOut).toMatch(/`wiki` \[url, lazy\]/);
+      expect(ccOut).toMatch(/`wiki` \[webpage, lazy\]/);
       expect(ccOut).toContain(fakeUrl);
       expect(ccOut).toMatch(/fetch via:/i);
       expect(ccOut).not.toContain("Real content of the wiki page");

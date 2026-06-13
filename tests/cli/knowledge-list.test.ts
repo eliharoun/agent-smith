@@ -90,7 +90,7 @@ describe("knowledgeList", () => {
       loadDeclaredSources: async () => [
         {
           id: "opencode-docs",
-          type: "url",
+          type: "webpage",
           delivery: "auto",
           url: "https://opencode.ai/docs",
           description: "Live OpenCode docs",
@@ -117,7 +117,7 @@ describe("knowledgeList", () => {
           {
             id: "opencode-docs",
             scope: "agent",
-            type: "url",
+            type: "webpage",
             delivery: "inline",
             files: [{ path: "sources/opencode-docs/docs.html", sha256: "abc", bytes: 100 }],
             tokensInline: 1804,
@@ -130,7 +130,7 @@ describe("knowledgeList", () => {
       loadDeclaredSources: async () => [
         {
           id: "opencode-docs",
-          type: "url",
+          type: "webpage",
           delivery: "auto",
           url: "https://opencode.ai/docs",
         },

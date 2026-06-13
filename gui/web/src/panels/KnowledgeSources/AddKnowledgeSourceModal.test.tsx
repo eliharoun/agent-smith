@@ -62,7 +62,7 @@ function wrap(node: React.ReactElement) {
 
 async function chooseUrlType() {
   await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
-  fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^webpage\b/i }));
 }
 
 describe("AddKnowledgeSourceModal — routing dropdown", () => {
@@ -316,7 +316,7 @@ describe("AddKnowledgeSourceModal — routing dropdown", () => {
     };
     expect(body.knowledge.sources[0]).toMatchObject({
       id: "src-1",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/p",
       via: { server: "alpha-mcp", tool: "fetch" },
     });
@@ -376,7 +376,7 @@ describe("AddKnowledgeSourceModal — save-success notification", () => {
     }) as unknown as typeof fetch;
     wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^webpage\b/i }));
     fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
     fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
       target: { value: "https://example.com/p" },
@@ -399,7 +399,7 @@ describe("AddKnowledgeSourceModal — save-success notification", () => {
     }) as unknown as typeof fetch;
     wrap(<AddKnowledgeSourceModal agent="a1" existingIds={[]} onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^webpage\b/i }));
     fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
     fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
       target: { value: "https://example.com/p" },
@@ -439,7 +439,7 @@ describe("AddKnowledgeSourceModal — save-success notification", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^url\b/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^webpage\b/i }));
     fireEvent.change(screen.getByLabelText(/^\/\/ id$/i), { target: { value: "src-1" } });
     fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
       target: { value: "https://example.com/p" },

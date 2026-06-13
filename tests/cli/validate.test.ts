@@ -206,4 +206,36 @@ describe("cli/validate", () => {
     // Inline FAIL line still printed for humans.
     expect(printed.some((m) => m.includes("FAIL") && m.includes("bad"))).toBe(true);
   });
+
+  test("surfaces knowledge deprecation warning for type: url sources", async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "smith-val-depr-"));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "agent.config.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        name: "depr",
+        description: "Use to test deprecation.",
+        targets: ["opencode"],
+        modelTier: "balanced",
+        knowledge: { sources: [{ id: "old-url", type: "url", url: "https://example.com" }] },
+      }),
+    );
+    const printed: string[] = [];
+    const code = await validate({
+      name: "depr",
+      loadRegistry: async () => ({ schemaVersion: 2, sources: [] }) as Registry,
+      loadAllBundles: async () => ({
+        bundles: [fakeBundle("depr", { bundlePath: dir })],
+        failures: [],
+      }),
+      print: (m) => printed.push(m),
+      printErr: () => {},
+    });
+    expect(code).toBe(0);
+    expect(printed.some((m) => m.includes("type: webpage"))).toBe(true);
+  });
 });

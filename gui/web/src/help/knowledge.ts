@@ -15,7 +15,7 @@ export const knowledgeHelp: Record<string, FieldHelpEntry> = {
     help: "Stable identifier for this source. Used in the compiled TOC and as the on-disk path under sources/<id>/. Kebab-case.",
   },
   "knowledge.type": {
-    help: "How smith fetches this source. file/dir/glob read from local disk; url/git/confluence/jira fetch from external systems.",
+    help: "How smith fetches this source. file/dir/glob read from local disk; webpage/url/git/confluence/jira fetch from external systems; web crawls or parses manifests; mcp connects to an MCP server.",
   },
   "knowledge.path": {
     help: "Path on disk (file/dir/glob types). Relative paths resolve against the bundle directory.",
@@ -101,5 +101,40 @@ export const knowledgeHelp: Record<string, FieldHelpEntry> = {
   },
   "knowledge.jira.maxResults": {
     help: "Cap on issues fetched per JQL run. 1–500. Limits bundle size and API quota.",
+  },
+  // ─── Web (crawl / llms-txt / openapi) ─────────────────────────────────
+  "knowledge.webpage.url": {
+    help: "URL of the page to fetch. Must start with https://. Used by the webpage source type (single-page fetch).",
+  },
+  "knowledge.web.url": {
+    help: "Start URL for the web source. For crawl: the page to crawl from. For llms-txt: the /llms.txt manifest URL. For openapi: the spec URL (JSON or YAML).",
+  },
+  "knowledge.web.mode": {
+    help: "Crawl strategy. crawl = follow links from the start URL; llms-txt = fetch the site's llms.txt manifest; openapi = fetch an OpenAPI/Swagger spec.",
+  },
+  "knowledge.web.maxPages": {
+    help: "Maximum number of pages to crawl. Only applies when mode is crawl. 1–200, default 25.",
+  },
+  "knowledge.web.depth": {
+    help: "Maximum link-follow depth from the start URL. Only applies when mode is crawl. 0 = start page only.",
+  },
+  "knowledge.web.sameOrigin": {
+    help: "When on, the crawler stays on the same origin as the start URL. On by default — only same-origin links are followed.",
+  },
+  // ─── MCP source ────────────────────────────────────────────────────────
+  "knowledge.mcp.server": {
+    help: "Name of the MCP server to connect to (must match a server declared in the bundle's mcpServers[] or the AI client config).",
+  },
+  "knowledge.mcp.tool": {
+    help: "Tool name exposed by the MCP server to call for fetching content (e.g. search_pages, search_code).",
+  },
+  "knowledge.mcp.args": {
+    help: "JSON object of extra arguments passed to the MCP tool on every invocation. Optional.",
+  },
+  "knowledge.mcp.preset": {
+    help: "Shortcut that pre-fills server + tool from a known integration (notion, github, slack). You can override the values after selecting.",
+  },
+  "knowledge.mcp.allowWriteTool": {
+    help: "When on, allows the MCP tool to perform write operations. Off by default — only read-only tools are permitted.",
   },
 };

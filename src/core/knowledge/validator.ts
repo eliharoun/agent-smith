@@ -1,19 +1,26 @@
 import type { KnowledgeBlock, KnowledgeSourceType, Materializer } from "./types";
 import { isModeAllowedForType, parseRefresh } from "./refresh-spec";
+import { getMcpPreset } from "./mcp-presets";
+
+export interface ValidateKnowledgeOpts {
+  declaredMcpServers?: string[];
+}
 
 export interface KnowledgeValidationResult {
   errors: string[];
   warnings: string[];
 }
 
-const SUPPORTED_TYPES: ReadonlySet<KnowledgeSourceType> = new Set([
+export const SUPPORTED_TYPES: ReadonlySet<KnowledgeSourceType> = new Set([
   "file",
   "dir",
   "glob",
-  "url",
+  "webpage",
+  "web",
   "git",
   "confluence",
   "jira",
+  "mcp",
 ]);
 const SUPPORTED_MATERIALIZERS: ReadonlySet<Materializer> = new Set([
   "passthrough",
@@ -28,6 +35,7 @@ const HARD_INLINE_CEILING = 16000;
 
 export function validateKnowledge(
   block: KnowledgeBlock | undefined,
+  opts: ValidateKnowledgeOpts = {},
 ): KnowledgeValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -75,6 +83,22 @@ export function validateKnowledge(
           `source '${s.id}': refresh mode 'ttl' requires a 'ttl' value (e.g. { mode: 'ttl', ttl: '1h' })`,
         );
       }
+    }
+  }
+
+  // MCP variant advisory warnings
+  for (const s of sources) {
+    if (s.type !== "mcp") continue;
+    const src = s as { server: string; preset?: string };
+    if (src.preset && !getMcpPreset(src.preset)) {
+      warnings.push(
+        `source '${s.id}': preset '${src.preset}' is not a known MCP preset`,
+      );
+    }
+    if (opts.declaredMcpServers && !opts.declaredMcpServers.includes(src.server)) {
+      warnings.push(
+        `source '${s.id}': MCP server '${src.server}' is not declared in mcp.required/mcp.peer — the agent may not have access at runtime`,
+      );
     }
   }
 

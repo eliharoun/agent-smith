@@ -314,7 +314,7 @@ describe("reconfigureAgent — validation", () => {
           sources: [
             {
               id: "wiki",
-              type: "url" as const,
+              type: "webpage" as const,
               url: "https://example.com/wiki",
               delivery: "file" as const,
               // No refresh field means it defaults to install-time refresh, not session.

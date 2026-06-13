@@ -1,5 +1,8 @@
 import pc from "picocolors";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { assembleBody } from "../../core/assembler";
+import { collectKnowledgeDeprecations } from "../../core/config-schema";
 import type { AgentBundle } from "../../core/types";
 import { validate as runValidate } from "../../core/validator";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
@@ -71,6 +74,11 @@ export async function validate(opts: ValidateCliOptions | string = {}): Promise<
         `[${b.source.label}] ${b.config.name}: validation failed (${n} error${n === 1 ? "" : "s"})`,
       );
     }
+    // Surface knowledge deprecation warnings from the raw config file.
+    try {
+      const raw = JSON.parse(await readFile(join(b.bundlePath, "agent.config.json"), "utf8"));
+      for (const w of collectKnowledgeDeprecations(raw)) print(`${pc.yellow("  ⚠")} ${w}`);
+    } catch { /* ignore — missing/unreadable config */ }
   }
 
   // Unfiltered branch: combine load failures with validation failures into

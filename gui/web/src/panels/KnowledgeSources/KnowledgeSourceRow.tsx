@@ -80,6 +80,8 @@ function summarize(source: KnowledgeSource): string {
     case "glob":
       return source.path;
     case "url":
+    case "webpage":
+    case "web":
       return source.url;
     case "git": {
       const ref = source.ref ? `@${source.ref}` : "";
@@ -92,5 +94,7 @@ function summarize(source: KnowledgeSource): string {
       return `${source.space}${source.pages?.length ? ` (${source.pages.length} pages)` : ""}`;
     case "jira":
       return source.jql;
+    case "mcp":
+      return `${source.server}/${source.tool}`;
   }
 }

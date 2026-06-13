@@ -99,7 +99,7 @@ describe("orchestrator: agents-md lazy section", () => {
         sources: [
           {
             id: "wiki",
-            type: "url",
+            type: "webpage",
             url: fakeUrl,
             lazy: true,
             description:
@@ -139,7 +139,7 @@ describe("orchestrator: agents-md lazy section", () => {
         "utf8",
       );
       expect(ccOut).not.toContain("Platform deploys to two regions");
-      expect(ccOut).toMatch(/`wiki` \[url, lazy\]/);
+      expect(ccOut).toMatch(/`wiki` \[webpage, lazy\]/);
     },
     HEAVY_TIMEOUT,
   );

@@ -14,7 +14,7 @@ import { skillList } from "./cli/commands/skill/list";
 import { skillRegister } from "./cli/commands/skill/register";
 import { skillUnregister } from "./cli/commands/skill/unregister";
 import { status } from "./cli/commands/status";
-import { intArg } from "./cli/option-parsers";
+import { collectKv, collectRepeatable, intArg } from "./cli/option-parsers";
 import { renderPendingHint } from "./cli/pending-hint";
 import { formatCommanderError, wrap } from "./cli/wrap";
 import { SmithError } from "./core/smith-error";
@@ -334,6 +334,19 @@ knowledgeCmd
   // Jira-only flags.
   .option("--fields <list>", "Jira: comma-separated field names (or '*all' for every field)")
   .option("--max-results <n>", "Jira: maximum result count (1-500)", intArg("--max-results"))
+  // Web-only flags.
+  .option("--mode <mode>", "web: crawl | llms-txt | openapi (default crawl)")
+  .option("--depth <n>", "web crawl: max link depth (1-5)", intArg("--depth"))
+  .option("--same-origin", "web crawl: restrict to seed origin (default on)")
+  .option("--no-same-origin", "web crawl: allow cross-origin links")
+  .option("--include <glob>", "web crawl: include path glob (repeatable)", collectRepeatable, [])
+  .option("--exclude <glob>", "web crawl: exclude path glob (repeatable)", collectRepeatable, [])
+  // MCP-only flags.
+  .option("--server <name>", "mcp: MCP server name")
+  .option("--tool <name>", "mcp: tool to call")
+  .option("--arg <k=v>", "mcp: tool argument (repeatable)", collectKv, {})
+  .option("--preset <name>", "mcp: preset connector")
+  .option("--allow-write-tool", "mcp: permit a write-shaped tool name")
   .action(
     wrap(
       "knowledge add",
@@ -354,6 +367,16 @@ knowledgeCmd
           format?: string;
           fields?: string;
           maxResults?: number;
+          mode?: string;
+          depth?: number;
+          sameOrigin?: boolean;
+          include?: string[];
+          exclude?: string[];
+          server?: string;
+          tool?: string;
+          arg?: Record<string, string>;
+          preset?: string;
+          allowWriteTool?: boolean;
         },
       ) => {
         const { knowledgeAdd } = await import("./cli/commands/knowledge/add");
@@ -459,7 +482,7 @@ knowledgeCmd
             case "plain-url":
               return knowledgeAdd({
                 ...base,
-                type: "url",
+                type: "webpage",
                 pathOrUrl: parsed.url,
                 urlMode: { label: "plain web URL" },
               });
@@ -471,7 +494,7 @@ knowledgeCmd
         }
 
         // Flag-form path (unchanged from before).
-        if (pathOrUrl === undefined) {
+        if (pathOrUrl === undefined && typeOrUrl !== "mcp") {
           throw new SmithError({
             code: "validation-failed",
             what: "knowledge add arguments",
@@ -486,7 +509,7 @@ knowledgeCmd
           installAfter: opts.install !== false,
           runInstall: async (name) => install({ name }),
           type: typeOrUrl as import("./core/knowledge/types").KnowledgeSourceType,
-          pathOrUrl,
+          ...(pathOrUrl !== undefined ? { pathOrUrl } : {}),
           ...(opts.id ? { id: opts.id } : {}),
           ...(opts.delivery
             ? { delivery: opts.delivery as import("./core/knowledge/types").KnowledgeDelivery }
@@ -502,6 +525,16 @@ knowledgeCmd
             : {}),
           ...(opts.fields ? { fields: opts.fields } : {}),
           ...(opts.maxResults !== undefined ? { maxResults: opts.maxResults } : {}),
+          ...(opts.mode ? { mode: opts.mode as "crawl" | "llms-txt" | "openapi" } : {}),
+          ...(opts.depth !== undefined ? { depth: opts.depth } : {}),
+          ...(opts.sameOrigin !== undefined ? { sameOrigin: opts.sameOrigin } : {}),
+          ...(opts.include && opts.include.length > 0 ? { include: opts.include } : {}),
+          ...(opts.exclude && opts.exclude.length > 0 ? { exclude: opts.exclude } : {}),
+          ...(opts.server ? { server: opts.server } : {}),
+          ...(opts.tool ? { tool: opts.tool } : {}),
+          ...(opts.arg && Object.keys(opts.arg).length > 0 ? { args: opts.arg } : {}),
+          ...(opts.preset ? { preset: opts.preset } : {}),
+          ...(opts.allowWriteTool ? { allowWriteTool: true } : {}),
         });
       },
     ),

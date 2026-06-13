@@ -660,7 +660,7 @@ describe("KnowledgeSources", () => {
     });
   });
 
-  it("opens AddKnowledgeSourceModal with 8 source types", async () => {
+  it("opens AddKnowledgeSourceModal with 10 source types", async () => {
     globalThis.fetch = mockFetch(
       () => ({ agent: "testing-agent", sources: [] }),
       calls,
@@ -669,7 +669,7 @@ describe("KnowledgeSources", () => {
     await waitFor(() => expect(screen.getByText(/no knowledge sources yet/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /\+ add source/i }));
     await waitFor(() => expect(screen.getByText(/choose a source type/i)).toBeInTheDocument());
-    for (const t of ["file", "dir", "glob", "url", "git", "npm", "confluence", "jira"]) {
+    for (const t of ["file", "dir", "glob", "webpage", "web", "git", "npm", "confluence", "jira", "mcp"]) {
       expect(screen.getByRole("button", { name: new RegExp(`^${t}\\b`, "i") })).toBeInTheDocument();
     }
   });

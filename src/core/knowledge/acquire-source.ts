@@ -57,10 +57,12 @@ export function isAcquirable(type: KnowledgeSource["type"]): boolean {
     case "file":
     case "dir":
     case "glob":
-    case "url":
+    case "webpage":
+    case "web":
     case "git":
     case "confluence":
     case "jira":
+    case "mcp":
       return true;
     case "npm":
       return false;
@@ -113,7 +115,7 @@ async function dispatch(
     }
     case "glob":
       return acquireGlob(src.path, opts.bundleDir);
-    case "url": {
+    case "webpage": {
       // Explicit via wins (Phase 1).
       if (src.via) {
         if (!opts.mcpPool || !opts.spawnOptsFor) {
@@ -199,6 +201,22 @@ async function dispatch(
       if (src.fields) jOpts.fields = src.fields;
       if (src.maxResults !== undefined) jOpts.maxResults = src.maxResults;
       return acquireJira(jOpts);
+    }
+    case "web": {
+      const { acquireWeb } = await import("./acquire-web");
+      const res = await acquireWeb(src, { cacheDir: opts.cacheDir });
+      for (const w of res.warnings) warnSink(w);
+      return res.artifacts;
+    }
+    case "mcp": {
+      if (!opts.mcpPool || !opts.spawnOptsFor) {
+        throw new SmithError({ code: "internal-error", message: `mcp source '${src.id}' requires mcpPool/spawnOptsFor; caller must inject these.` });
+      }
+      return acquireViaMcp(
+        { server: src.server, tool: src.tool, ...(src.args ? { args: src.args } : {}), ...(src.allowWriteTool ? { allowWriteTool: src.allowWriteTool } : {}) },
+        `mcp://${src.server}/${src.tool}`,
+        { pool: opts.mcpPool, spawnOptsFor: opts.spawnOptsFor },
+      );
     }
     default:
       throw new SmithError({

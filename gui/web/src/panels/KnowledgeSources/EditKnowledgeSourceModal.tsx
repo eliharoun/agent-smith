@@ -133,8 +133,8 @@ interface DraftState {
   jql: string;
   ref: string;
   subpath: string;
-  includeStr: string; // newline-separated for dir/git
-  excludeStr: string; // newline-separated for dir
+  includeStr: string; // newline-separated for dir/git/web(crawl)
+  excludeStr: string; // newline-separated for dir/web(crawl)
   fieldsStr: string; // comma-separated for jira
   pagesStr: string; // newline-separated for confluence
   maxPages: string;
@@ -142,6 +142,16 @@ interface DraftState {
   includeChildren: boolean;
   format: "" | "storage" | "view" | "markdown";
   auth: "" | "atlassian" | "none";
+  // web-specific
+  mode: "" | "crawl" | "llms-txt" | "openapi";
+  depth: string;
+  sameOrigin: boolean;
+  // mcp-specific
+  server: string;
+  tool: string;
+  argsStr: string; // newline k=v lines
+  preset: string;
+  allowWriteTool: boolean;
   // common v1
   description: string;
   optional: boolean;
@@ -158,7 +168,7 @@ interface DraftState {
   retrievalMode: RetrievalMode;
   retrievalMcpUrl: string;
   /**
-   * Routing pick (URL sources only). null means "direct HTTP — no via:".
+   * Routing pick (URL/webpage sources only). null means "direct HTTP — no via:".
    * Initialized from `existingSource.via` so the picker shows the current
    * route pre-selected; updated by the picker's onChange. On save, when set,
    * `via:` is written; when null, the field is omitted entirely (the schema
@@ -166,7 +176,7 @@ interface DraftState {
    */
   via: ViaPick | null;
   /**
-   * Lazy URL fetch (URL sources only). When true, smith does not fetch at
+   * Lazy URL fetch (URL/webpage sources only). When true, smith does not fetch at
    * install time — the bundle ships only the URL + description and the agent
    * fetches at runtime. The four conflict fields (delivery, materialize,
    * extractor, inlineBudgetTokens) are dropped on save; their typed values
@@ -210,24 +220,48 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
   }
   const draft: DraftState = {
     path: s.type === "file" || s.type === "dir" || s.type === "glob" ? (s.path as string) : "",
-    url: s.type === "url" || s.type === "git" ? (s.url as string) : "",
+    url: s.type === "url" || s.type === "webpage" || s.type === "git" || s.type === "web" ? (s.url as string) : "",
     pkg: s.type === "npm" ? (s.package as string) : "",
     space: s.type === "confluence" ? (s.space as string) : "",
     jql: s.type === "jira" ? (s.jql as string) : "",
     ref: s.type === "git" && s.ref ? s.ref : "",
     subpath: s.type === "git" && s.subpath ? s.subpath : "",
-    includeStr: (s.type === "dir" || s.type === "git") && s.include ? s.include.join("\n") : "",
-    excludeStr: s.type === "dir" && s.exclude ? s.exclude.join("\n") : "",
+    includeStr: (() => {
+      if ((s.type === "dir" || s.type === "git") && s.include) return s.include.join("\n");
+      if (s.type === "web" && s.include) return s.include.join("\n");
+      return "";
+    })(),
+    excludeStr: (() => {
+      if (s.type === "dir" && s.exclude) return s.exclude.join("\n");
+      if (s.type === "web" && s.exclude) return s.exclude.join("\n");
+      return "";
+    })(),
     fieldsStr: s.type === "jira" && s.fields ? s.fields.join(", ") : "",
     pagesStr:
       s.type === "confluence" && s.pages
         ? s.pages.map((p) => (typeof p === "string" ? p : `id:${p.id}`)).join("\n")
         : "",
-    maxPages: s.type === "confluence" && s.maxPages != null ? String(s.maxPages) : "",
+    maxPages: (() => {
+      if (s.type === "confluence" && s.maxPages != null) return String(s.maxPages);
+      if (s.type === "web" && s.maxPages != null) return String(s.maxPages);
+      return "";
+    })(),
     maxResults: s.type === "jira" && s.maxResults != null ? String(s.maxResults) : "",
     includeChildren: s.type === "confluence" && s.includeChildren === true,
     format: s.type === "confluence" && s.format ? s.format : "",
-    auth: s.type === "url" && s.auth ? s.auth : "",
+    auth: (s.type === "url" || s.type === "webpage") && s.auth ? s.auth : "",
+    // web-specific
+    mode: s.type === "web" ? s.mode : "",
+    depth: s.type === "web" && s.depth != null ? String(s.depth) : "",
+    sameOrigin: s.type === "web" ? s.sameOrigin !== false : true,
+    // mcp-specific
+    server: s.type === "mcp" ? s.server : "",
+    tool: s.type === "mcp" ? s.tool : "",
+    argsStr: s.type === "mcp" && s.args
+      ? Object.entries(s.args).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n")
+      : "",
+    preset: s.type === "mcp" && s.preset ? s.preset : "",
+    allowWriteTool: s.type === "mcp" && s.allowWriteTool === true,
     description: s.description ?? "",
     optional: s.optional === true,
     materialize:
@@ -248,10 +282,10 @@ function initialDraft(s: KnowledgeSource): InitialDraft {
     retrievalMode: retrieval?.mode ?? "bm25",
     retrievalMcpUrl: retrieval?.mcpUrl ?? "",
     via: (() => {
-      // Only URL sources route via MCP. Defensively narrow other types to
+      // Only URL/webpage sources route via MCP. Defensively narrow other types to
       // null even if the loaded JSON happens to carry a `via` key (it
       // wouldn't pass the canonical schema, but the editor never crashes).
-      if (s.type !== "url") return null;
+      if (s.type !== "url" && s.type !== "webpage") return null;
       const v = anySrc.via;
       if (
         v &&
@@ -276,12 +310,37 @@ function validateDraft(draft: DraftState, type: SourceType): Record<string, stri
   if ((type === "file" || type === "dir" || type === "glob") && !draft.path.trim()) {
     errors.path = "required";
   }
-  if ((type === "url" || type === "git") && !draft.url.trim()) {
+  if ((type === "url" || type === "webpage" || type === "git" || type === "web") && !draft.url.trim()) {
     errors.url = "required";
   }
   if (type === "npm" && !draft.pkg.trim()) errors.pkg = "required";
   if (type === "confluence" && !draft.space.trim()) errors.space = "required";
   if (type === "jira" && !draft.jql.trim()) errors.jql = "required";
+  // web: mode required
+  if (type === "web" && !draft.mode) errors.mode = "required";
+  // web: depth 1-5
+  if (type === "web" && draft.depth) {
+    const n = Number(draft.depth);
+    if (!Number.isInteger(n) || n < 1 || n > 5) errors.depth = "1–5";
+  }
+  // mcp: server + tool required
+  if (type === "mcp" && !draft.server.trim()) errors.server = "required";
+  if (type === "mcp" && !draft.tool.trim()) errors.tool = "required";
+  // mcp: reject credential-shaped args keys + malformed lines
+  if (type === "mcp" && draft.argsStr.trim()) {
+    const credentialRe = /(authorization|bearer|cookie|credential|password|passwd|secret|token|(^|[_-])(api|access|private|secret)[_-]?key($|[_-])|apikey)/i;
+    for (const line of draft.argsStr.split("\n").filter((l) => l.trim())) {
+      if (!line.includes("=")) {
+        errors.argsStr = "each line must be key=value";
+        break;
+      }
+      const key = line.split("=")[0]!.trim();
+      if (credentialRe.test(key)) {
+        errors.argsStr = `"${key}" looks like a credential — use env vars instead`;
+        break;
+      }
+    }
+  }
   // refresh ttl validation when mode=ttl
   if (draft.refreshMode === "ttl") {
     if (!draft.refreshTtl) errors.refreshTtl = "required when mode=ttl";
@@ -309,10 +368,11 @@ function validateDraft(draft: DraftState, type: SourceType): Record<string, stri
   }
   // summary max 280 (canonical schema cap)
   if (draft.summary.length > 280) errors.summary = "max 280 characters";
-  // maxPages / maxResults bounds
+  // maxPages / maxResults bounds — type-aware cap
   if (draft.maxPages) {
     const n = Number(draft.maxPages);
-    if (!Number.isInteger(n) || n < 1 || n > 100) errors.maxPages = "1–100";
+    const cap = type === "web" ? 200 : 100;
+    if (!Number.isInteger(n) || n < 1 || n > cap) errors.maxPages = `1–${cap}`;
   }
   if (draft.maxResults) {
     const n = Number(draft.maxResults);
@@ -369,9 +429,53 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
       if (exclude.length) base.exclude = exclude;
       break;
     }
-    case "url": {
+    case "url":
+    case "webpage": {
       base.url = draft.url.trim();
       if (draft.auth) base.auth = draft.auth;
+      break;
+    }
+    case "web": {
+      base.url = draft.url.trim();
+      base.mode = draft.mode;
+      if (draft.mode === "crawl") {
+        if (draft.maxPages) base.maxPages = Number(draft.maxPages);
+        if (draft.depth) base.depth = Number(draft.depth);
+        if (!draft.sameOrigin) base.sameOrigin = false;
+        const include = draft.includeStr
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (include.length) base.include = include;
+        const exclude = draft.excludeStr
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (exclude.length) base.exclude = exclude;
+      }
+      break;
+    }
+    case "mcp": {
+      base.server = draft.server.trim();
+      base.tool = draft.tool.trim();
+      if (draft.argsStr.trim()) {
+        const args: Record<string, unknown> = {};
+        for (const line of draft.argsStr.split("\n").filter((l) => l.trim())) {
+          const idx = line.indexOf("=");
+          if (idx > 0) {
+            const k = line.slice(0, idx).trim();
+            const raw = line.slice(idx + 1);
+            try {
+              args[k] = JSON.parse(raw);
+            } catch {
+              args[k] = raw;
+            }
+          }
+        }
+        if (Object.keys(args).length) base.args = args;
+      }
+      if (draft.preset) base.preset = draft.preset;
+      if (draft.allowWriteTool) base.allowWriteTool = true;
       break;
     }
     case "git": {
@@ -419,17 +523,17 @@ function buildSource(original: KnowledgeSource, draft: DraftState): KnowledgeSou
     }
   }
 
-  // Routing (URL sources only). Edit-flow rule: write `via` when the picker
+  // Routing (URL/webpage sources only). Edit-flow rule: write `via` when the picker
   // landed on a server+tool, omit entirely when null. Never write
   // `"via": null` — the canonical schema rejects unknown shapes there.
-  if (original.type === "url" && draft.via) {
+  if ((original.type === "url" || original.type === "webpage") && draft.via) {
     base.via = { server: draft.via.server, tool: draft.via.tool };
   }
 
   // Lazy URL: write `lazy: true` and DROP the four schema-forbidden fields
   // regardless of the typed-but-now-disabled draft values. Omit `lazy: false`
   // (clean JSON convention — the schema treats absent and false identically).
-  if (original.type === "url" && draft.lazy) {
+  if ((original.type === "url" || original.type === "webpage") && draft.lazy) {
     base.lazy = true;
     delete base.delivery;
     delete base.materialize;
@@ -493,7 +597,7 @@ export function EditKnowledgeSourceModal({
   // path consults this to decide whether to cache-status-check + show the
   // 3-button confirm dialog.
   const flippingNonLazyToLazy =
-    existingSource.type === "url" && draft.lazy && !initial.draft.lazy;
+    (existingSource.type === "url" || existingSource.type === "webpage") && draft.lazy && !initial.draft.lazy;
 
   function performSave() {
     const built = buildSource(existingSource, draft);
@@ -510,7 +614,7 @@ export function EditKnowledgeSourceModal({
     // mcp.required[] — that's the Add flow's concern; Edit only patches the
     // routing declaration the user just chose.
     if (
-      existingSource.type === "url" &&
+      (existingSource.type === "url" || existingSource.type === "webpage") &&
       draft.via?.server &&
       mcpServers !== undefined &&
       !mcpServers.includes(draft.via.server)
@@ -635,7 +739,7 @@ export function EditKnowledgeSourceModal({
                 />
               </>
             )}
-            {(t === "url" || t === "git") && (
+            {(t === "url" || t === "webpage" || t === "git" || t === "web") && (
               <FormField
                 label={t === "git" ? "git url" : "url"}
                 fieldId="knowledge.url"
@@ -645,7 +749,7 @@ export function EditKnowledgeSourceModal({
                 error={errors.url}
               />
             )}
-            {t === "url" && (
+            {(t === "url" || t === "webpage") && (
               <RoutingPicker
                 agent={agent}
                 value={draft.via}
@@ -653,7 +757,7 @@ export function EditKnowledgeSourceModal({
                 currentMcpServers={mcpServers ?? []}
               />
             )}
-            {t === "url" && (
+            {(t === "url" || t === "webpage") && (
               <Select
                 label="auth"
                 fieldId="knowledge.url.auth"
@@ -666,7 +770,7 @@ export function EditKnowledgeSourceModal({
                 ]}
               />
             )}
-            {t === "url" && (
+            {(t === "url" || t === "webpage") && (
               <div className="flex flex-col gap-1">
                 <Toggle
                   aria-label="Lazy fetch"
@@ -693,6 +797,102 @@ export function EditKnowledgeSourceModal({
                   </>
                 )}
               </div>
+            )}
+            {t === "web" && (
+              <>
+                <Select
+                  label="mode"
+                  fieldId="knowledge.web.mode"
+                  value={draft.mode}
+                  onChange={(v) => update("mode", v as DraftState["mode"])}
+                  options={[
+                    { v: "crawl", l: "crawl" },
+                    { v: "llms-txt", l: "llms-txt" },
+                    { v: "openapi", l: "openapi" },
+                  ]}
+                />
+                {draft.mode === "crawl" && (
+                  <>
+                    <FormField
+                      label="max pages"
+                      fieldId="knowledge.web.maxPages"
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={draft.maxPages}
+                      onChange={(e) => update("maxPages", e.target.value)}
+                      error={errors.maxPages}
+                    />
+                    <FormField
+                      label="depth"
+                      fieldId="knowledge.web.depth"
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={draft.depth}
+                      onChange={(e) => update("depth", e.target.value)}
+                      error={errors.depth}
+                    />
+                    <Checkbox
+                      label="same origin"
+                      fieldId="knowledge.web.sameOrigin"
+                      checked={draft.sameOrigin}
+                      onChange={(v) => update("sameOrigin", v)}
+                    />
+                    <TextArea
+                      label="include (one glob per line)"
+                      fieldId="knowledge.include"
+                      value={draft.includeStr}
+                      onChange={(v) => update("includeStr", v)}
+                    />
+                    <TextArea
+                      label="exclude (one glob per line)"
+                      fieldId="knowledge.exclude"
+                      value={draft.excludeStr}
+                      onChange={(v) => update("excludeStr", v)}
+                    />
+                  </>
+                )}
+              </>
+            )}
+            {t === "mcp" && (
+              <>
+                <FormField
+                  label="server"
+                  fieldId="knowledge.mcp.server"
+                  required
+                  value={draft.server}
+                  onChange={(e) => update("server", e.target.value)}
+                  error={errors.server}
+                />
+                <FormField
+                  label="tool"
+                  fieldId="knowledge.mcp.tool"
+                  required
+                  value={draft.tool}
+                  onChange={(e) => update("tool", e.target.value)}
+                  error={errors.tool}
+                />
+                <FormField
+                  label="preset"
+                  fieldId="knowledge.mcp.preset"
+                  value={draft.preset}
+                  onChange={(e) => update("preset", e.target.value)}
+                />
+                <TextArea
+                  label="args (one key=value per line)"
+                  fieldId="knowledge.mcp.args"
+                  value={draft.argsStr}
+                  onChange={(v) => update("argsStr", v)}
+                  error={errors.argsStr}
+                />
+                <Checkbox
+                  label="allow write tool"
+                  fieldId="knowledge.mcp.allowWriteTool"
+                  checked={draft.allowWriteTool}
+                  onChange={(v) => update("allowWriteTool", v)}
+                />
+              </>
             )}
             {t === "git" && (
               <>
@@ -1059,11 +1259,13 @@ function TextArea({
   fieldId,
   value,
   onChange,
+  error,
 }: {
   label: string;
   fieldId?: string | undefined;
   value: string;
   onChange: (v: string) => void;
+  error?: string | undefined;
 }) {
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
@@ -1076,6 +1278,7 @@ function TextArea({
         rows={3}
         className="bg-black border border-matrix-line px-2 py-1 font-mono text-sm text-matrix-body focus:outline-none focus:border-matrix-green focus:shadow-matrix-focus"
       />
+      {error && <span className="font-mono text-[10px] text-matrix-red">{error}</span>}
     </div>
   );
 }

@@ -16,7 +16,7 @@ import type { KnowledgeSource } from "../../src/core/knowledge/types";
 
 const URL_SOURCE: KnowledgeSource = {
   id: "src-1",
-  type: "url",
+  type: "webpage",
   delivery: "file",
   url: "https://example.com/x",
 };

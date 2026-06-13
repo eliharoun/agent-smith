@@ -28,7 +28,7 @@ describe("knowledgeAdd --lazy", () => {
   it("saves a lazy: true URL source", async () => {
     const exit = await knowledgeAdd({
       bundleDir,
-      type: "url",
+      type: "webpage",
       pathOrUrl: "https://wiki.internal.example.com/x",
       lazy: true,
       description: "Platform architecture wiki. Use when answering deployment questions.",
@@ -37,7 +37,7 @@ describe("knowledgeAdd --lazy", () => {
     expect(exit).toBe(0);
     const cfg = JSON.parse(await readFile(join(bundleDir, "agent.config.json"), "utf8"));
     const source = cfg.knowledge.sources.at(-1);
-    expect(source.type).toBe("url");
+    expect(source.type).toBe("webpage");
     expect(source.lazy).toBe(true);
     expect(source.delivery).toBeUndefined(); // schema forbids delivery on lazy
     expect(source.description).toMatch(/Platform architecture wiki/);
@@ -52,7 +52,7 @@ describe("knowledgeAdd --lazy", () => {
         lazy: true,
         installAfter: false,
       } as Parameters<typeof knowledgeAdd>[0]),
-    ).rejects.toThrow(/lazy.*url/i);
+    ).rejects.toThrow(/lazy.*webpage/i);
   });
 
   it("warns when --lazy is set with no description", async () => {
@@ -62,7 +62,7 @@ describe("knowledgeAdd --lazy", () => {
     try {
       await knowledgeAdd({
         bundleDir,
-        type: "url",
+        type: "webpage",
         pathOrUrl: "https://wiki.example/x",
         lazy: true,
         installAfter: false,

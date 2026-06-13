@@ -1413,4 +1413,467 @@ describe("EditKnowledgeSourceModal", () => {
       await screen.findByText(/^saved\.$/i);
     });
   });
+
+  // ─── Web source type ───────────────────────────────────────────────
+
+  describe("web source type", () => {
+    it("renders url, mode, maxPages, depth for a crawl web source", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "hn",
+        type: "web",
+        url: "https://news.ycombinator.com/",
+        mode: "crawl",
+        maxPages: 30,
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByDisplayValue("https://news.ycombinator.com/")).toBeInTheDocument();
+      expect(screen.getByLabelText(/^\/\/ mode$/i)).toHaveValue("crawl");
+      expect(screen.getByLabelText(/^\/\/ max pages$/i)).toHaveValue(30);
+      expect(screen.getByLabelText(/^\/\/ depth$/i)).toBeInTheDocument();
+    });
+
+    it("round-trips web source fields on save", async () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "hn",
+        type: "web",
+        url: "https://news.ycombinator.com/",
+        mode: "crawl",
+        maxPages: 30,
+        depth: 3,
+        sameOrigin: false,
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      // Change the url to make it dirty
+      fireEvent.change(screen.getByDisplayValue("https://news.ycombinator.com/"), {
+        target: { value: "https://news.ycombinator.com/newest" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      const put = calls.find(
+        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
+      )!;
+      const body = JSON.parse(put.init!.body as string);
+      const saved = body.knowledge.sources[0];
+      expect(saved.type).toBe("web");
+      expect(saved.url).toBe("https://news.ycombinator.com/newest");
+      expect(saved.mode).toBe("crawl");
+      expect(saved.maxPages).toBe(30);
+      expect(saved.depth).toBe(3);
+      expect(saved.sameOrigin).toBe(false);
+    });
+
+    it("hides crawl-only fields when mode is llms-txt", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "web",
+        url: "https://example.com/llms.txt",
+        mode: "llms-txt",
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText(/^\/\/ mode$/i)).toHaveValue("llms-txt");
+      expect(screen.queryByLabelText(/^\/\/ max pages$/i)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^\/\/ depth$/i)).not.toBeInTheDocument();
+    });
+
+    it("validates web maxPages 1-200", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "hn",
+        type: "web",
+        url: "https://news.ycombinator.com/",
+        mode: "crawl",
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ max pages$/i), {
+        target: { value: "150" },
+      });
+      // 150 is valid for web (cap 200), so no error
+      const save = screen.getByRole("button", { name: /^save$/i });
+      expect(save.hasAttribute("disabled")).toBe(false);
+    });
+  });
+
+  // ─── MCP source type ───────────────────────────────────────────────
+
+  describe("mcp source type", () => {
+    it("renders server and tool fields for an mcp source", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "kb",
+        type: "mcp",
+        server: "notion",
+        tool: "search",
+        args: { query: "x" },
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText(/^\/\/ server$/i)).toHaveValue("notion");
+      expect(screen.getByLabelText(/^\/\/ tool$/i)).toHaveValue("search");
+      expect(screen.getByLabelText(/^\/\/ args \(one key=value per line\)$/i)).toHaveValue("query=x");
+    });
+
+    it("round-trips mcp source fields on save", async () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "kb",
+        type: "mcp",
+        server: "notion",
+        tool: "search",
+        args: { query: "x" },
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ tool$/i), {
+        target: { value: "search_pages" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      const put = calls.find(
+        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
+      )!;
+      const body = JSON.parse(put.init!.body as string);
+      const saved = body.knowledge.sources[0];
+      expect(saved.type).toBe("mcp");
+      expect(saved.server).toBe("notion");
+      expect(saved.tool).toBe("search_pages");
+      expect(saved.args).toEqual({ query: "x" });
+    });
+
+    it("validates mcp requires server and tool", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "kb",
+        type: "mcp",
+        server: "notion",
+        tool: "search",
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ server$/i), {
+        target: { value: "" },
+      });
+      const save = screen.getByRole("button", { name: /^save$/i });
+      expect(save.hasAttribute("disabled")).toBe(true);
+    });
+
+    it("rejects credential-shaped args keys and shows error text", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "kb",
+        type: "mcp",
+        server: "notion",
+        tool: "search",
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ args \(one key=value per line\)$/i), {
+        target: { value: "api_key=secret123" },
+      });
+      const save = screen.getByRole("button", { name: /^save$/i });
+      expect(save.hasAttribute("disabled")).toBe(true);
+      // Error text is visible below the textarea
+      expect(screen.getByText(/looks like a credential/i)).toBeInTheDocument();
+    });
+
+    it("round-trips preset and allowWriteTool on save", async () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "kb",
+        type: "mcp",
+        server: "notion",
+        tool: "search",
+        preset: "team-shared",
+        allowWriteTool: true,
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      // Make it dirty by changing description
+      fireEvent.change(screen.getByLabelText(/^\/\/ description$/i), {
+        target: { value: "updated" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      const put = calls.find(
+        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
+      )!;
+      const body = JSON.parse(put.init!.body as string);
+      const saved = body.knowledge.sources[0];
+      expect(saved.preset).toBe("team-shared");
+      expect(saved.allowWriteTool).toBe(true);
+    });
+  });
+
+  describe("web crawl include/exclude round-trip", () => {
+    it("round-trips include and exclude arrays on save", async () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "site",
+        type: "web",
+        url: "https://example.com/",
+        mode: "crawl",
+        include: ["/docs/**"],
+        exclude: ["/blog/**"],
+        delivery: "file",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      // Make dirty by changing description
+      fireEvent.change(screen.getByLabelText(/^\/\/ description$/i), {
+        target: { value: "crawl docs" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      const put = calls.find(
+        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
+      )!;
+      const body = JSON.parse(put.init!.body as string);
+      const saved = body.knowledge.sources[0];
+      expect(saved.include).toEqual(["/docs/**"]);
+      expect(saved.exclude).toEqual(["/blog/**"]);
+    });
+  });
+
+  // ─── Webpage source type (post-rename from "url") ─────────────────
+
+  describe("webpage source type", () => {
+    it("renders url field for a webpage source (same as old url type)", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "webpage",
+        url: "https://example.com/page",
+        delivery: "auto",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText(/^\/\/ url$/i)).toHaveValue("https://example.com/page");
+    });
+
+    it("round-trips webpage source on save", async () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "webpage",
+        url: "https://example.com/page",
+        delivery: "auto",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/other" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      const put = calls.find(
+        (c) => c.url.includes("/api/agents/") && c.init?.method === "PUT",
+      )!;
+      const body = JSON.parse(put.init!.body as string);
+      const saved = body.knowledge.sources[0];
+      expect(saved.type).toBe("webpage");
+      expect(saved.url).toBe("https://example.com/other");
+    });
+
+    it("webpage source shows auth select and lazy toggle", () => {
+      globalThis.fetch = mockFetch(calls) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "webpage",
+        url: "https://example.com/page",
+        delivery: "auto",
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText(/^\/\/ auth$/i)).toBeInTheDocument();
+      expect(screen.getByRole("switch", { name: /lazy fetch/i })).toBeInTheDocument();
+    });
+  });
+});
+
+describe("EditKnowledgeSourceModal — exhaustive type coverage (regression guard)", () => {
+  // Every acquirable KnowledgeSource type (excluding deprecated 'url' alias)
+  // must render a type-specific field. When adding a new source type, add a
+  // fixture + probe here — the self-check at the end will fail until you do.
+  const ACQUIRABLE_TYPES = [
+    "file",
+    "dir",
+    "glob",
+    "webpage",
+    "web",
+    "git",
+    "npm",
+    "confluence",
+    "jira",
+    "mcp",
+  ] as const;
+
+  type AcquirableType = (typeof ACQUIRABLE_TYPES)[number];
+
+  const FIXTURES: Record<AcquirableType, KnowledgeSource> = {
+    file: { id: "f", type: "file", path: "/x.md", delivery: "auto" } as KnowledgeSource,
+    dir: { id: "d", type: "dir", path: "/notes", delivery: "auto" } as KnowledgeSource,
+    glob: { id: "g", type: "glob", path: "**/*.md", delivery: "auto" } as KnowledgeSource,
+    webpage: { id: "w", type: "webpage", url: "https://x.com/p", delivery: "auto" } as KnowledgeSource,
+    web: { id: "wc", type: "web", url: "https://x.com/", mode: "crawl", delivery: "file" } as unknown as KnowledgeSource,
+    git: { id: "gi", type: "git", url: "https://github.com/x/y", delivery: "auto" } as KnowledgeSource,
+    npm: { id: "n", type: "npm", package: "@scope/pkg", delivery: "auto" } as KnowledgeSource,
+    confluence: { id: "c", type: "confluence", space: "TEAM", delivery: "auto" } as KnowledgeSource,
+    jira: { id: "j", type: "jira", jql: "project=X", delivery: "auto" } as KnowledgeSource,
+    mcp: { id: "m", type: "mcp", server: "notion", tool: "search", delivery: "file" } as unknown as KnowledgeSource,
+  };
+
+  // A probe is a regex applied via getByLabelText that uniquely identifies
+  // the type-specific rendering branch. Labels follow the `// <label>` pattern.
+  const PROBES: Record<AcquirableType, RegExp> = {
+    file: /^\/\/ path$/i,
+    dir: /^\/\/ directory$/i,
+    glob: /^\/\/ glob$/i,
+    webpage: /^\/\/ url$/i,
+    web: /^\/\/ mode$/i,
+    git: /^\/\/ git url$/i,
+    npm: /^\/\/ package$/i,
+    confluence: /^\/\/ space key$/i,
+    jira: /^\/\/ jql$/i,
+    mcp: /^\/\/ server$/i,
+  };
+
+  // Self-check: every acquirable type has a fixture AND a probe.
+  it("self-check: every acquirable type has a fixture and probe", () => {
+    for (const t of ACQUIRABLE_TYPES) {
+      expect(FIXTURES[t]).toBeDefined();
+      expect(PROBES[t]).toBeDefined();
+    }
+  });
+
+  for (const t of ACQUIRABLE_TYPES) {
+    it(`renders a type-specific input for type="${t}"`, () => {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ servers: [], toolsByServer: {} }), {
+          status: 200,
+        })) as unknown as typeof fetch;
+      const src = FIXTURES[t];
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          onClose={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText(PROBES[t])).toBeInTheDocument();
+    });
+  }
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { readSmithVersion } from "../../io/smith-version";
@@ -17,6 +17,7 @@ import {
 } from "../../core/knowledge/route-cache";
 import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
 import { SmithError } from "../../core/smith-error";
+import { collectKnowledgeDeprecations } from "../../core/config-schema";
 import type { AgentBundle, CanonicalConfig, InstallPaths, Target } from "../../core/types";
 import { registerAgentInCodexHooks } from "../../io/codex-hooks";
 import {
@@ -590,6 +591,14 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
   // that caches load results) see unfiltered targets.
   const filteredBundle = applyPlatformFilter(bundle, o.platformFilter);
   let bundles = [filteredBundle];
+
+  // Surface knowledge deprecation warnings (mirrors validate.ts).
+  for (const b of bundles) {
+    try {
+      const raw = JSON.parse(await readFile(join(b.bundlePath, "agent.config.json"), "utf8"));
+      for (const w of collectKnowledgeDeprecations(raw)) printErr(`${pc.yellow("  ⚠")} ${w}`);
+    } catch { /* ignore — missing/unreadable config */ }
+  }
 
   // Preflight MCP dependencies BEFORE the consent loop so the user doesn't
   // answer prompts for an install that's about to refuse. `mcp.required[]`

@@ -195,7 +195,7 @@ describe("translateKiro: refresh hook", () => {
             sources: [
               {
                 id: "live",
-                type: "url",
+                type: "webpage",
                 url: "https://x",
                 delivery: "file",
                 refresh: { mode: "session" },
@@ -222,7 +222,7 @@ describe("translateKiro: refresh hook", () => {
             sources: [
               {
                 id: "live",
-                type: "url",
+                type: "webpage",
                 url: "https://x",
                 delivery: "file",
                 refresh: { mode: "session" },

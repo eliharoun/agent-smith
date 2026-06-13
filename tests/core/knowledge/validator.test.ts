@@ -100,7 +100,7 @@ describe("validateKnowledge", () => {
     it("never emits a warning when refresh is 'never'", () => {
       const b: KnowledgeBlock = {
         sources: [
-          { id: "s", type: "url", url: "https://example.com/x", delivery: "file", refresh: "never" },
+          { id: "s", type: "webpage", url: "https://example.com/x", delivery: "file", refresh: "never" },
         ],
       };
       const r = validateKnowledge(b);
@@ -110,7 +110,7 @@ describe("validateKnowledge", () => {
     it("never emits a warning when refresh is unset", () => {
       const b: KnowledgeBlock = {
         sources: [
-          { id: "s", type: "url", url: "https://example.com/x", delivery: "file" },
+          { id: "s", type: "webpage", url: "https://example.com/x", delivery: "file" },
         ],
       };
       const r = validateKnowledge(b);
@@ -122,7 +122,7 @@ describe("validateKnowledge", () => {
     it("legacy 'never' on remote source produces no warning", () => {
       const result = validateKnowledge({
         sources: [
-          { id: "u", type: "url", delivery: "file", url: "https://example.com", refresh: "never" },
+          { id: "u", type: "webpage", delivery: "file", url: "https://example.com", refresh: "never" },
         ],
       });
       expect(result.errors).toEqual([]);
@@ -132,7 +132,7 @@ describe("validateKnowledge", () => {
     it("legacy '1h' on remote source produces no warning", () => {
       const result = validateKnowledge({
         sources: [
-          { id: "u", type: "url", delivery: "file", url: "https://example.com", refresh: "1h" },
+          { id: "u", type: "webpage", delivery: "file", url: "https://example.com", refresh: "1h" },
         ],
       });
       expect(result.errors).toEqual([]);
@@ -142,7 +142,7 @@ describe("validateKnowledge", () => {
     it("object { mode: 'session' } on url source is accepted", () => {
       const result = validateKnowledge({
         sources: [
-          { id: "u", type: "url", delivery: "file", url: "https://example.com", refresh: { mode: "session" } },
+          { id: "u", type: "webpage", delivery: "file", url: "https://example.com", refresh: { mode: "session" } },
         ],
       });
       expect(result.errors).toEqual([]);
@@ -151,7 +151,7 @@ describe("validateKnowledge", () => {
     it("object { mode: 'ttl' } without ttl rejected", () => {
       const result = validateKnowledge({
         sources: [
-          { id: "u", type: "url", delivery: "file", url: "https://example.com", refresh: { mode: "ttl" } },
+          { id: "u", type: "webpage", delivery: "file", url: "https://example.com", refresh: { mode: "ttl" } },
         ],
       });
       expect(result.errors.length).toBeGreaterThan(0);
@@ -201,7 +201,7 @@ describe("validateKnowledge", () => {
       expect(
         validateKnowledge({
           sources: [
-            { id: "u", type: "url", delivery: "file", url: "https://e.com", refresh: { mode: "ttl", ttl: "30m" } },
+            { id: "u", type: "webpage", delivery: "file", url: "https://e.com", refresh: { mode: "ttl", ttl: "30m" } },
           ],
         }).errors,
       ).toEqual([]);

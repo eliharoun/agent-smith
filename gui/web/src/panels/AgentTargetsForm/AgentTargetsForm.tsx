@@ -1,4 +1,4 @@
-import type { AgentDetail, ModelTier, Platform, Target } from "gui-shared";
+import { NETWORK_KNOWLEDGE_TYPES, type AgentDetail, type ModelTier, type Platform, type Target } from "gui-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useSaveAgentConfig } from "@/hooks/useAgents";
 import { useDriftCheck } from "@/hooks/useDriftCheck";
@@ -296,7 +296,7 @@ function ReconcileNudges({
   );
 }
 
-const NETWORK_TYPES = new Set(["url", "git", "confluence", "jira"]);
+const NETWORK_TYPES = new Set<string>(NETWORK_KNOWLEDGE_TYPES);
 const REFRESH_MODES = new Set(["session", "always"]);
 
 function RefreshHooksSection({ agent, targets }: { agent: string; targets: Target[] }) {

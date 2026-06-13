@@ -84,7 +84,7 @@ Array of `{ catalog?, name }` entries declaring skills that must be installed fo
 
 ### `knowledge`
 
-Object with `packs?`, `inlineBudget?: { totalTokens }`, `sources?` array, and an optional `compile?` block. The `inlineBudget.totalTokens` defaults to 8000 and is capped at 16000 (`src/core/knowledge/schema.ts`). For the full source-type taxonomy (`file`, `dir`, `glob`, `url`, `git`, `confluence`, `jira`), materializer rules, and per-source schemas, see [Knowledge sources](./04-knowledge.md).
+Object with `packs?`, `inlineBudget?: { totalTokens }`, `sources?` array, and an optional `compile?` block. The `inlineBudget.totalTokens` defaults to 8000 and is capped at 16000 (`src/core/knowledge/schema.ts`). For the full source-type taxonomy (`file`, `dir`, `glob`, `webpage`, `web`, `git`, `confluence`, `jira`, `mcp`), materializer rules, and per-source schemas, see [Knowledge sources](./04-knowledge.md).
 
 The optional `compile` block overrides the v2.1 smart default:
 

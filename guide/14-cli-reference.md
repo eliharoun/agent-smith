@@ -1720,9 +1720,9 @@ Source: `src/cli/commands/knowledge/add.ts`.
 **Arguments:**
 
 - `<agent>` — agent name.
-- `<type>` — one of `file|dir|glob|url|git|confluence|jira`. For `confluence`, `<path-or-url>` is the space key; for `jira`, it's a JQL query — see the Atlassian sources section below for per-type flags. (`npm` is declared in the schema but rejected by the validator.)
+- `<type>` — one of `file|dir|glob|webpage|web|git|confluence|jira|mcp`. For `confluence`, `<path-or-url>` is the space key; for `jira`, it's a JQL query; for `mcp`, use flags (`--server`, `--tool`). `url` is accepted as a deprecated alias for `webpage`. See the per-type sections below. (`npm` is declared in the schema but rejected by the validator.)
 - `<path-or-url>` — source path (for `file`/`dir`/`glob`) or URL (for
-  `url`/`git`).
+  `webpage`/`web`/`git`).
 
 **Flags:**
 
@@ -1730,7 +1730,7 @@ Source: `src/cli/commands/knowledge/add.ts`.
 - `--delivery <delivery>` — one of `inline|file|auto`. Default `auto`.
 - `--description <text>` — human-readable description.
 - `--optional` — set `optional: true` on the new source. At install time, runtime/IO failures (network, missing file, git auth) on this source degrade to warnings instead of aborting. `validation-failed` SmithErrors still abort regardless. See [guide/04-knowledge.md § Optional sources](./04-knowledge.md#optional-sources).
-- `--lazy` — URL sources only (`type=url`). Skip materialization at install/fetch; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types.
+- `--lazy` — URL sources only (`type=webpage`). Skip materialization at install/fetch; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types.
 - `--no-install` — skip the auto-materialize step. The source is still saved to `agent.config.json`; run `smith agent install <agent>` later to materialize.
 
 **Exit codes:**
@@ -1745,9 +1745,54 @@ Source: `src/cli/commands/knowledge/add.ts`.
 ```bash
 $ smith knowledge add my-agent file ~/notes/runbook.md \
     --description "Production runbook"
-$ smith knowledge add my-agent url https://internal-wiki.example.com/runbook \
+$ smith knowledge add my-agent webpage https://internal-wiki.example.com/runbook \
     --delivery file --optional
-$ smith knowledge add my-agent url https://docs.example.com --no-install
+$ smith knowledge add my-agent webpage https://docs.example.com --no-install
+```
+
+> **Note:** `type=url` is a deprecated alias for `type=webpage`. Both work identically, but `smith validate` emits a migration warning for `url`. New bundles should use `webpage`.
+
+**Web sources (`type=web`):**
+
+`smith knowledge add <agent> web <url>` adds a multi-page web source. Required: `--mode`.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--mode <mode>` | enum: `crawl\|llms-txt\|openapi` | (required) | Crawl a site, fetch an llms.txt manifest, or parse an OpenAPI spec. |
+| `--max-pages <n>` | int | `25` | Maximum pages to crawl (1–200). Crawl mode only. |
+| `--depth <n>` | int | `2` | Maximum link-follow depth (1–5). Crawl mode only. |
+| `--same-origin` / `--no-same-origin` | bool | `true` | Restrict crawl to same origin. Crawl mode only. |
+| `--include <glob>` | string (repeatable) | (match all) | Only crawl paths matching this glob. Crawl mode only. |
+| `--exclude <glob>` | string (repeatable) | (match none) | Skip paths matching this glob. Crawl mode only. |
+
+Example:
+
+```bash
+$ smith knowledge add my-agent web https://docs.stripe.com/ \
+    --mode crawl --max-pages 50 --depth 3
+$ smith knowledge add my-agent web https://example.com/llms.txt --mode llms-txt
+$ smith knowledge add my-agent web https://api.example.com/openapi.json --mode openapi
+```
+
+**MCP connector sources (`type=mcp`):**
+
+`smith knowledge add <agent> mcp` adds a source backed by an MCP server tool.
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--server <name>` | string | (required) | MCP server name (should be declared in `mcp.required`/`mcp.peer`). |
+| `--tool <name>` | string | (required) | Tool to invoke on the server. |
+| `--arg <key>=<value>` | string (repeatable) | — | Arguments passed to the tool. Credential-shaped keys are rejected. |
+| `--preset <name>` | enum | — | One of: `notion`, `github`, `slack`, `linear`, `sentry`, `grafana`. Pre-fills defaults. |
+| `--allow-write-tool` | bool | `false` | Allow write-shaped tool names (blocked by default). |
+
+Example:
+
+```bash
+$ smith knowledge add my-agent mcp \
+    --server notion --tool search --arg query="onboarding guide" --preset notion
+$ smith knowledge add my-agent mcp \
+    --server github-mcp --tool search_repositories --arg query="my-project" --allow-write-tool
 ```
 
 **Atlassian sources (confluence and jira):**
@@ -1796,7 +1841,7 @@ Smith parses the URL and fills the right flags. Six URL shapes are recognised:
 | `/wiki/spaces/<SPACE>(/overview)?` | `confluence` (whole space) | format defaults to `markdown` |
 | `/browse/<KEY-N>` | `jira` (single issue) | `jql: "key = <KEY-N>"` |
 | `/issues/?jql=<urlencoded>` | `jira` (search query) | jql decoded from the query string |
-| any other http(s) URL | `url` (plain web fetch) | fallback for non-Atlassian URLs |
+| any other http(s) URL | `webpage` (plain web fetch) | fallback for non-Atlassian URLs |
 
 The success line tells you which kind was created (e.g. `→ added Confluence page knowledge source ...`) so a typo'd Atlassian URL falling through to `plain web URL` is caught immediately.
 
@@ -1875,7 +1920,7 @@ $ smith knowledge list my-agent
 hard-reset to `origin/<ref>`, tags/SHAs reused unchanged). With
 `--source <id>`, smith surgically clears that one source's acquirer
 cache before re-fetching: `<knowledgeDir>/.cache/<sha256(url)>.bin` plus
-the sibling `.json` headers for `type: url`, and
+the sibling `.json` headers for `type: webpage`, and
 `<knowledgeDir>/.cache/git/<sha256(url)>/` for `type: git`. Other
 sources' caches are left untouched. After clearing, smith re-acquires
 the single source through the three-layer URL resolver, materializes

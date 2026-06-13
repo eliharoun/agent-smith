@@ -11,7 +11,7 @@ const LAZY_DESCRIPTION =
 const lazyMaterialized: MaterializedSource = {
   id: "wiki",
   scope: "agent",
-  type: "url",
+  type: "webpage",
   delivery: "lazy",
   description: LAZY_DESCRIPTION,
   files: [],
@@ -20,7 +20,7 @@ const lazyMaterialized: MaterializedSource = {
 
 const lazyDeclaration: KnowledgeSource = {
   id: "wiki",
-  type: "url",
+  type: "webpage",
   url: "https://wiki.internal.example.com/architecture",
   lazy: true,
   description: LAZY_DESCRIPTION,
@@ -41,7 +41,7 @@ describe("compile: lazy URL sources", () => {
     );
     const stanza = result.tocStanza;
     expect(stanza).toMatch(/^## Knowledge/m);
-    expect(stanza).toMatch(/`wiki` \[url, lazy\]/);
+    expect(stanza).toMatch(/`wiki` \[webpage, lazy\]/);
     expect(stanza).toMatch(/Platform architecture wiki/);
     expect(stanza).toMatch(/url: https:\/\/wiki.internal.example.com\/architecture/);
     expect(stanza).toMatch(/fetch via: WebFetch/);
@@ -67,7 +67,7 @@ describe("compile: lazy URL sources", () => {
       { ...compileOpts, sourceDeclarations: { wiki: lazyDeclaration } },
       { rootDir: "/tmp/agent/knowledge" },
     );
-    expect(result.tocStanza).toMatch(/\[url, lazy\][^\n]*entries/i);
+    expect(result.tocStanza).toMatch(/\[webpage, lazy\][^\n]*entries/i);
     expect(result.tocStanza).toMatch(/fetch via:/);
     expect(result.tocStanza).toMatch(/at runtime/i);
   });
@@ -76,7 +76,7 @@ describe("compile: lazy URL sources", () => {
     const eagerMat: MaterializedSource = {
       id: "doc",
       scope: "agent",
-      type: "url",
+      type: "webpage",
       delivery: "file",
       files: [{ relPath: "sources/doc/x.md", bytes: 100, sha256: "a" }],
       tokensInline: 0,
@@ -84,7 +84,7 @@ describe("compile: lazy URL sources", () => {
     };
     const eagerDecl: KnowledgeSource = {
       id: "doc",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/doc",
       delivery: "file",
     };
@@ -93,14 +93,14 @@ describe("compile: lazy URL sources", () => {
       { ...compileOpts, sourceDeclarations: { doc: eagerDecl } },
       { rootDir: "/tmp/agent/knowledge" },
     );
-    expect(result.tocStanza).not.toMatch(/\[url, lazy\][^\n]*entries/i);
+    expect(result.tocStanza).not.toMatch(/\[webpage, lazy\][^\n]*entries/i);
   });
 
   it("includes both lazy and non-lazy entries in the same stanza", () => {
     const eagerMat: MaterializedSource = {
       id: "doc",
       scope: "agent",
-      type: "url",
+      type: "webpage",
       delivery: "file",
       files: [{ relPath: "sources/doc/x.md", bytes: 100, sha256: "a" }],
       tokensInline: 0,
@@ -108,7 +108,7 @@ describe("compile: lazy URL sources", () => {
     };
     const eagerDecl: KnowledgeSource = {
       id: "doc",
-      type: "url",
+      type: "webpage",
       url: "https://example.com/doc",
       delivery: "file",
     };
@@ -117,8 +117,8 @@ describe("compile: lazy URL sources", () => {
       { ...compileOpts, sourceDeclarations: { wiki: lazyDeclaration, doc: eagerDecl } },
       { rootDir: "/tmp/agent/knowledge" },
     );
-    expect(result.tocStanza).toMatch(/`wiki` \[url, lazy\]/);
-    expect(result.tocStanza).toMatch(/`doc` \[url\]/);
-    expect(result.tocStanza).not.toMatch(/`doc` \[url, lazy\]/);
+    expect(result.tocStanza).toMatch(/`wiki` \[webpage, lazy\]/);
+    expect(result.tocStanza).toMatch(/`doc` \[webpage\]/);
+    expect(result.tocStanza).not.toMatch(/`doc` \[webpage, lazy\]/);
   });
 });

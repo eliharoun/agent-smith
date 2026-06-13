@@ -17,7 +17,7 @@ import { checkLazyFetch } from "../../../src/core/freshness/check-lazy-fetch";
 
 const lazyUrlSrc = {
   id: "wiki",
-  type: "url" as const,
+  type: "webpage" as const,
   url: "https://example.com/x",
   lazy: true,
   description: "A wiki.",

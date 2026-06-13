@@ -50,7 +50,7 @@ Lower number wins. The losing catalog's bundle is shadowed and smith warns at in
 
 Author and test your bundle locally first using the normal `smith agent init` → iterate flow ([01 — Getting started](./01-getting-started.md)). Before you publish, audit it for three classes of portability problem:
 
-- **Absolute machine-local paths.** A knowledge source declaring `type: dir, path: /Users/you/notes/` will fail on every consumer's machine. Replace with a path relative to the bundle directory, or switch to `type: git` / `type: url` if the content is hosted somewhere fetchable.
+- **Absolute machine-local paths.** A knowledge source declaring `type: dir, path: /Users/you/notes/` will fail on every consumer's machine. Replace with a path relative to the bundle directory, or switch to `type: git` / `type: webpage` if the content is hosted somewhere fetchable.
 - **Embedded secrets.** Never commit API tokens, passwords, or `.env` files into a bundle. The bundle directory ships verbatim to consumers. (Credentials for `confluence` / `jira` knowledge sources resolve from each consumer's local environment — see [§7](#7-credentials-when-sharing-knowledge-that-requires-auth).)
 - **Knowledge sources consumers cannot resolve.** A `type: git` source pointing at a private repo your teammates cannot clone, or a `type: confluence` source against a space they cannot read, will fail at *their* `smith agent install` time. Either grant the access or use a different source.
 
@@ -298,7 +298,9 @@ That is: your knowledge *declarations* are part of what you ship. Whether the *c
 | `file` | ✓ yes | Read from the bundle directory | None (file is in the cloned repo) |
 | `dir` | ✓ yes | Read from the bundle directory | None |
 | `glob` | ✓ yes | Read from the bundle directory | None |
-| `url` | ✓ yes | HTTP GET at install time | Network reachability to the URL |
+| `webpage` | ✓ yes | HTTP GET at install time | Network reachability to the URL |
+| `web` | ✓ yes | Crawl / llms-txt / openapi fetch at install time | Network reachability to the URL |
+| `mcp` | ✓ yes | MCP server query at install time | Running MCP server |
 | `git` | ✓ yes | `git clone` at install time | Read access to the remote |
 | `confluence` | ✓ yes | API fetch at install time | Atlassian credentials in env (see [§7](#7-credentials-when-sharing-knowledge-that-requires-auth)) |
 | `jira` | ✓ yes | API fetch at install time | Atlassian credentials in env (see [§7](#7-credentials-when-sharing-knowledge-that-requires-auth)) |
@@ -308,7 +310,7 @@ Materialization happens in `src/core/knowledge/pipeline.ts` and lives under each
 ### 6.2 Implications for publishers
 
 - **Bundle-local sources (`file` / `dir` / `glob`) are the most portable.** If the content is small (<~1 MB), stable, and a fixed snapshot is fine, prefer these. Consumers need nothing except the bundle itself.
-- **Remote sources (`url` / `git`) are stale-resistant but require network.** They re-fetch on every install, so consumers always get the current version. They fail if the consumer is offline or behind a firewall.
+- **Remote sources (`webpage` / `web` / `git`) are stale-resistant but require network.** They re-fetch on every install, so consumers always get the current version. They fail if the consumer is offline or behind a firewall.
 - **Atlassian sources (`confluence` / `jira`) require credentials on every consumer's machine.** Document this prominently in your bundle's `IDENTITY.md` or `EXPERTISE.md`, and link to [§7](#7-credentials-when-sharing-knowledge-that-requires-auth) of this chapter.
 - **Don't commit secrets to bundled `file` sources.** A `file: secrets.env` declaration ships the file's contents to every teammate's checkout.
 

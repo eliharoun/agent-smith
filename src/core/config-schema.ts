@@ -205,7 +205,8 @@ function stripUndefined<T extends object>(obj: T): T {
 }
 
 export function parseConfig(input: unknown): ParseResult {
-  const migrated = migrateMissingSchemaVersion(input);
+  const aliased = normalizeKnowledgeTypeAliases(input);
+  const migrated = migrateMissingSchemaVersion(aliased);
   const result = CanonicalConfigSchema.safeParse(migrated);
   if (result.success)
     return { success: true, data: stripUndefined(result.data) as CanonicalConfig };
@@ -227,4 +228,33 @@ function migrateMissingSchemaVersion(input: unknown): unknown {
   const obj = input as Record<string, unknown>;
   if ("schemaVersion" in obj) return input;
   return { schemaVersion: 1, ...obj };
+}
+
+function normalizeKnowledgeTypeAliases(input: unknown): unknown {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  const obj = input as Record<string, unknown>;
+  const knowledge = obj.knowledge as { sources?: unknown[] } | undefined;
+  if (!knowledge || !Array.isArray(knowledge.sources)) return input;
+  let changed = false;
+  const sources = knowledge.sources.map((s) => {
+    if (s && typeof s === "object" && !Array.isArray(s) && (s as Record<string, unknown>).type === "url") { changed = true; return { ...(s as Record<string, unknown>), type: "webpage" }; }
+    return s;
+  });
+  if (!changed) return input;
+  return { ...obj, knowledge: { ...knowledge, sources } };
+}
+
+// Wired into validate, install, and doctor command output.
+export function collectKnowledgeDeprecations(input: unknown): string[] {
+  const warnings: string[] = [];
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return warnings;
+  const knowledge = (input as Record<string, unknown>).knowledge as { sources?: unknown[] } | undefined;
+  if (!knowledge || !Array.isArray(knowledge.sources)) return warnings;
+  for (const s of knowledge.sources) {
+    if (s && typeof s === "object" && (s as Record<string, unknown>).type === "url") {
+      const id = String((s as Record<string, unknown>).id ?? "<unknown>");
+      warnings.push(`Knowledge source '${id}' uses \`type: url\`, which is deprecated and renamed to \`type: webpage\`. Update your bundle: change \`type: url\` -> \`type: webpage\` (no other fields change). The old name still works for now.`);
+    }
+  }
+  return warnings;
 }

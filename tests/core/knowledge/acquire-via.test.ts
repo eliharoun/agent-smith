@@ -305,7 +305,7 @@ describe("acquireViaMcp", () => {
       "../../../src/core/knowledge/acquire-source"
     );
     const fakeSrc = {
-      id: "revision-history", type: "url" as const, url: "https://wiki.example.com/RevisionHistory",
+      id: "revision-history", type: "webpage" as const, url: "https://wiki.example.com/RevisionHistory",
       delivery: "file" as const,
     };
     const m = chooseMaterializer(fakeSrc, arts[0]!);

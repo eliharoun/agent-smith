@@ -171,7 +171,7 @@ describe("v1 surface stability — KnowledgeSourceSchema", () => {
       .map(typeOf)
       .filter((t): t is string => typeof t === "string");
     expect(new Set(variants)).toEqual(
-      new Set(["file", "dir", "glob", "url", "git", "npm", "confluence", "jira"]),
+      new Set(["file", "dir", "glob", "webpage", "web", "git", "npm", "confluence", "jira", "mcp"]),
     );
   });
 
@@ -186,7 +186,7 @@ describe("v1 surface stability — KnowledgeSourceSchema", () => {
       expect(req.has("id")).toBe(true);
       expect(req.has("type")).toBe(true);
       const t = typeOf(variant);
-      if (t !== "url") {
+      if (t !== "webpage") {
         expect(req.has("delivery")).toBe(true);
       }
     }
@@ -201,10 +201,10 @@ describe("v1 surface stability — KnowledgeSourceSchema", () => {
     }
   });
 
-  test("url-shaped variants (url, git) require 'url'", () => {
+  test("url-shaped variants (webpage, web, git) require 'url'", () => {
     for (const variant of json.oneOf ?? []) {
       const t = typeOf(variant);
-      if (t === "url" || t === "git") {
+      if (t === "webpage" || t === "web" || t === "git") {
         expect(new Set(variant.required ?? []).has("url")).toBe(true);
       }
     }

@@ -19,7 +19,7 @@ const SkillReq = z.object({ name: z.string(), embedded: z.boolean() });
 
 const RemoteKnowledge = z.object({
   id: z.string(),
-  type: z.enum(["url", "git", "confluence", "jira"]),
+  type: z.enum(["url", "webpage", "web", "git", "confluence", "jira", "mcp"]),
   endpoint: z.string(),
 });
 

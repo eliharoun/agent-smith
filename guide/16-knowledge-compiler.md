@@ -18,6 +18,8 @@ The cross-tool consensus has moved on. The Linux Foundation's AGENTS.md spec (~2
 
 ## Smart default and overrides
 
+> **Web and MCP sources.** `type: web` and `type: mcp` knowledge sources participate in the materialize/compile/retrieval pipeline like any other source type. Their materialized output goes through the same TOC generation, BM25 indexing, and progressive-disclosure rendering. The only difference is acquisition: `web` sources crawl/fetch at install time (no lazy support), and `mcp` sources invoke a declared MCP server tool at install time.
+
 **Default behaviour.** The pipeline picks compile vs. inline automatically. Threshold: total materialized corpus exceeds `knowledge.inlineBudget.totalTokens` (default 8000, capped at 16000 — the same knob that gates inline truncation). Below the threshold, the bundle stays inline (cheap, always-resident); above it, the compile stage runs and the agent fetches on demand instead of getting silently truncated. Estimated as `manifest.totals.bytes / 4` (a 4-bytes-per-token heuristic). See `shouldAutoCompile` in `src/core/knowledge/pipeline.ts`.
 
 **Two overrides.** Both live in the `knowledge` block:
@@ -34,7 +36,7 @@ The `compile` block:
 {
   "knowledge": {
     "sources": [
-      { "id": "team-runbook", "type": "url", "url": "https://wiki/runbook", "delivery": "file" }
+      { "id": "team-runbook", "type": "webpage", "url": "https://wiki/runbook", "delivery": "file" }
     ],
     "compile": {
       "progressive": true,
@@ -64,7 +66,7 @@ Three optional fields layer on top of every source variant. They only affect ren
 ```jsonc
 {
   "id": "stripe-api",
-  "type": "url",
+  "type": "webpage",
   "url": "https://stripe.com/docs/api",
   "delivery": "file",
   "summary": "Stripe REST API reference",
@@ -205,7 +207,7 @@ Reads a Microsoft APM (`microsoft/apm`) `apm.yml` once and produces a normal smi
 | `copilot` / `cursor` / `gemini` / `windsurf` | `agents-md` (folded into one target) |
 | anything else | silently dropped |
 
-**References mapping.** APM `references[]` entries become smith `knowledge[]` sources: `url:` → `type: url`, `file:` → `type: file`. Each source is `delivery: file`. `mcp:` references are dropped (smith MCP servers live in `mcpServers`, configured separately).
+**References mapping.** APM `references[]` entries become smith `knowledge[]` sources: `url:` → `type: webpage`, `file:` → `type: file`. Each source is `delivery: file`. `mcp:` references are dropped (smith MCP servers live in `mcpServers`, configured separately).
 
 **Defaults applied to the imported bundle:**
 - `compile.progressive: true`
@@ -286,7 +288,7 @@ In the GUI, the `/system/doctor` page renders the section like every other docto
 
 ## See also
 
-- [Knowledge](./04-knowledge.md) — the source-type taxonomy (file/dir/glob/url/git/confluence/jira), delivery semantics, refresh modes, and Atlassian credentials. Everything in spoke 04 still applies; the compile stage runs *after* materialization.
+- [Knowledge](./04-knowledge.md) — the source-type taxonomy (file/dir/glob/webpage/web/git/confluence/jira/mcp), delivery semantics, refresh modes, and Atlassian credentials. Everything in spoke 04 still applies; the compile stage runs *after* materialization.
 - [Bundle anatomy](./02-bundle-anatomy.md#knowledge) — where the `compile` and `targetOptions` blocks fit in the schema overview.
 - [Installing and rendering](./03-installing-and-rendering.md) — what `smith agent install` does end-to-end; the compile stage is now part of step 4.
 - [Sharing and distribution](./15-sharing-and-distribution.md) — AGENTS.md as a publishing surface.

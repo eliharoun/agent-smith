@@ -296,7 +296,7 @@ export async function knowledgeFetch(
       const target = allSources.filter((s) => s.id === sourceId && isAcquirable(s.type));
       for (const src of target) {
         try {
-          if (src.type === "url") {
+          if (src.type === "webpage") {
             const key = urlCacheKey(src.url);
             await rm(join(cacheDir, `${key}.json`), { force: true });
             await rm(join(cacheDir, `${key}.bin`), { force: true });
