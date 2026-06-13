@@ -10,6 +10,7 @@ import { indexDbPath } from "./index/index-paths";
 import { REPOMAP_VERSION } from "./index/repomap/extract";
 import { rankFiles } from "./index/repomap/graph";
 import { renderMap } from "./index/repomap/render";
+import { SCHEMA_VERSION } from "./index/schema-version";
 import { KnowledgeStore } from "./index/store";
 
 /**
@@ -100,9 +101,8 @@ export async function buildServeContext(
     store = await KnowledgeStore.open(
       indexDbPath(knowledgeDir),
       {
-        schemaVersion: 1,
-        embedderId: "none",
-        embedderDim: 1,
+        schemaVersion: SCHEMA_VERSION,
+        embedders: [],
         chunkerVersion: CHUNKER_VERSION,
         repomapVersion: REPOMAP_VERSION,
       },

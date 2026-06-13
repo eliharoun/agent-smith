@@ -14,8 +14,7 @@ afterEach(async () => {
 
 const H = {
   schemaVersion: 1,
-  embedderId: "emb-a",
-  embedderDim: 3,
+  embedders: [{ id: "emb-a", dim: 3 }],
   chunkerVersion: 1,
   repomapVersion: 1,
 };
@@ -35,14 +34,16 @@ function chunk(id: string, sourceId: string, relPath: string, vector?: Float32Ar
 }
 
 describe("KnowledgeStore.stats", () => {
-  test("empty index: zero counts, embedderId reflects header", async () => {
+  test("empty index: zero counts, embedderId 'none' (no live vectors)", async () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
     const stats = s.stats();
     expect(stats.chunks).toBe(0);
     expect(stats.vectors).toBe(0);
     expect(stats.taggedPaths).toBe(0);
-    expect(stats.embedderId).toBe("emb-a");
+    // embedderId now derives from LIVE vectors (not the header meta); an empty
+    // index has none, so the single-model shim reports "none".
+    expect(stats.embedderId).toBe("none");
     expect(stats.perSource).toEqual([]);
     s.close();
   });

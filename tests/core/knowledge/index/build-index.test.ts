@@ -16,8 +16,7 @@ afterEach(async () => {
 
 const H = (embId: string, dim: number) => ({
   schemaVersion: 1,
-  embedderId: embId,
-  embedderDim: dim,
+  embedders: embId === "none" ? [] : [{ id: embId, dim }],
   chunkerVersion: 1,
   repomapVersion: 1,
 });
@@ -177,6 +176,26 @@ describe("buildIndex", () => {
     expect(s1.hasVector("sources/hy/a.md")).toBe(false); // orphan vector cleared
     expect(s1.searchLexical(["alpha"], 5).length).toBe(1); // lexical still works
     s1.close();
+  });
+
+  test("embedded chunks are stamped with the embedder's id (storedEmbedderIds sees it)", async () => {
+    const kd = join(dir, "knowledge");
+    await mkdir(join(kd, "sources", "hy"), { recursive: true });
+    await writeFile(join(kd, "sources", "hy", "a.md"), "alpha hybrid content\n");
+    const store = await KnowledgeStore.open(join(kd, ".cache", "index", "k.db"), H("fake@1", 4));
+    if (!store) return;
+    await buildIndex({
+      knowledgeDir: kd,
+      store,
+      embedder: fakeEmb(4),
+      changedPaths: null,
+      hybridSourceIds: new Set(["hy"]),
+    });
+    // The embedded chunk carries the running model's id (not NULL), so:
+    expect(store.hasVectorFor("sources/hy/a.md", "fake@1")).toBe(true);
+    // ...and the index's derived model identity reflects that id.
+    expect(store.storedEmbedderIds().map((m) => m.id)).toContain("fake@1");
+    store.close();
   });
 
   test("a hybrid file lacking a vector gets re-embedded on rebuild (embedder-aware skip)", async () => {

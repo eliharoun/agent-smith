@@ -94,8 +94,7 @@ describe("serve-mcp hybrid wiring", () => {
     const { KnowledgeStore } = await import("../../../src/core/knowledge/index/store");
     const s = await KnowledgeStore.open(join(kd, "k.db"), {
       schemaVersion: 1,
-      embedderId: "fake@1",
-      embedderDim: 3,
+      embedders: [{ id: "fake@1", dim: 3 }],
       chunkerVersion: 1,
       repomapVersion: 1,
     });
@@ -111,6 +110,8 @@ describe("serve-mcp hybrid wiring", () => {
         text: "rate limiting in the gateway",
         contentHash: "h1",
         vector: new Float32Array([1, 0, 0]),
+        embedderId: "fake@1",
+        embedderDim: 3,
       },
     ]);
     const fakeEmbedder = { id: "fake@1", dim: 3, embed: async () => [new Float32Array([1, 0, 0])] };

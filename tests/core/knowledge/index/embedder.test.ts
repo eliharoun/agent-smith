@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { loadEmbedder, NullEmbedder } from "../../../../src/core/knowledge/index/embedder";
+import { describe, expect, it, test } from "bun:test";
+import { embedderCache, loadEmbedder, NullEmbedder } from "../../../../src/core/knowledge/index/embedder";
 
 describe("embedder", () => {
   it("NullEmbedder: id none, dim 0, no vectors", async () => {
@@ -18,4 +18,15 @@ describe("embedder", () => {
     const norm = Math.sqrt([...v!].reduce((s, x) => s + x * x, 0));
     expect(Math.abs(norm - 1)).toBeLessThan(1e-3);
   });
+});
+test("embedderCache memoizes the in-flight promise per id (concurrent-safe)", () => {
+  const cache = embedderCache();
+  const p1 = cache.get("none"); // "none" => NullEmbedder, no model load
+  const p2 = cache.get("none");
+  expect(p1).toBe(p2); // SAME promise object, not a re-load
+});
+test("embedderCache get('none') resolves to a NullEmbedder", async () => {
+  const cache = embedderCache();
+  const e = await cache.get("none");
+  expect(e.id).toBe("none");
 });
