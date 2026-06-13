@@ -39,6 +39,7 @@ const H = {
     { id: "text@1", dim: 3 },
   ],
   chunkerVersion: 1,
+  modelPolicyVersion: 1,
   repomapVersion: 1,
 };
 function fake(id: string, vec: number[]): Embedder {

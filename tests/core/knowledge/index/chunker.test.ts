@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CHUNKER_VERSION, chunk } from "../../../../src/core/knowledge/index/chunker";
+import { CHUNKER_VERSION, chunk, kindForPath } from "../../../../src/core/knowledge/index/chunker";
 
 describe("chunker", () => {
   it("splits prose on markdown headings with line ranges", async () => {
@@ -27,6 +27,13 @@ describe("chunker", () => {
   });
   it("CHUNKER_VERSION is a stable integer", () => {
     expect(Number.isInteger(CHUNKER_VERSION)).toBe(true);
+  });
+  it("kindForPath mirrors the extension-based dispatch", () => {
+    expect(kindForPath("a.ts")).toBe("code");
+    expect(kindForPath("a.py")).toBe("code");
+    expect(kindForPath("README.md")).toBe("prose");
+    expect(kindForPath("data.json")).toBe("json");
+    expect(kindForPath("Makefile")).toBe("prose");
   });
   it("does not throw on bare-primitive JSON (null, string, number)", async () => {
     for (const text of ["null", '"hello world"', "42"]) {

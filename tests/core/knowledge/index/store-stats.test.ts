@@ -16,6 +16,7 @@ const H = {
   schemaVersion: 1,
   embedders: [{ id: "emb-a", dim: 3 }],
   chunkerVersion: 1,
+  modelPolicyVersion: 1,
   repomapVersion: 1,
 };
 

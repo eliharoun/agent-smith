@@ -1,6 +1,6 @@
 import pc from "picocolors";
 import { indexDbPath } from "../../../core/knowledge/index/index-paths";
-import { roleForModelId } from "../../../core/knowledge/index/model-policy";
+import { MODEL_POLICY_VERSION, roleForModelId } from "../../../core/knowledge/index/model-policy";
 import { SCHEMA_VERSION } from "../../../core/knowledge/index/schema-version";
 import { isStaleHybrid } from "../../../core/knowledge/stale-hybrid";
 import { parseRefresh } from "../../../core/knowledge/refresh-spec";
@@ -29,7 +29,7 @@ export interface KnowledgeInfoOptions {
 async function defaultOpenStats(dbPath: string): Promise<IndexStats | null> {
   const store = await KnowledgeStore.open(
     dbPath,
-    { schemaVersion: SCHEMA_VERSION, embedders: [], chunkerVersion: 1, repomapVersion: 1 },
+    { schemaVersion: SCHEMA_VERSION, embedders: [], chunkerVersion: 1, modelPolicyVersion: MODEL_POLICY_VERSION, repomapVersion: 1 },
     { readonly: true },
   );
   if (!store) return null;

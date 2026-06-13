@@ -23,6 +23,13 @@ export const TEXT_MODEL: ModelRef = {
   dim: 768,
 };
 
+/** Bumped whenever the model policy changes — i.e. CODE_MODEL / TEXT_MODEL or
+ *  the modelForKind mapping. A change broadly invalidates the index (like a
+ *  chunker-version bump) so every chunk re-embeds with the new policy on the
+ *  next build, rather than leaving a stale or empty partition that an
+ *  incremental refresh wouldn't refill. */
+export const MODEL_POLICY_VERSION = 1;
+
 export function modelForKind(kind: ChunkKind): ModelRef {
   return kind === "code" ? CODE_MODEL : TEXT_MODEL;
 }

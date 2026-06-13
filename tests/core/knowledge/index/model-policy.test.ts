@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CODE_MODEL, TEXT_MODEL, modelForKind, roleForModelId } from "../../../../src/core/knowledge/index/model-policy";
+import { CODE_MODEL, MODEL_POLICY_VERSION, TEXT_MODEL, modelForKind, roleForModelId } from "../../../../src/core/knowledge/index/model-policy";
 
 describe("modelForKind", () => {
   test("code -> code model", () => {
@@ -27,5 +27,12 @@ describe("roleForModelId", () => {
   });
   test("unknown id falls back to the id itself", () => {
     expect(roleForModelId("weird@9")).toBe("weird@9");
+  });
+});
+
+describe("MODEL_POLICY_VERSION", () => {
+  test("MODEL_POLICY_VERSION is a positive integer", () => {
+    expect(Number.isInteger(MODEL_POLICY_VERSION)).toBe(true);
+    expect(MODEL_POLICY_VERSION).toBeGreaterThan(0);
   });
 });

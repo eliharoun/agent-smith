@@ -1732,7 +1732,7 @@ Source: `src/cli/commands/knowledge/add.ts`.
 - `--description <text>` — human-readable description.
 - `--optional` — set `optional: true` on the new source. At install time, runtime/IO failures (network, missing file, git auth) on this source degrade to warnings instead of aborting. `validation-failed` SmithErrors still abort regardless. See [guide/04-knowledge.md § Optional sources](./04-knowledge.md#optional-sources).
 - `--lazy` — URL sources only (`type=webpage`). Skip materialization at install/fetch; the agent fetches at runtime via WebFetch or its configured `via:` MCP tool. Rejected with a SmithError on non-URL types.
-- `--retrieval <mode>` — set the source's search mode: `off | bm25 | hybrid | external-mcp`. Default (unset) leaves no `retrieval` block, which behaves as `bm25`. `hybrid` opts the source into on-device semantic vector search fused with lexical (degrades to `bm25` when the embedding model is unavailable). See [guide/04-knowledge.md § Retrieval mode](./04-knowledge.md#retrieval-mode).
+- `--retrieval <mode>` — set the source's search mode: `off | bm25 | hybrid | external-mcp`. Default (unset) leaves no `retrieval` block, which behaves as `bm25`. `hybrid` opts the source into on-device semantic vector search fused with lexical — code embedded with a code model, prose/JSON with a text model, by chunk kind (degrades to `bm25` when the embedding models are unavailable). See [guide/04-knowledge.md § Retrieval mode](./04-knowledge.md#retrieval-mode).
 
   > **Note:** Setting or changing `--retrieval` (especially to/from `hybrid`) takes effect only after the knowledge MCP server restarts — reconnect `<agent>-knowledge` in your AI client (`/mcp` → reconnect) or start a new session. See [guide/04-knowledge.md § Retrieval mode](./04-knowledge.md#retrieval-mode).
 - `--retrieval-mcp-url <url>` — the external MCP URL; **required** when `--retrieval external-mcp`, and **rejected** with any other mode (or when `--retrieval` is unset).
@@ -2090,7 +2090,8 @@ store). Exposes up to four tools:
 - `knowledge.search(query, k=5)` — ranked hits from the persistent
   index. Lexical BM25 by default; sources with `retrieval: { mode:
   "hybrid" }` fuse in semantic vector ranking (Reciprocal Rank Fusion)
-  when the on-device embedding model is available. Returns `rel_path` +
+  when the on-device embedding models are available (code embedded with a
+  code model, prose/JSON with a text model, by chunk kind). Returns `rel_path` +
   `start_line`/`end_line`. Falls back to in-memory BM25 scan when no
   index exists (agent installed before the indexing feature).
 - `knowledge.fetch(path, start?, end?)` — returns file contents

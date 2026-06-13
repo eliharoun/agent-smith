@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { chunk } from "./chunker";
-import type { Embedder } from "./embedder";
+import { chunk, kindForPath } from "./chunker";
+import { type EmbedderCache } from "./embedder";
+import { modelForKind } from "./model-policy";
 import { extractTags } from "./repomap/extract";
-import type { ChunkRow, KnowledgeStore } from "./store";
+import type { ChunkKind, ChunkRow, KnowledgeStore } from "./store";
 
 const INDEXED_EXT = new Set([
   ".md",
@@ -43,7 +44,11 @@ const CODE_EXT = new Set([
 export interface BuildIndexOpts {
   knowledgeDir: string;
   store: KnowledgeStore;
-  embedder: Embedder;
+  /** Per-kind query/embed models, lazily loaded by id. null => lexical-only
+   *  (no hybrid sources this build). When present, each chunk is embedded with
+   *  modelForKind(chunk.kind) — loaded on first chunk of that kind (fast path:
+   *  a code-only hybrid source never loads the text model). */
+  embedders: EmbedderCache | null;
   changedPaths: string[] | null;
   /** Source ids that opted into retrieval:hybrid; their chunks get dense vectors.
    *  Absent/empty = lexical-only (no vectors). Only these sources' chunks get
@@ -70,45 +75,73 @@ export async function buildIndex(opts: BuildIndexOpts): Promise<void> {
       continue;
     }
     const hash = createHash("sha256").update(text).digest("hex");
-    // A file gets vectors only if the embedder is real AND its owning source
-    // opted into hybrid retrieval. `wantsVector` drives both the skip check and
-    // the embed decision below so they can never diverge.
+    // A file gets vectors only if hybrid embedding is active (embedders present)
+    // AND its owning source opted into hybrid retrieval. `wantsVector` drives both
+    // the skip check and the embed decision below so they can never diverge.
     const isHybrid = opts.hybridSourceIds?.has(sourceIdOf(rel)) ?? false;
-    const wantsVector = opts.embedder.id !== "none" && isHybrid;
-    // `hasVector` is "ANY chunk for this path has a vector", not "all". A build
-    // interrupted mid-embed (chunks deleted+re-added, then embed throws before
-    // upsert) leaves the path with NO chunks at all (see the embed note below),
-    // so the any-vs-all distinction can't strand a half-embedded file in
-    // practice — the next build re-chunks from scratch (contentHashFor → null).
+    const wantsVector = opts.embedders !== null && isHybrid;
+    // One kind per path (kind is a pure function of extension), so the expected
+    // model is determined by the path alone — lets us skip-check before chunking.
+    const expectedModelId = wantsVector ? modelForKind(kindForPath(rel)).id : null;
+    // `hasVectorFor` is "ANY chunk for this path has a vector for that model", not
+    // "all". A build interrupted mid-embed (chunks deleted+re-added, then embed
+    // throws before upsert) leaves the path with NO chunks at all, so the
+    // any-vs-all distinction can't strand a half-embedded file in practice — the
+    // next build re-chunks from scratch (contentHashFor → null).
     //
     // A file is "current" only if its content is unchanged AND its vector state
-    // matches its mode: a hybrid file needs a vector present (re-embed if a
-    // newly-available embedder or freshly-flipped mode left it vector-less); a
-    // non-hybrid file needs none.
-    const vectorsCurrent = !wantsVector || opts.store.hasVectorFor(rel, opts.embedder.id);
+    // matches its mode: a hybrid file needs its kind's-model vector present
+    // (re-embed if a newly-available model or freshly-flipped mode left it
+    // vector-less); a non-hybrid file needs none.
+    const vectorsCurrent =
+      !wantsVector || (expectedModelId !== null && opts.store.hasVectorFor(rel, expectedModelId));
     if (opts.store.contentHashFor(rel) === hash && vectorsCurrent) continue;
 
     opts.store.deleteByPath(rel);
     const chunks = await chunk({ relPath: rel, text });
+    // Group chunk indices by kind and embed each group with its kind's model
+    // (lazy per-kind load via the cache). Robust even if a path ever produced
+    // mixed kinds; today it's one kind per path. A model that fails to load
+    // (cache returns NullEmbedder) leaves that group lexical-only.
+    //
     // If a real embedder throws here (e.g. OOM on a huge batch), buildIndex
     // rejects AFTER deleteByPath already ran — the path is left with no chunks
     // until the next build re-chunks it (contentHashFor → null forces redo).
     // That's a consistent (never partial) state; we don't catch per-file so the
     // failure surfaces to the caller rather than silently shipping a gap.
-    const vectors = wantsVector ? await opts.embedder.embed(chunks.map((c) => c.text)) : [];
-    const rows: ChunkRow[] = chunks.map((c, i) => ({
-      id: `${rel}#${i}`,
-      sourceId: sourceIdOf(rel),
-      relPath: rel,
-      startLine: c.startLine,
-      endLine: c.endLine,
-      kind: c.kind,
-      text: c.text,
-      contentHash: hash,
-      ...(vectors[i]
-        ? { vector: vectors[i], embedderId: opts.embedder.id, embedderDim: opts.embedder.dim }
-        : {}),
-    }));
+    const vecFor = new Map<number, { v: Float32Array; id: string; dim: number }>();
+    if (wantsVector) {
+      const byKind = new Map<ChunkKind, number[]>();
+      chunks.forEach((c, i) => {
+        const arr = byKind.get(c.kind) ?? [];
+        arr.push(i);
+        byKind.set(c.kind, arr);
+      });
+      for (const [kind, idxs] of byKind) {
+        const ref = modelForKind(kind);
+        const emb = await opts.embedders!.get(ref.modelId, ref.dim);
+        if (emb.id === "none") continue; // load failed -> this kind stays lexical
+        const vs = await emb.embed(idxs.map((i) => chunks[i]!.text));
+        idxs.forEach((i, j) => {
+          const v = vs[j];
+          if (v) vecFor.set(i, { v, id: emb.id, dim: emb.dim });
+        });
+      }
+    }
+    const rows: ChunkRow[] = chunks.map((c, i) => {
+      const got = vecFor.get(i);
+      return {
+        id: `${rel}#${i}`,
+        sourceId: sourceIdOf(rel),
+        relPath: rel,
+        startLine: c.startLine,
+        endLine: c.endLine,
+        kind: c.kind,
+        text: c.text,
+        contentHash: hash,
+        ...(got ? { vector: got.v, embedderId: got.id, embedderDim: got.dim } : {}),
+      };
+    });
     opts.store.upsertChunks(rows);
 
     if (CODE_EXT.has(ext(rel))) {
