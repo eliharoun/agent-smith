@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildIndexInto } from "../../../src/core/knowledge/index/build-into";
-import { buildServeContext, handleRpc } from "../../../src/core/knowledge/serve-mcp";
+import {
+  buildServeContext,
+  handleRpc,
+  searchToolDescription,
+} from "../../../src/core/knowledge/serve-mcp";
 
 let kd: string;
 beforeEach(async () => {
@@ -63,5 +67,38 @@ describe("serve-mcp hybrid wiring", () => {
     if (!names.includes("knowledge.map")) return; // grammar unavailable on host -> tolerated skip
     const res: any = await call(ctx, "tools/call", { name: "knowledge.map", arguments: {} });
     expect(res.result.content[0].text).toContain("code.ts");
+  });
+});
+
+describe("searchToolDescription", () => {
+  test("hybrid-active branch advertises semantic + hybrid wording", () => {
+    const desc = searchToolDescription(true);
+    expect(desc).toContain("Hybrid");
+    expect(desc).toContain("semantic");
+    expect(desc).not.toContain("Lexical BM25 search over"); // not the lexical-only phrasing
+  });
+
+  test("lexical branch advertises BM25 / Lexical wording without semantic claims", () => {
+    const desc = searchToolDescription(false);
+    expect(desc).toContain("BM25");
+    expect(desc).toContain("Lexical");
+    expect(desc).not.toContain("Hybrid");
+    expect(desc).not.toContain("semantic");
+  });
+});
+
+describe("knowledge.search description reflects mode", () => {
+  test("lexical store (NullEmbedder) yields the BM25 description via buildServeContext", async () => {
+    await writeFile(join(kd, "sources", "s", "doc.md"), "rate limiting in the gateway\n");
+    await buildIndexInto(kd, null); // lexical-only store -> embedder.id === "none"
+    const ctx = await buildServeContext(kd, "agent");
+    // Precondition: this is genuinely the non-hybrid path.
+    expect(ctx.embedder.id).toBe("none");
+    const list: any = await call(ctx, "tools/list", {});
+    const search = list.result.tools.find((t: any) => t.name === "knowledge.search");
+    expect(search.description).toContain("BM25");
+    expect(search.description).toContain("Lexical");
+    expect(search.description).not.toContain("Hybrid");
+    expect(search.description).not.toContain("semantic");
   });
 });

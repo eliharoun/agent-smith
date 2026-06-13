@@ -13,9 +13,11 @@ import { renderMap } from "./index/repomap/render";
 import { KnowledgeStore } from "./index/store";
 
 /**
- * Stdio MCP server exposing two tools — `knowledge.search` (BM25 over the
- * agent's materialized knowledge dir) and `knowledge.fetch` (range-bounded
- * file read under the same dir).
+ * Stdio MCP server exposing two tools — `knowledge.search` (hybrid
+ * semantic+lexical search when the index has real vectors, else lexical BM25,
+ * over the agent's materialized knowledge dir; the advertised description
+ * reflects which mode is active) and `knowledge.fetch` (range-bounded file
+ * read under the same dir).
  *
  * Why a hand-rolled JSON-RPC loop instead of @modelcontextprotocol/sdk: the
  * surface we need is small (initialize, tools/list, tools/call) and the SDK
@@ -38,6 +40,20 @@ const FETCH_BYTE_CAP = 64 * 1024;
 /** Files we index. Skips dotfiles and `compile-manifest.json` because that
  * file is metadata, not knowledge content. */
 const INDEXED_EXTENSIONS = new Set([".md", ".txt", ".json"]);
+
+/**
+ * The `knowledge.search` tool description, chosen to match the search mode
+ * that will ACTUALLY run. Hybrid (semantic embeddings + lexical BM25, fused via
+ * RRF) is only active when the index has real vectors — see `buildServeContext`
+ * / `hybridSearch`. The agent reads this description to decide whether semantic
+ * recall is available, so it must not over-promise: store-present-but-NullEmbedder
+ * and the in-memory BM25 fallback are both lexical-only.
+ */
+export function searchToolDescription(hybridActive: boolean): string {
+  return hybridActive
+    ? "Hybrid search (semantic embeddings + lexical BM25, fused via reciprocal rank fusion) over the agent's materialized knowledge sources. Returns ranked file paths with snippets and line ranges."
+    : "Lexical BM25 search over the agent's materialized knowledge sources. Returns ranked file paths with snippets.";
+}
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -150,11 +166,15 @@ export async function handleRpc(
   }
 
   if (req.method === "tools/list") {
+    // Hybrid (semantic) ranking is active iff the persistent store is present
+    // AND a real query embedder was loaded — matches the routing in
+    // `handleSearch`/`hybridSearch` exactly. Both non-hybrid cases (NullEmbedder
+    // store, or in-memory BM25 fallback) advertise the lexical wording.
+    const hybridActive = ctx.store !== null && ctx.embedder.id !== "none";
     const tools: unknown[] = [
       {
         name: "knowledge.search",
-        description:
-          "BM25 search over the agent's materialized knowledge sources. Returns ranked file paths with snippets.",
+        description: searchToolDescription(hybridActive),
         inputSchema: {
           type: "object",
           properties: {
