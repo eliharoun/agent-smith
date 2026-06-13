@@ -721,6 +721,15 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
     for (const w of warnings) console.log(pc.yellow("warn"), w);
   }
 
+  // retrieval has no effect on a lazy source (fetched at runtime, never indexed).
+  // `off` is itself "don't search", so combining it with lazy is harmless — skip it.
+  if (opts.lazy && opts.retrieval && opts.retrieval !== "off") {
+    console.log(
+      pc.yellow("warn"),
+      `--retrieval ${opts.retrieval} is ignored on lazy sources (fetched at runtime, not indexed); remove --lazy to enable search, or drop --retrieval`,
+    );
+  }
+
   await writeFile(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
   const labelPrefix = opts.urlMode ? `${opts.urlMode.label} ` : "";
   console.log(pc.green("→"), `added ${labelPrefix}knowledge source ${id} (${opts.type})`);
