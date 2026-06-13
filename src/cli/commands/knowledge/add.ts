@@ -734,6 +734,16 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
   const labelPrefix = opts.urlMode ? `${opts.urlMode.label} ` : "";
   console.log(pc.green("→"), `added ${labelPrefix}knowledge source ${id} (${opts.type})`);
 
+  // Hybrid retrieval only takes effect after the knowledge MCP server reloads:
+  // it reads the index + loads the query embedder once at spawn, and the AI
+  // client owns its lifecycle. This is advisory (we can't restart it for them).
+  if (opts.retrieval === "hybrid" && !opts.lazy) {
+    console.log(
+      pc.yellow("warn"),
+      `hybrid retrieval set for '${id}'. Restart the knowledge MCP server for it to take effect — reconnect the '${opts.agentName ?? "<agent>"}-knowledge' server in your AI client (e.g. Claude Code: /mcp → reconnect), or start a new session.`,
+    );
+  }
+
   const shouldInstall =
     opts.installAfter !== false && Boolean(opts.agentName) && Boolean(opts.runInstall);
   if (!shouldInstall) {

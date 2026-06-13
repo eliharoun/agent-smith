@@ -174,6 +174,8 @@ args: [knowledge, serve, <agent>, --stdio]
 
 **Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. The index is built at install/refresh time and stored on disk; cold-start latency is on the order of milliseconds because the server reads the pre-built SQLite index rather than scanning the file tree at spawn time.
 
+Because the index and embedding model are read once at spawn, a change to a source's `retrieval.mode` (e.g. toggling `hybrid`) is invisible to a running server. Restart it to apply: the AI client respawns `<agent>-knowledge` on the next session, or you can force it now by reconnecting the server in the client (Claude Code: `/mcp` → reconnect). `smith` does not own the process and cannot restart it.
+
 ---
 
 ## GUI: per-source editor and MCP toggle

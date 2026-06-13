@@ -1585,6 +1585,129 @@ describe("EditKnowledgeSourceModal", () => {
     });
   });
 
+  // ─── Hybrid-retrieval restart notice ───────────────────────────────
+
+  describe("hybrid retrieval restart notice", () => {
+    it("fires a sticky restart toast when retrieval is changed bm25 → hybrid", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ retrieval mode$/i), {
+        target: { value: "hybrid" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      // Sticky restart toast appears mentioning restart + the MCP server + hybrid.
+      await screen.findByText(/restart needed for hybrid search/i);
+      expect(screen.getByText(/knowledge mcp server restarts/i)).toBeInTheDocument();
+      expect(screen.getByText(/a1-knowledge/i)).toBeInTheDocument();
+    });
+
+    it("fires the restart toast when retrieval is changed hybrid → bm25 (disable also needs restart)", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+        retrieval: { mode: "hybrid" },
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ retrieval mode$/i), {
+        target: { value: "bm25" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => {
+        expect(
+          calls.find((c) => c.url.includes("/api/agents/a1/config") && c.init?.method === "PUT"),
+        ).toBeDefined();
+      });
+      await screen.findByText(/restart needed for hybrid search/i);
+    });
+
+    it("does NOT fire the restart toast for a non-hybrid change (just the url)", async () => {
+      globalThis.fetch = mockFetch(calls, { drift: { drifted: [] } }) as unknown as typeof fetch;
+      const src: KnowledgeSource = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+      };
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText(/^\/\/ url$/i), {
+        target: { value: "https://example.com/y" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      // The normal saved toast still fires; the restart toast must not.
+      await screen.findByText(/^saved\.$/i);
+      expect(screen.queryByText(/restart needed for hybrid search/i)).not.toBeInTheDocument();
+    });
+
+    it("does NOT fire the restart toast when the source is made lazy (retrieval dropped)", async () => {
+      globalThis.fetch = mockFetch(calls, {
+        cacheStatus: { hasCachedFiles: false },
+        drift: { drifted: [] },
+      }) as unknown as typeof fetch;
+      const src = {
+        id: "docs",
+        type: "url",
+        url: "https://example.com/x",
+        delivery: "auto",
+        retrieval: { mode: "hybrid" },
+      } as unknown as KnowledgeSource;
+      wrap(
+        <EditKnowledgeSourceModal
+          agent="a1"
+          existingSource={src}
+          knowledgeBlock={{ sources: [src] }}
+          reinstall={noopReinstall}
+          onClose={() => {}}
+        />,
+      );
+      // Flip retrieval to bm25 AND turn on lazy — retrieval is inert when lazy.
+      fireEvent.change(screen.getByLabelText(/^\/\/ retrieval mode$/i), {
+        target: { value: "bm25" },
+      });
+      fireEvent.click(screen.getByRole("switch", { name: /lazy fetch/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await screen.findByText(/^saved\.$/i);
+      expect(screen.queryByText(/restart needed for hybrid search/i)).not.toBeInTheDocument();
+    });
+  });
+
   // ─── Web source type ───────────────────────────────────────────────
 
   describe("web source type", () => {

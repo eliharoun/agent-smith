@@ -645,6 +645,7 @@ Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Three 
 - `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map (tree-sitter + PageRank). **Capability-gated: advertised only when code sources are indexed.**
 
 Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
+  - **Changing `retrieval.mode` (e.g. hybrid)?** Restart the knowledge MCP server to apply — reconnect `<agent>-knowledge` in your client (`/mcp` → reconnect) or start a new session. The server loads the index + embedder once at spawn.
 
 **Synopsis:** `smith knowledge serve <name> [--stdio]`
 
