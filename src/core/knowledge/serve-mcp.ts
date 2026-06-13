@@ -3,6 +3,14 @@ import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { keyForAgent } from "../../io/mcp-wiring";
 import { Bm25Index } from "./bm25";
+import { CHUNKER_VERSION } from "./index/chunker";
+import { type Embedder, loadEmbedder, NullEmbedder } from "./index/embedder";
+import { hybridSearch } from "./index/hybrid-search";
+import { indexDbPath } from "./index/index-paths";
+import { REPOMAP_VERSION } from "./index/repomap/extract";
+import { rankFiles } from "./index/repomap/graph";
+import { renderMap } from "./index/repomap/render";
+import { KnowledgeStore } from "./index/store";
 
 /**
  * Stdio MCP server exposing two tools — `knowledge.search` (BM25 over the
@@ -46,7 +54,7 @@ export interface JsonRpcResponse {
 }
 
 export interface ServeContext {
-  index: Bm25Index;
+  index: Bm25Index; // bottom rung, always built (in-memory)
   rootDir: string;
   /**
    * The agent this server is serving. Used to compose `serverInfo.name` in
@@ -56,14 +64,48 @@ export interface ServeContext {
    * that key by serverInfo.name.
    */
   agent: string;
+  store: KnowledgeStore | null; // read-only persistent index; null => use `index`
+  embedder: Embedder; // query embedder; NullEmbedder unless the store has real vectors
+  hasMap: boolean; // true iff store has code tags (gates knowledge.map)
 }
 
 export async function buildServeContext(
   knowledgeDir: string,
   agent: string,
 ): Promise<ServeContext> {
-  const index = await buildIndex(knowledgeDir);
-  return { index, rootDir: knowledgeDir, agent };
+  const index = await buildLegacyBm25(knowledgeDir);
+  let store: KnowledgeStore | null = null;
+  let embedder: Embedder = new NullEmbedder();
+  let hasMap = false;
+  try {
+    // In readonly mode the header is NOT written/reconciled (KnowledgeStore.open
+    // skips migrate); these are inert placeholders. The index's actual embedder
+    // id is read separately below via storedEmbedderId().
+    store = await KnowledgeStore.open(
+      indexDbPath(knowledgeDir),
+      {
+        schemaVersion: 1,
+        embedderId: "none",
+        embedderDim: 1,
+        chunkerVersion: CHUNKER_VERSION,
+        repomapVersion: REPOMAP_VERSION,
+      },
+      { readonly: true },
+    );
+    if (store) {
+      hasMap = store.hasCode();
+      // Only load the (heavy) query embedder when the index actually has
+      // vectors — i.e. it was built with a real embedder. Avoids blocking the
+      // MCP handshake on a model load when the index is lexical-only (§3.1.1).
+      const storedEmb = store.storedEmbedderId();
+      if (storedEmb && storedEmb !== "none") {
+        embedder = await loadEmbedder({});
+      }
+    }
+  } catch {
+    store = null; // any failure -> in-memory BM25 fallback
+  }
+  return { index, rootDir: knowledgeDir, agent, store, embedder, hasMap };
 }
 
 /**
@@ -108,41 +150,49 @@ export async function handleRpc(
   }
 
   if (req.method === "tools/list") {
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        tools: [
-          {
-            name: "knowledge.search",
-            description:
-              "BM25 search over the agent's materialized knowledge sources. Returns ranked file paths with snippets.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                query: { type: "string" },
-                k: { type: "integer", minimum: 1, maximum: 20 },
-              },
-              required: ["query"],
-            },
+    const tools: unknown[] = [
+      {
+        name: "knowledge.search",
+        description:
+          "BM25 search over the agent's materialized knowledge sources. Returns ranked file paths with snippets.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            k: { type: "integer", minimum: 1, maximum: 20 },
           },
-          {
-            name: "knowledge.fetch",
-            description:
-              "Read a file under the agent's knowledge dir (range-bounded; 64KB cap per call).",
-            inputSchema: {
-              type: "object",
-              properties: {
-                path: { type: "string" },
-                start: { type: "integer", minimum: 0 },
-                end: { type: "integer", minimum: 0 },
-              },
-              required: ["path"],
-            },
-          },
-        ],
+          required: ["query"],
+        },
       },
-    };
+      {
+        name: "knowledge.fetch",
+        description:
+          "Read a file under the agent's knowledge dir (range-bounded; 64KB cap per call).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            start: { type: "integer", minimum: 0 },
+            end: { type: "integer", minimum: 0 },
+          },
+          required: ["path"],
+        },
+      },
+    ];
+    if (ctx.hasMap) {
+      tools.push({
+        name: "knowledge.map",
+        description: "Ranked structural map of symbols across code knowledge sources.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            focus: { type: "string" },
+            mapTokens: { type: "integer", minimum: 100, maximum: 8000 },
+          },
+        },
+      });
+    }
+    return { jsonrpc: "2.0", id, result: { tools } };
   }
 
   if (req.method === "tools/call") {
@@ -155,6 +205,27 @@ export async function handleRpc(
     }
     if (params.name === "knowledge.fetch") {
       return handleFetch(id, params.arguments ?? {}, ctx);
+    }
+    if (params.name === "knowledge.map") {
+      if (!ctx.store || !ctx.hasMap) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32601, message: "knowledge.map unavailable (no code sources indexed)" },
+        };
+      }
+      const a = (params.arguments ?? {}) as { focus?: unknown; mapTokens?: unknown };
+      const mapTokens = clampInt(a.mapTokens, 100, 8000, 1000); // clampInt handles NaN/non-finite
+      const focus = typeof a.focus === "string" ? a.focus : undefined;
+      const tags = ctx.store.allTags().map((t) => ({
+        relPath: t.relPath,
+        name: t.name,
+        role: t.role,
+        line: t.line,
+        signature: t.signature,
+      }));
+      const map = renderMap(rankFiles(tags, focus !== undefined ? { focus } : {}), mapTokens);
+      return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: map }] } };
     }
     return {
       jsonrpc: "2.0",
@@ -170,15 +241,17 @@ export async function handleRpc(
   };
 }
 
-function handleSearch(
+async function handleSearch(
   id: number | string | null,
   args: Record<string, unknown>,
   ctx: ServeContext,
-): JsonRpcResponse {
+): Promise<JsonRpcResponse> {
   const query = typeof args.query === "string" ? args.query : "";
   const rawK = typeof args.k === "number" ? args.k : Number(args.k ?? 5);
   const k = Math.min(20, Math.max(1, Number.isFinite(rawK) ? rawK : 5));
-  const hits = ctx.index.search(query, k);
+  const hits = ctx.store
+    ? await hybridSearch(ctx.store, ctx.embedder, query, k)
+    : ctx.index.search(query, k);
   return {
     jsonrpc: "2.0",
     id,
@@ -242,18 +315,13 @@ async function handleFetch(
   };
 }
 
-function clampInt(
-  value: unknown,
-  min: number,
-  max: number,
-  fallback: number,
-): number {
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
-async function buildIndex(rootDir: string): Promise<Bm25Index> {
+async function buildLegacyBm25(rootDir: string): Promise<Bm25Index> {
   const ix = new Bm25Index();
   await walk(rootDir, async (abs, rel) => {
     if (shouldSkip(rel)) return;
@@ -332,6 +400,7 @@ export async function serveStdio(knowledgeDir: string, agent: string): Promise<v
       }
     });
     process.stdin.on("end", () => {
+      ctx.store?.close(); // release the read-only DB handle (matters if serveStdio is reused in-process)
       resolve();
     });
   });

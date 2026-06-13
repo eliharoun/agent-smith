@@ -217,7 +217,7 @@ Start with the [in-depth guide](./GUIDE.md) — a hub that links into focused to
 - [`05-skills.md`](./guide/05-skills.md) — installing skills, `requires.skills`, skill catalogs, drift
 - [`08-registries-and-catalogs.md`](./guide/08-registries-and-catalogs.md) — registries, catalog kinds, precedence
 - [`04-knowledge.md`](./guide/04-knowledge.md) — per-agent knowledge sources (webpage, web crawl/llms-txt/openapi, MCP connectors, files, dirs, git, Confluence, Jira), routing URL fetches through MCP servers, declaring `mcp.required` / `mcp.peer` bundle dependencies
-- [`16-knowledge-compiler.md`](./guide/16-knowledge-compiler.md) — v2 progressive disclosure: `compile` block, `agents-md` target, BM25 retrieval server, APM import
+- [`16-knowledge-compiler.md`](./guide/16-knowledge-compiler.md) — v2 progressive disclosure: `compile` block, `agents-md` target, searchable knowledge index (lexical by default, optional on-device semantic search) with a structural code map, APM import
 - [`15-sharing-and-distribution.md`](./guide/15-sharing-and-distribution.md) — end-to-end publisher + consumer flow, including `smith agent export` to package a bundle as a `.smith-bundle.tgz` archive
 
 **Operating and troubleshooting**

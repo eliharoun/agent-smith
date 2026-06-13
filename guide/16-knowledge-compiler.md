@@ -79,7 +79,7 @@ Three optional fields layer on top of every source variant. They only affect ren
 |---|---|---|
 | `summary` | string (1–280 chars) | One-line TOC entry. Falls back to `description`, then to the first sentence of the materialized content, then to `<id>: <type>`. |
 | `toc` | boolean | Default `true`. Set `false` to materialize the source (sidecar file is still written, refresh hooks still fire) but exclude it from the TOC stanza — useful for sources the agent should be able to fetch when explicitly asked but shouldn't see in working memory. |
-| `retrieval` | object | `{ mode: "off" \| "bm25" \| "external-mcp", mcpUrl?: string }`. Default mode is `bm25`. When `mode != "off"`, the TOC line gets a `(searchable: <mode>)` suffix telling the agent to prefer search-style queries over scanning the file. `external-mcp` requires `mcpUrl` (validated by the schema). |
+| `retrieval` | object | `{ mode: "off" \| "bm25" \| "hybrid" \| "external-mcp", mcpUrl?: string }`. Default mode is `bm25`. When `mode != "off"`, the TOC line gets a `(searchable: <mode>)` suffix telling the agent to prefer search-style queries over scanning the file. `hybrid` opts the source into semantic vector indexing on top of lexical BM25, falling back to BM25 when the on-device embedding model is unavailable. `external-mcp` requires `mcpUrl` (validated by the schema). |
 
 Schema: `src/core/knowledge/schema.ts` (`BaseFields`). The TOC line shape is:
 
@@ -147,10 +147,11 @@ The command exits `2` only when the named bundle has no `knowledge` block or no 
 smith knowledge serve <name> --stdio
 ```
 
-Spawns a stdio MCP server backed by an in-memory BM25 index over the agent's materialized knowledge dir. The server indexes `.md`, `.txt`, and `.json` files under the agent's materialized knowledge directory. Files with other extensions (`.html`, `.pdf`, etc.) are not searchable via `knowledge.search` but remain readable via `knowledge.fetch <path>`. Two tools:
+Spawns a stdio MCP server backed by the per-agent search index built at install/refresh time. The server exposes up to three tools:
 
-- **`knowledge.search(query, k=5)`** — top-`k` `(path, score, snippet)` matches over the file tree. Pure lexical (no embeddings).
+- **`knowledge.search(query, k=5)`** — ranked hits from the persistent index (SQLite FTS5). Lexical BM25 by default; when a source has `retrieval: { mode: "hybrid" }` and the on-device embedding model is available, semantic vector ranking is fused in via Reciprocal Rank Fusion. Returns `rel_path` + `start_line`/`end_line` so the agent can fetch the exact span. Falls back to a legacy in-memory BM25 scan when no index exists (agent installed before this feature).
 - **`knowledge.fetch(path, start?, end?)`** — read a file under the agent's knowledge dir; range-bounded to 64KB per response to avoid blowing the context window on a single fetch. Path traversal is rejected.
+- **`knowledge.map(focus?, mapTokens?)`** — a ranked structural symbol map (functions, classes, call sites) across code knowledge sources, built with tree-sitter and PageRank. **Advertised only when the agent has indexed code sources**; when no code sources are indexed, this tool is not offered.
 
 Wire it into a bundle's `mcpServers` declaration so each platform spawns the server at session start. The key is **per-agent** — derived as `<agent>-knowledge` so multiple bundles wired into the same AI client coexist without clobbering each other:
 
@@ -169,9 +170,9 @@ command: smith
 args: [knowledge, serve, <agent>, --stdio]
 ```
 
-**Why BM25, not embeddings.** Cognition's SWE-grep, Anthropic's Tool Search Tool work, and Augment's read-rate study all converge on lexical retrieval being the right shape for coding agents — the bottleneck is *discoverability* (does the agent know the file exists?), not similarity matching. BM25 fits in <200 lines, has no model dependency, and re-indexes in milliseconds. The `retrieval.mode = "external-mcp"` escape hatch lets you point a source at any embedding-based MCP server (Recall, Captain, DeepWiki) without changes to the compile stage.
+**Why lexical by default.** Cognition's SWE-grep, Anthropic's Tool Search Tool work, and Augment's read-rate study all converge on lexical retrieval being the right shape for coding agents — the bottleneck is *discoverability* (does the agent know the file exists?), not similarity matching. The persistent FTS5 index has no model dependency and re-indexes in milliseconds. For sources where similarity search is valuable, set `retrieval: { mode: "hybrid" }` to add on-device semantic vectors on top of lexical ranking (degrades to BM25 when the embedding model isn't available). The `retrieval.mode = "external-mcp"` escape hatch lets you point a source at any external embedding-based MCP server (Recall, Captain, DeepWiki) without changes to the compile stage.
 
-**Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. There is no daemon-managed multi-agent serving today; cold-start latency is on the order of milliseconds because BM25 indexes the file tree at spawn time.
+**Operational note.** The server runs in the foreground per-session — MCP's stdio model handles lifecycle. The index is built at install/refresh time and stored on disk; cold-start latency is on the order of milliseconds because the server reads the pre-built SQLite index rather than scanning the file tree at spawn time.
 
 ---
 

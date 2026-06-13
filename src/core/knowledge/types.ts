@@ -77,7 +77,7 @@ export interface NormalizedRefresh {
 export type KnowledgeAuth = "atlassian" | "none";
 
 /** v2.0 compile-stage retrieval mode for the optional MCP server. */
-export type RetrievalMode = "off" | "bm25" | "external-mcp";
+export type RetrievalMode = "off" | "bm25" | "hybrid" | "external-mcp";
 
 /** v2.0 compile-stage per-source retrieval declaration. */
 export interface RetrievalSpec {

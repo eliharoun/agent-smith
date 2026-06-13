@@ -8,6 +8,7 @@ import {
   chooseMaterializer,
   runMaterializer,
 } from "../../../src/core/knowledge/acquire-source";
+import { EMPTY_CACHE, type RouteCache } from "../../../src/core/knowledge/route-cache";
 import type {
   DirSource,
   FileSource,
@@ -15,9 +16,8 @@ import type {
   GlobSource,
   WebpageSource,
 } from "../../../src/core/knowledge/types";
-import { McpClientPool } from "../../../src/io/mcp-client-pool";
 import { SmithError } from "../../../src/core/smith-error";
-import { EMPTY_CACHE, type RouteCache } from "../../../src/core/knowledge/route-cache";
+import { McpClientPool } from "../../../src/io/mcp-client-pool";
 
 async function makeTmp(label: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `acquire-source-${label}-`));
@@ -125,6 +125,24 @@ describe("acquireSource", () => {
       }
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0]?.args[0]).toBe("clone");
+    } finally {
+      await rm(bundleDir, { recursive: true, force: true });
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  test("non-git source surfaces changedPaths: null through acquireSource", async () => {
+    // Verifies the changedPaths field is threaded through dispatch ->
+    // acquireSource. Non-git sources always report null (no incremental
+    // change tracking); the git path forwards acquireGit's computed list.
+    const bundleDir = await makeTmp("changed-null");
+    const cacheDir = await makeTmp("cache");
+    try {
+      await writeFile(join(bundleDir, "doc.md"), "# Hello\n", "utf8");
+      const src: FileSource = { id: "f-cp", type: "file", delivery: "file", path: "doc.md" };
+      const result = await acquireSource(src, { bundleDir, cacheDir });
+      expect(result).toHaveProperty("changedPaths");
+      expect(result.changedPaths).toBeNull();
     } finally {
       await rm(bundleDir, { recursive: true, force: true });
       await rm(cacheDir, { recursive: true, force: true });
@@ -265,8 +283,7 @@ describe("acquire-source: via routing", () => {
     // The payload message must explain the missing wire-up — case-
     // insensitive contains for `internal-error` (the code) or `mcpPool`
     // (the missing field name).
-    const detail =
-      e.payload.code === "internal-error" ? e.payload.message : "";
+    const detail = e.payload.code === "internal-error" ? e.payload.message : "";
     expect(`${e.payload.code} ${detail}`).toMatch(/internal-error|mcpPool/i);
   });
 
