@@ -1,5 +1,7 @@
 import pc from "picocolors";
 import { indexDbPath } from "../../../core/knowledge/index/index-paths";
+import { isStaleHybrid } from "../../../core/knowledge/stale-hybrid";
+import { parseRefresh } from "../../../core/knowledge/refresh-spec";
 import { type IndexStats, KnowledgeStore } from "../../../core/knowledge/index/store";
 import type { KnowledgeSource } from "../../../core/knowledge/types";
 import { SmithError } from "../../../core/smith-error";
@@ -45,6 +47,15 @@ function retrievalOf(s: KnowledgeSource): string {
   return s.retrieval?.mode ?? "off";
 }
 
+function staleHybridFlag(s: KnowledgeSource): boolean {
+  const lazy = s.type === "webpage" && s.lazy === true;
+  return isStaleHybrid({
+    retrievalMode: s.retrieval?.mode,
+    refreshMode: parseRefresh(s.refresh).mode,
+    lazy,
+  });
+}
+
 export async function knowledgeInfo(
   agent: string,
   paths: KnowledgePaths,
@@ -84,7 +95,7 @@ export async function knowledgeInfo(
         hybridActive,
         embedderId: stats?.embedderId ?? null,
         stats,
-        sources: declared.map((s) => ({ id: s.id, type: s.type, retrieval: retrievalOf(s) })),
+        sources: declared.map((s) => ({ id: s.id, type: s.type, retrieval: retrievalOf(s), staleHybrid: staleHybridFlag(s) })),
       }),
     );
     return 0;
@@ -123,7 +134,17 @@ export async function knowledgeInfo(
         : ps
           ? pc.dim(`${ps.vectors}/${ps.chunks} vectors`)
           : pc.dim("no indexed chunks");
-    console.log(`    ${pc.bold(s.id)}  ${pc.dim(`(${s.type}, ${mode})`)}  ${counts}`);
+    const stale = staleHybridFlag(s) ? `  ${pc.yellow("⚠ never auto-refreshed")}` : "";
+    console.log(`    ${pc.bold(s.id)}  ${pc.dim(`(${s.type}, ${mode})`)}  ${counts}${stale}`);
+  }
+
+  if (declared.some(staleHybridFlag)) {
+    console.log("");
+    console.log(
+      pc.dim(
+        "  note: sources marked ⚠ are embedded but refresh only at install — their\n        vectors can drift. Set the source's `refresh` to \"ttl\"/\"session\" in the\n        agent config, then grant hooks with 'smith agent reconfigure <agent>'.",
+      ),
+    );
   }
 
   console.log("");

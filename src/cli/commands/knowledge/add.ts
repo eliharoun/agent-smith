@@ -742,6 +742,13 @@ export async function knowledgeAdd(opts: KnowledgeAddOptions): Promise<number> {
       pc.yellow("warn"),
       `hybrid retrieval set for '${id}'. Restart the knowledge MCP server for it to take effect — reconnect the '${opts.agentName ?? "<agent>"}-knowledge' server in your AI client (e.g. Claude Code: /mcp → reconnect), or start a new session.`,
     );
+    // Embeddings are built once and then drift: a hybrid source refreshes only
+    // at install unless it declares a refresh mode. Point at the real mechanism
+    // (the source's `refresh` field) — there is no `knowledge edit` command.
+    console.log(
+      pc.yellow("warn"),
+      `'${id}' refreshes only at install, so its embedded content will go stale. Set its \`refresh\` to "ttl"/"session" in the agent config's knowledge source, then grant refresh hooks with 'smith agent reconfigure ${opts.agentName ?? "<agent>"}'.`,
+    );
   }
 
   const shouldInstall =
