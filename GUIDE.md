@@ -113,10 +113,11 @@ Every `smith` command, alphabetical. Follow the link for full synopsis, flags, e
 | [`smith knowledge add`](./guide/14-cli-reference.md#smith-knowledge-add-agent-type-path-or-url) | Add a knowledge source to an agent's config and auto-materialize via `smith agent install` (use `--no-install` to skip) |
 | [`smith knowledge compile`](./guide/14-cli-reference.md#smith-knowledge-compile-name) | Offline re-derive the TOC stanza + `compile-manifest.json` from already-materialized files |
 | [`smith knowledge fetch`](./guide/14-cli-reference.md#smith-knowledge-fetch-agent) | Re-acquire knowledge sources and re-install (`--source <id>` for surgical per-source refresh) |
+| [`smith knowledge info`](./guide/14-cli-reference.md#smith-knowledge-info-agent) | Index diagnostics: whether hybrid retrieval is active (vs BM25-only), the embedder, vector coverage, and per-source retrieval modes |
 | [`smith knowledge list`](./guide/14-cli-reference.md#smith-knowledge-list-agent) | Show knowledge state for an agent: not-found, no sources, declared-but-not-materialized, or full manifest |
 | [`smith knowledge remove`](./guide/14-cli-reference.md#smith-knowledge-remove-agent-source-id) | Remove a knowledge source by id from an agent's `agent.config.json` |
 | [`smith knowledge route`](./guide/14-cli-reference.md#smith-knowledge-route) | Inspect or invalidate the URL → MCP-tool route resolver cache |
-| [`smith knowledge serve`](./guide/14-cli-reference.md#smith-knowledge-serve-name) | Stdio MCP server (BM25 search + range-bounded fetch) — wired into AI clients |
+| [`smith knowledge serve`](./guide/14-cli-reference.md#smith-knowledge-serve-name) | Stdio MCP server (hybrid/BM25 search, range-bounded fetch, code map, retrieval explain) — wired into AI clients |
 | [`smith knowledge validate`](./guide/14-cli-reference.md#smith-knowledge-validate-agent) | Lint knowledge blocks for one or all agents |
 | [`smith knowledge wire`](./guide/14-cli-reference.md#smith-knowledge-wire-agent) | Wire the bundle's `<agent>-knowledge` MCP server into every detected AI client |
 | [`smith knowledge unwire`](./guide/14-cli-reference.md#smith-knowledge-unwire-agent) | Inverse of `wire`: remove the per-agent key from the bundle and the spawn entry from each AI client |
