@@ -16,6 +16,12 @@ describe("modelForKind", () => {
     expect(CODE_MODEL.dim).toBe(768);
     expect(TEXT_MODEL.dim).toBe(768);
   });
+  test("each model's id is `${modelId}@1` — matches what loadEmbedder stamps, so the embedder_id partition lines up", () => {
+    // loadEmbedder returns `${modelId}@1`; if ModelRef.id drifts from that, the
+    // serve query (searchVector by embedder_id) would never match stored rows.
+    expect(CODE_MODEL.id).toBe(`${CODE_MODEL.modelId}@1`);
+    expect(TEXT_MODEL.id).toBe(`${TEXT_MODEL.modelId}@1`);
+  });
 });
 
 describe("roleForModelId", () => {
