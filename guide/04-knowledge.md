@@ -1409,6 +1409,11 @@ and exposes it through the agent's knowledge MCP server:
 - `knowledge.map(focus?, mapTokens?)` — a ranked structural map of symbols
   (functions, classes, and where they're referenced) across **code** knowledge
   sources. Advertised only when the agent has indexed code sources.
+- `knowledge.explain(query, k)` — decomposes what `knowledge.search` fuses:
+  the lexical (BM25) arm's hits, the semantic (vector) arm's hits, and the
+  RRF-fused result with each entry's `lexicalRank`, `vectorRank`, and
+  `fusedScore`. Advertised only when hybrid retrieval is active (no semantic
+  arm to decompose in lexical-only mode).
 
 The index is built when the agent is installed or refreshed — not at query time
 — and stored under the agent's knowledge cache (`.cache/index/`). The store uses
@@ -1436,7 +1441,9 @@ The four modes:
   lexical. `knowledge.search` then fuses BM25 and vector results via Reciprocal
   Rank Fusion. Requires the optional on-device embedding model at build time;
   when it's unavailable, `hybrid` degrades transparently to `bm25` (lexical
-  only). See [Search & retrieval](#search--retrieval).
+  only). Use `knowledge.explain` to audit the fusion — it exposes each arm's
+  ranked hits and the per-hit `lexicalRank`/`vectorRank`/`fusedScore` that
+  `knowledge.search` hides. See [Search & retrieval](#search--retrieval).
 
 - **`external-mcp`** — declare a remote MCP server (with `mcpUrl`) that the
   agent should query instead of the local search path. Currently the field

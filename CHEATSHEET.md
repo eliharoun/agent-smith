@@ -652,11 +652,12 @@ See [guide/16 — Knowledge compiler](./guide/16-knowledge-compiler.md).
 
 #### `smith knowledge serve <name>`
 
-Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Three tools exposed:
+Serve an agent's knowledge over MCP via a persistent index (SQLite FTS5). Up to four tools exposed:
 
 - `knowledge.search(query, k=5)` — lexical BM25 by default; `retrieval: hybrid` sources also fuse semantic vector ranking when the on-device embedding model is available.
 - `knowledge.fetch(path, start?, end?)` — range-bounded file read.
 - `knowledge.map(focus?, mapTokens?)` — ranked structural symbol map (tree-sitter + PageRank). **Capability-gated: advertised only when code sources are indexed.**
+- `knowledge.explain(query, k=5)` — retrieval-audit decomposition: lexical, vector, and RRF-fused hits with per-arm `lexicalRank`/`vectorRank`/`fusedScore` provenance. **Gated to hybrid mode** (no semantic arm to decompose otherwise).
 
 Stdio transport. Wire into a platform's MCP config: `command: smith`, `args: ["knowledge", "serve", "<name>", "--stdio"]`.
   - **Changing `retrieval.mode` (e.g. hybrid)?** Restart the knowledge MCP server to apply — reconnect `<agent>-knowledge` in your client (`/mcp` → reconnect) or start a new session. The server loads the index + embedder once at spawn.

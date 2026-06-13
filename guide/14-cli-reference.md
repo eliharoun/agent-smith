@@ -2084,7 +2084,7 @@ skip other-agent: no knowledge sources to compile
 
 **Description:** Spawns a stdio MCP server backed by the per-agent
 search index built at install/refresh time (persistent SQLite FTS5
-store). Exposes up to three tools:
+store). Exposes up to four tools:
 
 - `knowledge.search(query, k=5)` — ranked hits from the persistent
   index. Lexical BM25 by default; sources with `retrieval: { mode:
@@ -2099,6 +2099,13 @@ store). Exposes up to three tools:
   **Capability-gated: advertised only when the agent has indexed code
   sources.** `focus` (optional string) scopes the map to a file or
   symbol; `mapTokens` (optional integer) caps the response size.
+- `knowledge.explain(query, k=5)` — retrieval-audit decomposition of what
+  `knowledge.search` fuses: the lexical (BM25) arm's hits, the semantic
+  (vector) arm's hits, and the RRF-fused result with each entry's
+  `lexicalRank`, `vectorRank` (null if absent from that arm), and
+  `fusedScore`. **Capability-gated: advertised only when hybrid retrieval
+  is active** (index built with a real embedder); lexical-only mode has no
+  semantic arm to decompose.
 
 Validates that the agent exists before opening stdio so an unknown name
 doesn't silently serve an empty index.
