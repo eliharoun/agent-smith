@@ -37,7 +37,7 @@
         "delivery": "file",
         "description": "Complete agent-smith guide: getting-started, bundle anatomy, installing/rendering, knowledge, skills, permissions/platforms, models, registries/catalogs, daemon, doctor, update/uninstall, error taxonomy, paths/state, CLI reference, and sharing/distribution. Authoritative source for everything about the smith CLI and the bundle ecosystem.",
         "retrieval": {
-          "mode": "bm25"
+          "mode": "hybrid"
         },
         "path": "../../guide"
       }
