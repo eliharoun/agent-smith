@@ -157,6 +157,10 @@ describe("runDoctor", () => {
           balanced: "claude-sonnet-4",
           fast: "claude-haiku-4",
         },
+        // Inject the auth seams so the section doesn't spawn `which`-style
+        // probes for the platform CLIs (which leaked real subprocesses).
+        platformAuth: authedMatrix,
+        detectAuthenticatedProviders: async () => ["opencode"],
       },
     });
     expect(report.platforms.map((p) => p.platform)).toEqual(["opencode"]);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { detectPython, pythonNotInstalledRemediation } from "../../src/io/python-runtime";
+import { defaultSpawn, detectPython, pythonNotInstalledRemediation } from "../../src/io/python-runtime";
 
 function makeStubSpawn(map: Record<string, { stdout: string; exitCode: number }>) {
   return async (binary: string, args: string[]) => {
@@ -82,6 +82,26 @@ describe("detectPython", () => {
     expect(out.versionOk).toBe(true);
     expect(out.packagesAvailable.requests).toBe(false);
     expect(out.packagesAvailable.dotenv).toBe(false);
+  });
+});
+
+describe("defaultSpawn timeout", () => {
+  test("kills a hanging child and resolves as failure within the timeout", async () => {
+    const start = Date.now();
+    // `sleep 30` would hang far past any test timeout if not bounded.
+    const result = await defaultSpawn("sh", ["-c", "sleep 30"], 200);
+    const elapsed = Date.now() - start;
+    // Must return well before the 30s sleep would finish.
+    expect(elapsed).toBeLessThan(2000);
+    // Degrades to a failure result: non-zero exit, empty stdout.
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  test("a fast command still resolves normally before the timeout fires", async () => {
+    const result = await defaultSpawn("sh", ["-c", "printf hello"], 4000);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("hello");
   });
 });
 

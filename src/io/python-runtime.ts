@@ -61,22 +61,56 @@ async function checkPackage(
   return result !== null && result.exitCode === 0;
 }
 
-function defaultSpawn(
+/** Default per-invocation timeout for {@link defaultSpawn}, in milliseconds. */
+export const DEFAULT_SPAWN_TIMEOUT_MS = 4000;
+
+/**
+ * Spawn a child process, capture its stdout, and resolve when it exits.
+ *
+ * A bounded timeout (default {@link DEFAULT_SPAWN_TIMEOUT_MS}) guards against a
+ * wedged interpreter hanging `smith doctor` indefinitely: if the child does not
+ * exit in time it is killed and the call resolves as a failure (non-zero exit,
+ * empty stdout) so Python detection degrades to "unavailable" rather than
+ * blocking forever. `timeoutMs` is injectable so tests can exercise the timeout
+ * path quickly.
+ */
+export function defaultSpawn(
   binary: string,
   args: string[],
+  timeoutMs: number = DEFAULT_SPAWN_TIMEOUT_MS,
 ): Promise<{ stdout: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      // Degrade to a failure result so detection treats this as unavailable.
+      resolve({ stdout: "", exitCode: 1 });
+    }, timeoutMs);
+    // Don't let the timer keep the event loop alive on its own.
+    timer.unref?.();
+
     child.stdout?.on("data", (chunk) => {
       stdout += String(chunk);
     });
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk);
     });
-    child.on("error", (err) => reject(err));
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       resolve({ stdout: stdout || stderr, exitCode: code ?? 1 });
     });
   });

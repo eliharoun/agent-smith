@@ -345,6 +345,38 @@ export interface DoctorCliOptions {
     loadCache: () => Promise<import("../../core/knowledge/route-cache").RouteCache>;
     listMetaClaims: () => Promise<import("../../core/knowledge/route-meta").MetaClaim[]>;
   };
+  /**
+   * Explicit DI seam for the `atlassian-auth` doctor section. When omitted,
+   * production wiring uses the real resolvers and `detectPython()`, which can
+   * spawn up to three real Python subprocesses (`python3 --version`,
+   * `import requests`, `import dotenv`) when `atlassian-skills` is installed.
+   * Tests inject no-spawn stubs here so the section never shells out — without
+   * this seam doctor tests leaked real Python spawns and timed out. The fields
+   * mirror the same-named seams on {@link RunDoctorInput} and are threaded
+   * through verbatim.
+   */
+  atlassianAuth?: {
+    detectPython?: () => Promise<import("../../io/python-runtime").PythonRuntimeStatus>;
+    loadInstalledSkillsForAuth?: () => Promise<
+      import("../../io/installed-skills").InstalledSkillsFile
+    >;
+    resolveAtlassianAuth?: () => import("../../io/atlassian-auth").AtlassianAuth | null;
+  };
+  /**
+   * Explicit DI seam for the model-resolution section's auth probes. When
+   * omitted, production wiring calls `detectAllPlatforms()` and
+   * `detectAuthenticatedProviders()`, both of which spawn `which`-style probes
+   * for the platform CLIs (and the live `opencode` model list). Tests inject an
+   * inert auth matrix + provider list here so the section never shells out —
+   * without this seam these CLI tests ran live model-resolution and were slow
+   * enough to blow the per-test timeout. Threaded into the `modelResolution`
+   * config alongside the production paths.
+   */
+  modelResolutionAuth?: {
+    platformAuth?: import("../../io/auth/types").PlatformAuthMatrix;
+    detectAuthenticatedProviders?: () => Promise<string[]>;
+    getOpenCodeModels?: () => Promise<string[] | undefined>;
+  };
 }
 
 /**
@@ -405,9 +437,10 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     ? undefined
     : {
         getOpenCodeModels:
-          process.env.AGENT_SMITH_DISABLE_LIVE_RESOLUTION === "1"
+          opts.modelResolutionAuth?.getOpenCodeModels ??
+          (process.env.AGENT_SMITH_DISABLE_LIVE_RESOLUTION === "1"
             ? async () => undefined
-            : getOpenCodeModels,
+            : getOpenCodeModels),
         findOpencodeOnPath: () => findOnPath("opencode"),
         installedPaths: {
           opencodeAgentsDir: join(homedir(), ".config/opencode/agents"),
@@ -415,6 +448,17 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
           codexAgentsDir: join(homedir(), ".agents/skills"),
         },
         curatedFallback: CURATED_FALLBACK_V0_6_0,
+        // Auth probes default to the live detectAllPlatforms / provider
+        // detection (which spawn). Tests inject inert stubs to stay hermetic.
+        ...(opts.modelResolutionAuth?.platformAuth
+          ? { platformAuth: opts.modelResolutionAuth.platformAuth }
+          : {}),
+        ...(opts.modelResolutionAuth?.detectAuthenticatedProviders
+          ? {
+              detectAuthenticatedProviders:
+                opts.modelResolutionAuth.detectAuthenticatedProviders,
+            }
+          : {}),
       };
 
   // Stream per-section progress with ora when stdout is a TTY and we're not
@@ -682,6 +726,18 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
       },
     },
     hasAtlassianKnowledgeSources,
+    // Atlassian-auth seams. When omitted, runDoctor falls back to the real
+    // resolvers + detectPython() (which may spawn Python). Tests inject
+    // no-spawn stubs via opts.atlassianAuth to keep the section hermetic.
+    ...(opts.atlassianAuth?.detectPython
+      ? { detectPython: opts.atlassianAuth.detectPython }
+      : {}),
+    ...(opts.atlassianAuth?.loadInstalledSkillsForAuth
+      ? { loadInstalledSkillsForAuth: opts.atlassianAuth.loadInstalledSkillsForAuth }
+      : {}),
+    ...(opts.atlassianAuth?.resolveAtlassianAuth
+      ? { resolveAtlassianAuth: opts.atlassianAuth.resolveAtlassianAuth }
+      : {}),
     loadAgentsForDoctor: async () =>
       bundleResult.bundles.map((b) => ({
         name: b.config.name,

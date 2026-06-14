@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runDoctorCli } from "../../src/cli/commands/doctor";
 import type { PlatformId } from "../../src/io/platform-detect";
+import {
+  safeAtlassianAuthCliSeams,
+  safeModelResolutionCliSeams,
+} from "../_setup/doctor-fixtures";
 
 /**
  * Hermetic platform detector for CLI tests. Returns all three platform IDs
@@ -29,6 +33,8 @@ describe("runDoctorCli", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -54,6 +60,8 @@ describe("runDoctorCli", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: true,
@@ -92,6 +100,8 @@ describe("runDoctorCli", () => {
     let fetchCalled = false;
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: false,
       noCache: false,
       json: true,
@@ -131,6 +141,8 @@ describe("runDoctorCli", () => {
     let fetchCalled = false;
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: false,
       noCache: true,
       json: true,
@@ -154,6 +166,8 @@ describe("runDoctorCli", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: true,
@@ -177,6 +191,8 @@ describe("runDoctorCli", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: true,
@@ -200,6 +216,8 @@ describe("runDoctorCli", () => {
     try {
       const code = await runDoctorCli({
         detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
         offline: true,
         noCache: false,
         json: false,
@@ -247,6 +265,8 @@ describe("smith doctor — registry hygiene section", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -277,6 +297,8 @@ describe("smith doctor — registry hygiene section", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -312,6 +334,8 @@ describe("smith doctor — registry hygiene section", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -339,6 +363,8 @@ describe("smith doctor — registry hygiene section", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -369,6 +395,8 @@ describe("smith doctor — registry hygiene section", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -392,6 +420,8 @@ describe("runDoctorCli verbosity flags", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -410,6 +440,8 @@ describe("runDoctorCli verbosity flags", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: true,
@@ -430,6 +462,8 @@ describe("runDoctorCli verbosity flags", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -452,6 +486,8 @@ describe("runDoctorCli verbosity flags", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,
@@ -500,6 +536,8 @@ describe("smith doctor — remote catalogs section wiring (DW-4)", () => {
     let stdout = "";
     const code = await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: true,
@@ -520,6 +558,8 @@ describe("smith doctor — remote catalogs section wiring (DW-4)", () => {
     let stdout = "";
     await runDoctorCli({
       detectInstalledPlatforms: allPlatforms,
+      ...safeAtlassianAuthCliSeams,
+      ...safeModelResolutionCliSeams,
       offline: true,
       noCache: false,
       json: false,

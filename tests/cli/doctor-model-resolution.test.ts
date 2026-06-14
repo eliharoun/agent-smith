@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../../src/core/freshness/run-doctor";
 import type { SchemaMeta, ToolMapMeta } from "../../src/core/freshness/types";
+import {
+  safeAtlassianAuthSeams,
+  safeModelResolutionAuthSeams,
+} from "../_setup/doctor-fixtures";
 
 const stubSchemaMeta: SchemaMeta = {
   lastVerifiedDate: "2026-05-01",
@@ -44,12 +48,14 @@ describe("runDoctor: modelResolution section", () => {
     );
 
     const r = await runDoctor({
+      ...safeAtlassianAuthSeams,
       vendoredSchema: {},
       schemaMeta: stubSchemaMeta,
       claudeMeta: stubToolMapMeta,
       codexMeta: stubToolMapMeta,
       deps: stubDeps,
       modelResolution: {
+        ...safeModelResolutionAuthSeams,
         getOpenCodeModels: async () => ["github-copilot/claude-opus-4.7"],
         findOpencodeOnPath: async () => "/fake/opencode",
         installedPaths: {
@@ -74,12 +80,14 @@ describe("runDoctor: modelResolution section", () => {
   test("exit code 0 when only curated fallback drifts (informational, not actionable)", async () => {
     const tmp = await mkdtemp(join(tmpdir(), "smith-doctor-fallback-"));
     const r = await runDoctor({
+      ...safeAtlassianAuthSeams,
       vendoredSchema: {},
       schemaMeta: stubSchemaMeta,
       claudeMeta: stubToolMapMeta,
       codexMeta: stubToolMapMeta,
       deps: stubDeps,
       modelResolution: {
+        ...safeModelResolutionAuthSeams,
         getOpenCodeModels: async () => ["github-copilot/some-other-model"],
         findOpencodeOnPath: async () => "/fake/opencode",
         installedPaths: {
@@ -114,12 +122,14 @@ describe("runDoctor: modelResolution section", () => {
       "github-copilot/claude-haiku-4.5",
     ];
     const r = await runDoctor({
+      ...safeAtlassianAuthSeams,
       vendoredSchema: {},
       schemaMeta: stubSchemaMeta,
       claudeMeta: stubToolMapMeta,
       codexMeta: stubToolMapMeta,
       deps: stubDeps,
       modelResolution: {
+        ...safeModelResolutionAuthSeams,
         getOpenCodeModels: async () => live,
         findOpencodeOnPath: async () => "/fake/opencode",
         installedPaths: {
@@ -140,6 +150,7 @@ describe("runDoctor: modelResolution section", () => {
 
   test("modelResolution omitted -> no section in report", async () => {
     const r = await runDoctor({
+      ...safeAtlassianAuthSeams,
       vendoredSchema: {},
       schemaMeta: stubSchemaMeta,
       claudeMeta: stubToolMapMeta,
