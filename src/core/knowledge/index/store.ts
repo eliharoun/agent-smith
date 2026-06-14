@@ -15,7 +15,7 @@
 // be opened (missing file in readonly mode, or any driver error), so callers
 // degrade to the in-memory Bm25Index.
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type ChunkKind = "code" | "prose" | "json";
@@ -67,8 +67,18 @@ export interface TagRow {
   line: number;
   signature: string;
 }
+export interface StoreOpenNotice {
+  /** `rebuilt`: a stale/incompatible DB was deleted and recreated.
+   *  `transient`: a recoverable (busy/locked) error; DB left intact for retry.
+   *  `failed`: rebuild attempted but still failed; DB unusable this run. */
+  kind: "rebuilt" | "transient" | "failed";
+  detail: string;
+}
 export interface OpenOpts {
   readonly?: boolean;
+  /** Optional sink for self-heal diagnostics. Undefined => silent (callers that
+   *  don't care are unaffected). */
+  onNotice?: (notice: StoreOpenNotice) => void;
 }
 export interface IndexStats {
   /** Distinct models over LIVE vectors (empty => lexical-only / no vectors). */
@@ -151,13 +161,42 @@ export class KnowledgeStore {
         return new KnowledgeStore(db, header, true);
       }
       mkdirSync(dirname(dbPath), { recursive: true });
-      const db = new Database(dbPath, { create: true });
-      db.exec("PRAGMA journal_mode = WAL");
-      const store = new KnowledgeStore(db, header, false);
-      store.migrate();
-      return store;
+      const openAndMigrate = (): KnowledgeStore => {
+        const db = new Database(dbPath, { create: true });
+        db.exec("PRAGMA journal_mode = WAL");
+        const s = new KnowledgeStore(db, header, false);
+        s.migrate();
+        return s;
+      };
+      try {
+        return openAndMigrate();
+      } catch (e) {
+        // Recoverable (busy/locked): preserve the DB; a live reader is intact and
+        // the next run retries. Never delete on contention.
+        if (isRecoverableSqliteError(e)) {
+          opts.onNotice?.({ kind: "transient", detail: e instanceof Error ? e.message : String(e) });
+          return null;
+        }
+        // Non-recoverable (stale shape the drop can't fix, malformed image):
+        // delete the DB + sidecars and rebuild ONCE. Never loops.
+        for (const suffix of ["", "-wal", "-shm"]) {
+          try {
+            rmSync(dbPath + suffix, { force: true });
+          } catch {
+            /* best-effort */
+          }
+        }
+        try {
+          const s = openAndMigrate();
+          opts.onNotice?.({ kind: "rebuilt", detail: e instanceof Error ? e.message : String(e) });
+          return s;
+        } catch (e2) {
+          opts.onNotice?.({ kind: "failed", detail: e2 instanceof Error ? e2.message : String(e2) });
+          return null;
+        }
+      }
     } catch {
-      return null; // corrupt DB / permissions / etc. -> degrade gracefully
+      return null; // driver/import failure -> degrade gracefully
     }
   }
 
@@ -494,6 +533,18 @@ export class KnowledgeStore {
   close(): void {
     this.db.close();
   }
+}
+
+/** True for SQLite errors that are transient (the DB is fine, just contended):
+ *  a concurrent writer/reader holding a lock. These MUST NOT trigger the
+ *  delete-and-rebuild self-heal — deleting a healthy DB out from under a live
+ *  reader is worse than the failure. Everything else (schema/shape mismatch,
+ *  malformed image) is treated as non-recoverable and is safe to rebuild. */
+export function isRecoverableSqliteError(e: unknown): boolean {
+  const code = (e as { code?: unknown })?.code;
+  const codeStr = typeof code === "string" ? code : "";
+  const msg = e instanceof Error ? e.message : String(e);
+  return /SQLITE_BUSY|SQLITE_LOCKED/i.test(codeStr) || /database is (locked|busy)/i.test(msg);
 }
 
 /** Pack a Float32Array as a Uint8Array view for BLOB binding (no copy). */

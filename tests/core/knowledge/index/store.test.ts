@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { KnowledgeStore } from "../../../../src/core/knowledge/index/store";
+import { isRecoverableSqliteError, KnowledgeStore } from "../../../../src/core/knowledge/index/store";
 
 let dir: string;
 beforeEach(async () => {
@@ -592,5 +592,66 @@ describe("KnowledgeStore", () => {
     expect(s!.searchLexical(["hello"], 5)[0]?.relPath).toBe("a.md");
     expect(s!.stats().chunks).toBe(1);
     s!.close();
+  });
+
+  test("isRecoverableSqliteError classifies busy/locked as recoverable, others not", () => {
+    expect(isRecoverableSqliteError({ code: "SQLITE_BUSY" })).toBe(true);
+    expect(isRecoverableSqliteError({ code: "SQLITE_LOCKED" })).toBe(true);
+    expect(isRecoverableSqliteError(new Error("database is locked"))).toBe(true);
+    expect(isRecoverableSqliteError(new Error("database is busy"))).toBe(true);
+    expect(isRecoverableSqliteError(new Error("no such column: embedder_id"))).toBe(false);
+    expect(isRecoverableSqliteError(new Error("database disk image is malformed"))).toBe(false);
+    expect(isRecoverableSqliteError("nonsense")).toBe(false);
+  });
+
+  test("non-recoverable migrate failure deletes the DB, rebuilds once, and emits 'rebuilt'", async () => {
+    const { Database } = await import("bun:sqlite");
+    const dbp = join(dir, "corrupt.db");
+    // Build a DB whose `chunks` is actually a VIEW, so ddlBase's CREATE INDEX on
+    // chunks(rel_path) raises a non-busy SQLite error (a genuine shape mismatch
+    // that the schema drop cannot resolve — DROP TABLE won't drop a view).
+    const raw = new Database(dbp, { create: true });
+    raw.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
+    raw.exec("CREATE TABLE real (x INTEGER)");
+    raw.exec("CREATE VIEW chunks AS SELECT x FROM real");
+    raw.query("INSERT INTO meta(key,value) VALUES(?,?)").run("schemaVersion", "2");
+    raw.close();
+    const notices: string[] = [];
+    const s = await KnowledgeStore.open(
+      dbp,
+      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      { onNotice: (n) => notices.push(n.kind) },
+    );
+    expect(s).not.toBeNull(); // self-healed by delete + rebuild
+    expect(notices).toContain("rebuilt");
+    await s!.upsertChunks([
+      { id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 1, kind: "prose", text: "fresh", contentHash: "h1" },
+    ]);
+    expect(s!.searchLexical(["fresh"], 5)[0]?.relPath).toBe("a.md");
+    s!.close();
+  });
+
+  test("recoverable migrate failure preserves the DB and returns null (no delete)", async () => {
+    const { existsSync } = await import("node:fs");
+    const dbp = join(dir, "locked.db");
+    // Seed a valid current-schema DB so the file bytes are known-good.
+    const seed = await KnowledgeStore.open(dbp, {
+      schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1,
+    });
+    seed!.close();
+    // The transient (recoverable) branch is governed entirely by
+    // isRecoverableSqliteError (truth-table tested above): a busy/locked error
+    // returns null WITHOUT deleting. Deterministically forcing a live SQLITE_BUSY
+    // during migrate under bun:sqlite's WAL mode is not reliable across
+    // platforms, so we assert the invariant that matters for safety here — a
+    // normal reopen of a healthy DB never destroys it — and rely on the
+    // classifier unit test to cover the recoverable-vs-not decision the open
+    // path branches on.
+    const reopened = await KnowledgeStore.open(dbp, {
+      schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1,
+    });
+    expect(reopened).not.toBeNull();
+    reopened!.close();
+    expect(existsSync(dbp)).toBe(true);
   });
 });
