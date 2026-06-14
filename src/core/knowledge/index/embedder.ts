@@ -18,7 +18,13 @@ export interface LoadEmbedderOpts {
 const MODEL_ID = "jinaai/jina-embeddings-v2-base-code";
 const MODEL_DIM = 768;
 export async function loadEmbedder(opts: LoadEmbedderOpts): Promise<Embedder> {
-  if (opts.forceNull) return new NullEmbedder();
+  // `SMITH_NO_EMBEDDINGS=1` forces lexical-only (NullEmbedder) without touching
+  // the network. CI sets it so the test gauntlet never downloads an on-device
+  // model from HuggingFace (slow + flaky + offline-hostile); index builds stay
+  // lexical there. Same effect as the model being unavailable — every caller
+  // already degrades to BM25. Explicit env (not `CI`) so an end user's own CI
+  // that wants hybrid is never silently downgraded.
+  if (opts.forceNull || process.env.SMITH_NO_EMBEDDINGS === "1") return new NullEmbedder();
   const modelId = opts.modelId ?? MODEL_ID;
   const dim = opts.dim ?? MODEL_DIM;
   try {

@@ -16,6 +16,12 @@ jobs:
     name: bun test + vitest
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Hermetic: never download an on-device embedding model from HuggingFace in
+    # CI. Index builds stay lexical (BM25); the real-model path is exercised on
+    # developer machines. Keeps the gauntlet fast, offline-safe, and immune to
+    # HF availability.
+    env:
+      SMITH_NO_EMBEDDINGS: "1"
     steps:
       - uses: actions/checkout@v5
 

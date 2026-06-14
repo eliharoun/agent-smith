@@ -25,6 +25,11 @@ jobs:
     name: test gauntlet + npm publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Hermetic: no embedding-model download in the gauntlet (lexical index
+    # builds). See test.yml for rationale. Does not affect the published
+    # artifact — only the build/test environment.
+    env:
+      SMITH_NO_EMBEDDINGS: "1"
     permissions:
       contents: read
       id-token: write # required for npm Trusted Publishing (OIDC)

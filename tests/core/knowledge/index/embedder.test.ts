@@ -10,6 +10,19 @@ describe("embedder", () => {
   it("loadEmbedder forceNull degrades to NullEmbedder", async () => {
     expect((await loadEmbedder({ forceNull: true })).id).toBe("none");
   });
+  it("SMITH_NO_EMBEDDINGS=1 forces NullEmbedder (hermetic CI, no model load)", async () => {
+    const prev = process.env.SMITH_NO_EMBEDDINGS;
+    process.env.SMITH_NO_EMBEDDINGS = "1";
+    try {
+      // Even with a real model id requested, the env short-circuits to lexical.
+      expect((await loadEmbedder({ modelId: "jinaai/jina-embeddings-v2-base-code" })).id).toBe(
+        "none",
+      );
+    } finally {
+      if (prev === undefined) delete process.env.SMITH_NO_EMBEDDINGS;
+      else process.env.SMITH_NO_EMBEDDINGS = prev;
+    }
+  });
   it("real embedder returns one unit-norm vector per input (when available)", async () => {
     const e = await loadEmbedder({});
     if (e.id === "none") return; // tolerated, but per verification this SHOULD run and produce a 768-dim vector
