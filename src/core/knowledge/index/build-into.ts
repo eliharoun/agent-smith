@@ -28,30 +28,48 @@ export async function buildIndexInto(
   knowledgeDir: string,
   changedPaths: string[] | null,
   hybridSourceIds: Set<string> = new Set(),
-): Promise<void> {
+): Promise<string[]> {
+  const warnings: string[] = [];
   try {
     // Use an embedder cache only if at least one source opts into hybrid;
     // otherwise stay lexical-only — no model load, fast install.
     const useHybrid = hybridSourceIds.size > 0;
     const cache = useHybrid ? embedderCache() : null;
-    const store = await KnowledgeStore.open(indexDbPath(knowledgeDir), {
-      schemaVersion: SCHEMA_VERSION,
-      // When any source is hybrid, the build may use any policy model (code +
-      // text), routed per chunk kind. List the full policy set so reconcile's
-      // per-model clear reasons over them; storedEmbedderIds (live vectors)
-      // still reports only models actually present. Lexical-only => [].
-      embedders: useHybrid ? ALL_MODELS.map((m) => ({ id: m.id, dim: m.dim })) : [],
-      chunkerVersion: CHUNKER_VERSION,
-      modelPolicyVersion: MODEL_POLICY_VERSION,
-      repomapVersion: REPOMAP_VERSION,
-    });
-    if (!store) return; // store unavailable -> serve falls back to in-memory BM25
+    const store = await KnowledgeStore.open(
+      indexDbPath(knowledgeDir),
+      {
+        schemaVersion: SCHEMA_VERSION,
+        // When any source is hybrid, the build may use any policy model (code +
+        // text), routed per chunk kind. List the full policy set so reconcile's
+        // per-model clear reasons over them; storedEmbedderIds (live vectors)
+        // still reports only models actually present. Lexical-only => [].
+        embedders: useHybrid ? ALL_MODELS.map((m) => ({ id: m.id, dim: m.dim })) : [],
+        chunkerVersion: CHUNKER_VERSION,
+        modelPolicyVersion: MODEL_POLICY_VERSION,
+        repomapVersion: REPOMAP_VERSION,
+      },
+      {
+        onNotice: (n) => {
+          if (n.kind === "rebuilt") {
+            warnings.push("knowledge index reset (incompatible on-disk index discarded and rebuilt)");
+          } else if (n.kind === "transient") {
+            warnings.push("knowledge index busy; left intact and will retry on the next run");
+          } else {
+            warnings.push(`knowledge index rebuild failed: ${n.detail}`);
+          }
+        },
+      },
+    );
+    if (!store) return warnings; // store unavailable -> serve falls back to in-memory BM25
     try {
       await buildIndex({ knowledgeDir, store, embedders: cache, changedPaths, hybridSourceIds });
     } finally {
       store.close();
     }
-  } catch {
-    // never block install/refresh on index build
+  } catch (e) {
+    // never block install/refresh on index build; surface a warning instead of
+    // swallowing so install/fetch is not silent on failure.
+    warnings.push(`knowledge index build error: ${e instanceof Error ? e.message : String(e)}`);
   }
+  return warnings;
 }

@@ -592,7 +592,8 @@ export async function runKnowledgeStage(
     const hybridSourceIds = new Set(
       manifest.sources.filter((s) => s.retrieval?.mode === "hybrid").map((s) => s.id),
     );
-    await buildIndexInto(liveDir, null, hybridSourceIds); // full build on (re)install
+    const indexWarnings = await buildIndexInto(liveDir, null, hybridSourceIds); // full build on (re)install
+    for (const w of indexWarnings) warnings.push(w);
 
     return {
       manifest,
