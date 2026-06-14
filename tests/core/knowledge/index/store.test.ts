@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isRecoverableSqliteError, KnowledgeStore } from "../../../../src/core/knowledge/index/store";
+import {
+  isRecoverableSqliteError,
+  KnowledgeStore,
+} from "../../../../src/core/knowledge/index/store";
 
 let dir: string;
 beforeEach(async () => {
@@ -300,11 +303,21 @@ describe("KnowledgeStore", () => {
   test("chunk stores embedder_id; hasVectorFor distinguishes models", async () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
-    await s.upsertChunks([{
-      id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 2,
-      kind: "prose", text: "hello", contentHash: "h1",
-      vector: new Float32Array([1, 0, 0]), embedderId: "model-A@1", embedderDim: 3,
-    }]);
+    await s.upsertChunks([
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "hello",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "model-A@1",
+        embedderDim: 3,
+      },
+    ]);
     expect(s.hasVectorFor("a.md", "model-A@1")).toBe(true);
     expect(s.hasVectorFor("a.md", "model-B@1")).toBe(false);
     s.close();
@@ -313,11 +326,19 @@ describe("KnowledgeStore", () => {
   test("chunk without a vector has null embedder_id (no false model attribution)", async () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
-    await s.upsertChunks([{
-      id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 2,
-      kind: "prose", text: "hello", contentHash: "h1",
-      // no vector, no embedderId
-    }]);
+    await s.upsertChunks([
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "hello",
+        contentHash: "h1",
+        // no vector, no embedderId
+      },
+    ]);
     expect(s.hasVectorFor("a.md", "model-A@1")).toBe(false);
     s.close();
   });
@@ -376,14 +397,40 @@ describe("KnowledgeStore", () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "code.ts", startLine: 1, endLine: 2, kind: "code",
-        text: "x", contentHash: "h1", vector: new Float32Array([1, 0, 0]), embedderId: "code@1", embedderDim: 3 },
-      { id: "2", sourceId: "s", relPath: "doc.md", startLine: 1, endLine: 2, kind: "prose",
-        text: "y", contentHash: "h2", vector: new Float32Array([1, 0, 0]), embedderId: "text@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "code.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
+      {
+        id: "2",
+        sourceId: "s",
+        relPath: "doc.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "y",
+        contentHash: "h2",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "text@1",
+        embedderDim: 3,
+      },
     ]);
     // Identical stored vectors AND identical dim — only the model filter separates them.
-    expect(s.searchVector(new Float32Array([1, 0, 0]), 5, "code@1").map((h) => h.relPath)).toEqual(["code.ts"]);
-    expect(s.searchVector(new Float32Array([1, 0, 0]), 5, "text@1").map((h) => h.relPath)).toEqual(["doc.md"]);
+    expect(s.searchVector(new Float32Array([1, 0, 0]), 5, "code@1").map((h) => h.relPath)).toEqual([
+      "code.ts",
+    ]);
+    expect(s.searchVector(new Float32Array([1, 0, 0]), 5, "text@1").map((h) => h.relPath)).toEqual([
+      "doc.md",
+    ]);
     s.close();
   });
 
@@ -391,8 +438,19 @@ describe("KnowledgeStore", () => {
     const s = await KnowledgeStore.open(join(dir, "k.db"), H);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 2, kind: "prose",
-        text: "x", contentHash: "h1", vector: new Float32Array([1, 0, 0]), embedderId: "m@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "m@1",
+        embedderDim: 3,
+      },
     ]);
     const hits = s.searchVector(new Float32Array([1, 0, 0]), 5, "m@1");
     expect(hits[0]!.sim).toBeCloseTo(1, 5); // identical vectors => cosine ~1
@@ -400,12 +458,45 @@ describe("KnowledgeStore", () => {
   });
 
   test("storedEmbedderIds reports distinct models over LIVE vectors only", async () => {
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h = {
+      schemaVersion: 1,
+      embedders: [
+        { id: "code@1", dim: 3 },
+        { id: "text@1", dim: 3 },
+      ],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     const s = await KnowledgeStore.open(join(dir, "k.db"), h);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
-      { id: "2", sourceId: "s", relPath: "b.md", startLine: 1, endLine: 2, kind: "prose", text: "y", contentHash: "h2", vector: new Float32Array([0,1,0]), embedderId: "text@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
+      {
+        id: "2",
+        sourceId: "s",
+        relPath: "b.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "y",
+        contentHash: "h2",
+        vector: new Float32Array([0, 1, 0]),
+        embedderId: "text@1",
+        embedderDim: 3,
+      },
     ]);
     expect(new Set(s.storedEmbedderIds().map((m) => m.id))).toEqual(new Set(["code@1", "text@1"]));
     s.clearVectorsByPath("b.md");
@@ -415,34 +506,100 @@ describe("KnowledgeStore", () => {
 
   test("per-model reconcile clears only the changed model's vectors", async () => {
     const dbp = join(dir, "k.db");
-    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h1 = {
+      schemaVersion: 1,
+      embedders: [
+        { id: "code@1", dim: 3 },
+        { id: "text@1", dim: 3 },
+      ],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     let s = await KnowledgeStore.open(dbp, h1);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
-      { id: "2", sourceId: "s", relPath: "b.md", startLine: 1, endLine: 2, kind: "prose", text: "y", contentHash: "h2", vector: new Float32Array([0,1,0]), embedderId: "text@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
+      {
+        id: "2",
+        sourceId: "s",
+        relPath: "b.md",
+        startLine: 1,
+        endLine: 2,
+        kind: "prose",
+        text: "y",
+        contentHash: "h2",
+        vector: new Float32Array([0, 1, 0]),
+        embedderId: "text@1",
+        embedderDim: 3,
+      },
     ]);
     s.close();
     // Reopen with the TEXT model changed (text@1 -> text@2), code unchanged.
-    const h2 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }, { id: "text@2", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h2 = {
+      schemaVersion: 1,
+      embedders: [
+        { id: "code@1", dim: 3 },
+        { id: "text@2", dim: 3 },
+      ],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     s = await KnowledgeStore.open(dbp, h2);
     if (!s) return;
-    expect(s.hasVectorFor("a.ts", "code@1")).toBe(true);  // code untouched
+    expect(s.hasVectorFor("a.ts", "code@1")).toBe(true); // code untouched
     expect(s.hasVectorFor("b.md", "text@1")).toBe(false); // old text vectors cleared
     s.close();
   });
 
   test("lexical-only (empty embedders) reopen does NOT clear existing vectors", async () => {
     const dbp = join(dir, "k.db");
-    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h1 = {
+      schemaVersion: 1,
+      embedders: [{ id: "code@1", dim: 3 }],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     let s = await KnowledgeStore.open(dbp, h1);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
     ]);
     s.close();
     // Reopen lexical-only (no models this session) — must NOT wipe the code vectors.
-    const h2 = { schemaVersion: 1, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h2 = {
+      schemaVersion: 1,
+      embedders: [],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     s = await KnowledgeStore.open(dbp, h2);
     if (!s) return;
     expect(s.hasVectorFor("a.ts", "code@1")).toBe(true);
@@ -451,7 +608,13 @@ describe("KnowledgeStore", () => {
 
   test("malformed embedders meta does not crash open (degrades, no throw)", async () => {
     const dbp = join(dir, "k.db");
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h = {
+      schemaVersion: 1,
+      embedders: [{ id: "code@1", dim: 3 }],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     const s = await KnowledgeStore.open(dbp, h);
     if (!s) return;
     s.close();
@@ -463,15 +626,39 @@ describe("KnowledgeStore", () => {
 
   test("malformed embedders meta degrades gracefully (open does not throw/return null)", async () => {
     const dbp = join(dir, "k.db");
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
-    let s = await KnowledgeStore.open(dbp, h);
+    const h = {
+      schemaVersion: 1,
+      embedders: [{ id: "code@1", dim: 3 }],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
+    const s = await KnowledgeStore.open(dbp, h);
     if (!s) return;
-    await s.upsertChunks([{ id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 }]);
+    await s.upsertChunks([
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
+    ]);
     s.close();
     // Corrupt the embedders meta value directly via raw bun:sqlite.
     const { Database } = await import("bun:sqlite");
     const raw = new Database(dbp);
-    raw.query("INSERT INTO meta(key,value) VALUES('embedders','{not valid json') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+    raw
+      .query(
+        "INSERT INTO meta(key,value) VALUES('embedders','{not valid json') ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run();
     raw.close();
     // Reopen — must succeed (defensive parse → treat as empty, never throw).
     const s2 = await KnowledgeStore.open(dbp, h);
@@ -483,11 +670,29 @@ describe("KnowledgeStore", () => {
 
   test("a model-policy-version change clears all chunks (forces full re-derive)", async () => {
     const dbp = join(dir, "k.db");
-    const h1 = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h1 = {
+      schemaVersion: 1,
+      embedders: [{ id: "code@1", dim: 3 }],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     let s = await KnowledgeStore.open(dbp, h1);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
     ]);
     s.close();
     // Reopen with a bumped model-policy version -> all chunks cleared.
@@ -516,7 +721,13 @@ describe("KnowledgeStore", () => {
     // store whose stats()/storedEmbedderIds() would throw on the missing column.
     const store = await KnowledgeStore.open(
       dbp,
-      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      {
+        schemaVersion: 2,
+        embedders: [],
+        chunkerVersion: 1,
+        repomapVersion: 1,
+        modelPolicyVersion: 1,
+      },
       { readonly: true },
     );
     expect(store).toBeNull();
@@ -536,7 +747,13 @@ describe("KnowledgeStore", () => {
     w.close();
     const ro = await KnowledgeStore.open(
       dbp,
-      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      {
+        schemaVersion: 2,
+        embedders: [],
+        chunkerVersion: 1,
+        repomapVersion: 1,
+        modelPolicyVersion: 1,
+      },
       { readonly: true },
     );
     expect(ro).not.toBeNull();
@@ -545,11 +762,29 @@ describe("KnowledgeStore", () => {
 
   test("an unchanged model-policy-version preserves chunks", async () => {
     const dbp = join(dir, "k.db");
-    const h = { schemaVersion: 1, embedders: [{ id: "code@1", dim: 3 }], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 };
+    const h = {
+      schemaVersion: 1,
+      embedders: [{ id: "code@1", dim: 3 }],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    };
     let s = await KnowledgeStore.open(dbp, h);
     if (!s) return;
     await s.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.ts", startLine: 1, endLine: 2, kind: "code", text: "x", contentHash: "h1", vector: new Float32Array([1,0,0]), embedderId: "code@1", embedderDim: 3 },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.ts",
+        startLine: 1,
+        endLine: 2,
+        kind: "code",
+        text: "x",
+        contentHash: "h1",
+        vector: new Float32Array([1, 0, 0]),
+        embedderId: "code@1",
+        embedderDim: 3,
+      },
     ]);
     s.close();
     s = await KnowledgeStore.open(dbp, h);
@@ -587,7 +822,16 @@ describe("KnowledgeStore", () => {
     expect(s).not.toBeNull();
     // Post-migration the table is clean and usable.
     await s!.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 1, kind: "prose", text: "hello world", contentHash: "h1" },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 1,
+        kind: "prose",
+        text: "hello world",
+        contentHash: "h1",
+      },
     ]);
     expect(s!.searchLexical(["hello"], 5)[0]?.relPath).toBe("a.md");
     expect(s!.stats().chunks).toBe(1);
@@ -619,13 +863,28 @@ describe("KnowledgeStore", () => {
     const notices: string[] = [];
     const s = await KnowledgeStore.open(
       dbp,
-      { schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1 },
+      {
+        schemaVersion: 2,
+        embedders: [],
+        chunkerVersion: 1,
+        repomapVersion: 1,
+        modelPolicyVersion: 1,
+      },
       { onNotice: (n) => notices.push(n.kind) },
     );
     expect(s).not.toBeNull(); // self-healed by delete + rebuild
     expect(notices).toContain("rebuilt");
     await s!.upsertChunks([
-      { id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 1, kind: "prose", text: "fresh", contentHash: "h1" },
+      {
+        id: "1",
+        sourceId: "s",
+        relPath: "a.md",
+        startLine: 1,
+        endLine: 1,
+        kind: "prose",
+        text: "fresh",
+        contentHash: "h1",
+      },
     ]);
     expect(s!.searchLexical(["fresh"], 5)[0]?.relPath).toBe("a.md");
     s!.close();
@@ -636,7 +895,11 @@ describe("KnowledgeStore", () => {
     const dbp = join(dir, "locked.db");
     // Seed a valid current-schema DB so the file bytes are known-good.
     const seed = await KnowledgeStore.open(dbp, {
-      schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1,
+      schemaVersion: 2,
+      embedders: [],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
     });
     seed!.close();
     // The transient (recoverable) branch is governed entirely by
@@ -648,7 +911,11 @@ describe("KnowledgeStore", () => {
     // classifier unit test to cover the recoverable-vs-not decision the open
     // path branches on.
     const reopened = await KnowledgeStore.open(dbp, {
-      schemaVersion: 2, embedders: [], chunkerVersion: 1, repomapVersion: 1, modelPolicyVersion: 1,
+      schemaVersion: 2,
+      embedders: [],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
     });
     expect(reopened).not.toBeNull();
     reopened!.close();

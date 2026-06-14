@@ -566,7 +566,10 @@ describe("installSkill: copyTreeVerbatim symlink safety + structure", () => {
 
     const sourceDir = join(sourceParent, "evil-skill");
     await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "SKILL.md"), "---\nname: evil-skill\ndescription: t\n---\n# x\n");
+    await writeFile(
+      join(sourceDir, "SKILL.md"),
+      "---\nname: evil-skill\ndescription: t\n---\n# x\n",
+    );
     // `leak` -> ../secret.txt  (relative symlink escaping the skill dir)
     await symlink(join(sourceParent, "secret.txt"), join(sourceDir, "leak"));
 
@@ -587,7 +590,10 @@ describe("installSkill: copyTreeVerbatim symlink safety + structure", () => {
   test("copies nested directories and files faithfully", async () => {
     const sourceDir = join(sourceParent, "nested-skill");
     await mkdir(join(sourceDir, "references", "deep"), { recursive: true });
-    await writeFile(join(sourceDir, "SKILL.md"), "---\nname: nested-skill\ndescription: t\n---\n# x\n");
+    await writeFile(
+      join(sourceDir, "SKILL.md"),
+      "---\nname: nested-skill\ndescription: t\n---\n# x\n",
+    );
     await writeFile(join(sourceDir, "references", "a.md"), "alpha\n");
     await writeFile(join(sourceDir, "references", "deep", "b.md"), "bravo\n");
 

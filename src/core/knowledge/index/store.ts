@@ -151,9 +151,9 @@ export class KnowledgeStore {
         // schemaVersion and refuse to use a mismatched index — callers then
         // degrade cleanly (serve -> in-memory BM25; info -> not materialized)
         // until the next writable open rebuilds it.
-        const row = db
-          .query("SELECT value FROM meta WHERE key='schemaVersion'")
-          .get() as { value: string } | undefined;
+        const row = db.query("SELECT value FROM meta WHERE key='schemaVersion'").get() as
+          | { value: string }
+          | undefined;
         if (!row || Number(row.value) !== header.schemaVersion) {
           db.close();
           return null;
@@ -174,7 +174,10 @@ export class KnowledgeStore {
         // Recoverable (busy/locked): preserve the DB; a live reader is intact and
         // the next run retries. Never delete on contention.
         if (isRecoverableSqliteError(e)) {
-          opts.onNotice?.({ kind: "transient", detail: e instanceof Error ? e.message : String(e) });
+          opts.onNotice?.({
+            kind: "transient",
+            detail: e instanceof Error ? e.message : String(e),
+          });
           return null;
         }
         // Non-recoverable (stale shape the drop can't fix, malformed image):
@@ -191,7 +194,10 @@ export class KnowledgeStore {
           opts.onNotice?.({ kind: "rebuilt", detail: e instanceof Error ? e.message : String(e) });
           return s;
         } catch (e2) {
-          opts.onNotice?.({ kind: "failed", detail: e2 instanceof Error ? e2.message : String(e2) });
+          opts.onNotice?.({
+            kind: "failed",
+            detail: e2 instanceof Error ? e2.message : String(e2),
+          });
           return null;
         }
       }
@@ -457,7 +463,9 @@ export class KnowledgeStore {
   }
   hasVectorFor(relPath: string, embedderId: string): boolean {
     const r = this.db
-      .query("SELECT 1 AS x FROM chunks WHERE rel_path=? AND embedding IS NOT NULL AND embedder_id=? LIMIT 1")
+      .query(
+        "SELECT 1 AS x FROM chunks WHERE rel_path=? AND embedding IS NOT NULL AND embedder_id=? LIMIT 1",
+      )
       .get(relPath, embedderId) as { x: number } | undefined;
     return !!r;
   }
@@ -495,9 +503,9 @@ export class KnowledgeStore {
         "SELECT count(*) AS c, sum(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS v FROM chunks",
       )
       .get() as { c: number; v: number | null };
-    const tagged = this.db
-      .query("SELECT count(DISTINCT rel_path) AS c FROM tags")
-      .get() as { c: number };
+    const tagged = this.db.query("SELECT count(DISTINCT rel_path) AS c FROM tags").get() as {
+      c: number;
+    };
     // Which live-vector model ids embedded each source. Grouped over live
     // vectors so a vector-cleared row's stale embedder_id is excluded.
     const modelsBySource = new Map<string, string[]>();

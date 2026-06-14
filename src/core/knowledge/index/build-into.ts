@@ -51,7 +51,9 @@ export async function buildIndexInto(
       {
         onNotice: (n) => {
           if (n.kind === "rebuilt") {
-            warnings.push("knowledge index reset (incompatible on-disk index discarded and rebuilt)");
+            warnings.push(
+              "knowledge index reset (incompatible on-disk index discarded and rebuilt)",
+            );
           } else if (n.kind === "transient") {
             warnings.push("knowledge index busy; left intact and will retry on the next run");
           } else {

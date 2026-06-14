@@ -104,7 +104,13 @@ test("buildIndexInto returns [] on a clean build and stays queryable after self-
   const { KnowledgeStore } = await import("../../../../src/core/knowledge/index/store");
   const store = await KnowledgeStore.open(
     indexDbPath(kd),
-    { schemaVersion: 2, embedders: [], chunkerVersion: 1, modelPolicyVersion: 1, repomapVersion: 1 },
+    {
+      schemaVersion: 2,
+      embedders: [],
+      chunkerVersion: 1,
+      modelPolicyVersion: 1,
+      repomapVersion: 1,
+    },
     { readonly: true },
   );
   expect(store).not.toBeNull();
