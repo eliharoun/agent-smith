@@ -4,6 +4,56 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] — 2026-06-14
+
+### Added
+
+- **`smith doctor` knowledge-index health section + `--fix-knowledge-index`.**
+  Doctor now audits every registered agent's on-disk search index and reports
+  two finding kinds: `stale-index` (the index DB exists but is incompatible with
+  the current schema, or corrupt) and `missing-index` (sources are materialized
+  but no index was ever built). `--fix-knowledge-index` rebuilds **stale**
+  indexes in one pass from already-materialized sources; `missing-index` is
+  reported with a suggested `smith agent install <agent>` and is never
+  auto-built (a never-indexed agent wants a real install, and building one can
+  reload an embedding model). The section is informational and never affects
+  doctor's exit code. Also available as a GUI doctor toggle.
+- **Self-healing knowledge index.** A writable index open that hits an
+  incompatible or corrupt database now deletes and rebuilds it once instead of
+  silently returning nothing; transient (busy/locked) errors leave the database
+  intact for the next run to retry. Index rebuilds and failures now surface as
+  warnings through `smith agent install` / `smith knowledge fetch` instead of
+  being swallowed.
+
+### Changed
+
+- **The bundled `agent-smith` agent now uses hybrid retrieval** for its guide
+  knowledge source, so questions about the smith CLI match on meaning, not just
+  keywords (degrades to lexical when the embedding model is unavailable).
+- Refreshed the vendored OpenCode schema.
+
+### Fixed
+
+- **Stale knowledge indexes could never migrate.** The index schema migration
+  ran current-schema DDL (creating an index on the per-chunk embedder column)
+  *before* dropping the old tables, so any database created before that column
+  existed threw `no such column: embedder_id` and was permanently stuck —
+  `smith knowledge info` reported "index not materialized" and reinstalling
+  could not repair it. The destructive schema drop now runs first, so a stale
+  index migrates (or self-heals) on the next install/fetch/doctor.
+- **Skill bootstrap failed on Linux under recent Bun.** `fs.cp` regressed when
+  copying into a just-removed destination (raising `ENOENT` on the *source*),
+  breaking `smith skill bootstrap` and the postinstall hook. Replaced the
+  single `fs.cp` call with a primitive recursive copy that preserves the
+  no-follow symlink guarantee (a hostile catalog symlink is copied verbatim,
+  never dereferenced).
+- **`smith doctor`** no longer leaks real subprocesses during Python-runtime
+  detection, and bounds the detection spawn.
+
+### Security
+
+- Hardened git knowledge-source acquisition with a transport allowlist.
+
 ## [1.19.0] — 2026-06-13
 
 ### Added
