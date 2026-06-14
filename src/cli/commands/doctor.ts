@@ -1,21 +1,22 @@
 import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import pc from "picocolors";
 import ora, { type Ora } from "ora";
+import pc from "picocolors";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
-import { atomicWriteText } from "../../io/atomic-write";
 import claudeCodeData from "../../../data/claude-code-tool-map.json" with { type: "json" };
 import codexData from "../../../data/codex-tool-map.json" with { type: "json" };
 import kiroData from "../../../data/kiro-tool-map.json" with { type: "json" };
 import vendoredSchema from "../../../data/opencode.config.schema.json" with { type: "json" };
 import schemaMetaRaw from "../../../data/opencode.config.schema.meta.json" with { type: "json" };
+import { collectKnowledgeDeprecations } from "../../core/config-schema";
+import { checkKnowledgeCompile } from "../../core/freshness/check-knowledge-compile";
+import { checkKnowledgeIndex } from "../../core/freshness/check-knowledge-index";
+import { checkMcpSpawnCommands } from "../../core/freshness/check-mcp-spawn";
 import {
   checkRefreshHooks,
   type RefreshPlatformId,
 } from "../../core/freshness/check-refresh-hooks";
-import { checkKnowledgeCompile } from "../../core/freshness/check-knowledge-compile";
-import { checkMcpSpawnCommands } from "../../core/freshness/check-mcp-spawn";
 import { formatFailuresOnly, formatReport, formatReportCompact } from "../../core/freshness/format";
 import { parseSchemaMeta, parseToolMapMeta } from "../../core/freshness/meta-schema";
 import type {
@@ -27,6 +28,8 @@ import type {
 import {
   knowledgeCompileEventStatus,
   knowledgeCompileSummary,
+  knowledgeIndexEventStatus,
+  knowledgeIndexSummary,
   knowledgeRefreshEventStatus,
   knowledgeRefreshSummary,
   mcpSpawnEventStatus,
@@ -34,24 +37,24 @@ import {
   runDoctor,
 } from "../../core/freshness/run-doctor";
 import type { DoctorDeps, SchemaCache } from "../../core/freshness/types";
+import { compileManifestPath } from "../../core/knowledge/compile-manifest";
+import { buildCompileOptionsFromBundle } from "../../core/knowledge/compile-options";
+import { loadRouteCache } from "../../core/knowledge/route-cache";
+import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
 import { CURATED_FALLBACK_V0_6_0 } from "../../core/model-resolution";
 import { toMessage } from "../../core/to-message";
-import { collectKnowledgeDeprecations } from "../../core/config-schema";
 import type { InstallPaths } from "../../core/types";
+import { atomicWriteText } from "../../io/atomic-write";
 import { defaultCacheRoot } from "../../io/cache-root";
 import { hashContent, loadInstalledAgents } from "../../io/installed-agents";
 import { hashSkillDir, loadInstalledSkills } from "../../io/installed-skills";
-import { compileManifestPath } from "../../core/knowledge/compile-manifest";
-import { buildCompileOptionsFromBundle } from "../../core/knowledge/compile-options";
-import { getOpenCodeModels } from "../../io/opencode-models";
-import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
 import { McpClient } from "../../io/mcp-client";
 import { readAvailableMcpServers } from "../../io/mcp-config-readers";
-import { loadRouteCache } from "../../core/knowledge/route-cache";
-import { extractMetaClaims, type MetaClaim } from "../../core/knowledge/route-meta";
-import { stateHome } from "../../io/state-home";
+import { getOpenCodeModels } from "../../io/opencode-models";
+import { detectInstalledPlatforms, findOnPath, type PlatformId } from "../../io/platform-detect";
 import { canonicalRegistryPath, loadRegistry } from "../../io/registry";
 import { canonicalSkillRegistryPath } from "../../io/skill-registry";
+import { stateHome } from "../../io/state-home";
 import { isDebug } from "../debug-flag";
 import {
   defaultAgentSmithHome,
@@ -276,6 +279,26 @@ export interface DoctorCliOptions {
     loadAllBundles: () => Promise<import("../../core/types").AgentBundle[]>;
   };
   /**
+   * When true, after the knowledge-index detection section, iterate
+   * `report.knowledgeIndex.findings` and rebuild each **stale-index** finding
+   * via `buildIndexInto` (the patched writable open self-heals the stale DB).
+   * `missing-index` findings are NOT auto-built — they're reported with a
+   * suggested `smith agent install <agent>`. Per-finding errors print but do
+   * NOT abort the repair pass.
+   */
+  fixKnowledgeIndex?: boolean;
+  /**
+   * Override for tests: knowledge-index detection inputs. When omitted,
+   * production wiring derives candidates (every registered bundle with ≥1
+   * knowledge source) and uses `defaultAgentSmithHome()`. Tests inject an
+   * in-memory bundle list + tmpdir agent-smith home so the section runs
+   * hermetically.
+   */
+  knowledgeIndex?: {
+    agentSmithHome: string;
+    loadAllBundles: () => Promise<import("../../core/types").AgentBundle[]>;
+  };
+  /**
    * v2.1.x: when true, after running the mcp-spawn-commands detection
    * section, iterate `report.mcpSpawnCommands.findings` and rewrite each
    * finding's platform config so the `command` field is the absolute path
@@ -455,8 +478,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
           : {}),
         ...(opts.modelResolutionAuth?.detectAuthenticatedProviders
           ? {
-              detectAuthenticatedProviders:
-                opts.modelResolutionAuth.detectAuthenticatedProviders,
+              detectAuthenticatedProviders: opts.modelResolutionAuth.detectAuthenticatedProviders,
             }
           : {}),
       };
@@ -533,8 +555,11 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
   for (const b of bundleResult.bundles) {
     try {
       const raw = JSON.parse(await readFile(join(b.bundlePath, "agent.config.json"), "utf8"));
-      for (const w of collectKnowledgeDeprecations(raw)) console.warn(`${pc.yellow("⚠")} ${b.config.name}: ${w}`);
-    } catch { /* ignore — missing/unreadable config */ }
+      for (const w of collectKnowledgeDeprecations(raw))
+        console.warn(`${pc.yellow("⚠")} ${b.config.name}: ${w}`);
+    } catch {
+      /* ignore — missing/unreadable config */
+    }
   }
 
   const hasAtlassianKnowledgeSources = bundleResult.bundles.some((b) =>
@@ -564,11 +589,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         .map(async (b) => {
           const compileBlock = b.config.knowledge?.compile;
           const explicitOptIn = compileBlock?.progressive === true;
-          const knowledgeDir = join(
-            knowledgeCompileAgentSmithHome,
-            "knowledge",
-            b.config.name,
-          );
+          const knowledgeDir = join(knowledgeCompileAgentSmithHome, "knowledge", b.config.name);
           const hasManifest = await fileExists(compileManifestPath(knowledgeDir));
           if (!explicitOptIn && !hasManifest) return null;
           return {
@@ -579,6 +600,25 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
         }),
     )
   ).filter((c): c is NonNullable<typeof c> => c !== null);
+
+  // Build knowledge-index detection candidates: every registered bundle with
+  // ≥1 knowledge source is eligible (no progressive/manifest opt-in filter —
+  // any knowledge-bearing agent can have a stale or missing search index).
+  // The detector itself decides per-agent (stale vs missing vs skip).
+  const knowledgeIndexAgentSmithHome =
+    opts.knowledgeIndex?.agentSmithHome ?? defaultAgentSmithHome();
+  const knowledgeIndexBundles = opts.knowledgeIndex
+    ? await opts.knowledgeIndex.loadAllBundles()
+    : bundleResult.bundles;
+  const knowledgeIndexBundleByName = new Map<string, import("../../core/types").AgentBundle>();
+  for (const b of knowledgeIndexBundles) knowledgeIndexBundleByName.set(b.config.name, b);
+  const knowledgeIndexCandidates = knowledgeIndexBundles
+    .filter((b) => (b.config.knowledge?.sources?.length ?? 0) > 0)
+    .map((b) => ({
+      name: b.config.name,
+      knowledgeDir: join(knowledgeIndexAgentSmithHome, "knowledge", b.config.name),
+    }));
+  const knowledgeIndexInput = { candidates: knowledgeIndexCandidates };
 
   // Default DI for the mcp-deps section: read the union of platform MCP
   // configs from the user's homedir, and build the installed-agents list
@@ -670,10 +710,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     agentSmithHome: opts.knowledgeRefreshPaths?.agentSmithHome ?? defaultAgentSmithHome(),
     cacheRoot: opts.knowledgeRefreshPaths?.cacheRoot ?? defaultCacheRoot(),
     installPaths: opts.knowledgeRefreshPaths?.installPaths ?? defaultInstallPaths(),
-    codexHooksPath: join(
-      opts.knowledgeRefreshPaths?.codexHome ?? defaultCodexHome(),
-      "hooks.json",
-    ),
+    codexHooksPath: join(opts.knowledgeRefreshPaths?.codexHome ?? defaultCodexHome(), "hooks.json"),
     opencodeConfigHome:
       opts.knowledgeRefreshPaths?.opencodeConfigHome ?? defaultOpencodeConfigHome(),
     bundles: new Map(bundleResult.bundles.map((b) => [b.config.name, b])),
@@ -729,9 +766,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     // Atlassian-auth seams. When omitted, runDoctor falls back to the real
     // resolvers + detectPython() (which may spawn Python). Tests inject
     // no-spawn stubs via opts.atlassianAuth to keep the section hermetic.
-    ...(opts.atlassianAuth?.detectPython
-      ? { detectPython: opts.atlassianAuth.detectPython }
-      : {}),
+    ...(opts.atlassianAuth?.detectPython ? { detectPython: opts.atlassianAuth.detectPython } : {}),
     ...(opts.atlassianAuth?.loadInstalledSkillsForAuth
       ? { loadInstalledSkillsForAuth: opts.atlassianAuth.loadInstalledSkillsForAuth }
       : {}),
@@ -786,6 +821,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     },
     knowledgeRefresh: knowledgeRefreshInput,
     knowledgeCompile: knowledgeCompileInput,
+    knowledgeIndex: knowledgeIndexInput,
     mcpDeps: {
       installedAgents: await mcpDepsDi.loadInstalledAgents(),
       readAvailable: mcpDepsDi.readAvailable,
@@ -834,9 +870,7 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     // revoke (which doesn't trigger the guard), but passing the bundle
     // is harmless and keeps behavior consistent if a future fix branch
     // adds a grant.
-    const refreshBundlesByName = new Map(
-      bundleResult.bundles.map((b) => [b.config.name, b]),
-    );
+    const refreshBundlesByName = new Map(bundleResult.bundles.map((b) => [b.config.name, b]));
     const reconfigureDepsFor = (agent: string) => {
       const bundle = refreshBundlesByName.get(agent);
       return bundle ? { ...reconfigureDepsBase, bundle } : reconfigureDepsBase;
@@ -854,8 +888,16 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             // on the absent hook primitive), then grant (re-runs the
             // register primitive, adds the entry back). End state: the
             // hook is registered on disk and the manifest is unchanged.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
-            await reconfigureAgent(f.agent, { grant: [f.platform], revoke: [] }, reconfigureDepsFor(f.agent));
+            await reconfigureAgent(
+              f.agent,
+              { grant: [], revoke: [f.platform] },
+              reconfigureDepsFor(f.agent),
+            );
+            await reconfigureAgent(
+              f.agent,
+              { grant: [f.platform], revoke: [] },
+              reconfigureDepsFor(f.agent),
+            );
             print(`  ✓ re-registered ${f.platform} hook for ${f.agent}`);
             break;
           case "corrupt-cache": {
@@ -865,7 +907,11 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             break;
           }
           case "orphaned-consent":
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
+            await reconfigureAgent(
+              f.agent,
+              { grant: [], revoke: [f.platform] },
+              reconfigureDepsFor(f.agent),
+            );
             print(`  ✓ cleared orphan consent: ${f.agent}/${f.platform}`);
             break;
           case "stale-consent-uninstalled":
@@ -873,14 +919,24 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
             // entry is the same as orphaned-consent — strip the dead
             // consent record so the manifest reflects current reality.
             // The hook primitive on the missing platform is a no-op.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
+            await reconfigureAgent(
+              f.agent,
+              { grant: [], revoke: [f.platform] },
+              reconfigureDepsFor(f.agent),
+            );
             print(`  ✓ cleared stale consent: ${f.agent}/${f.platform} (CLI not installed)`);
             break;
           case "consent-without-need":
             // Bundle has zero session/always sources today; the consent
             // record is stale. Revoke to align the manifest with reality.
-            await reconfigureAgent(f.agent, { grant: [], revoke: [f.platform] }, reconfigureDepsFor(f.agent));
-            print(`  ✓ cleared unneeded consent: ${f.agent}/${f.platform} (no session/always sources)`);
+            await reconfigureAgent(
+              f.agent,
+              { grant: [], revoke: [f.platform] },
+              reconfigureDepsFor(f.agent),
+            );
+            print(
+              `  ✓ cleared unneeded consent: ${f.agent}/${f.platform} (no session/always sources)`,
+            );
             break;
           case "unmanaged-codex-hooks":
             print(`  ! ${f.path} requires manual migration: run 'smith knowledge migrate-codex'`);
@@ -962,6 +1018,58 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
     });
   }
 
+  // --- --fix-knowledge-index auto-repair ------------------------------------
+  // Runs AFTER detection. Rebuilds ONLY `stale-index` findings (DB present but
+  // incompatible) via `buildIndexInto` — the patched writable open self-heals
+  // the stale schema (drop+rebuild) or a corrupt image (delete+rebuild).
+  // `missing-index` findings are deliberately left alone: building a never-
+  // existent index can trigger a slow embedding-model load, and a real
+  // `smith agent install <agent>` is the right user action — so we only print
+  // the suggestion (already in the rendered section). Per-finding errors print
+  // and the loop continues.
+  if (
+    opts.fixKnowledgeIndex &&
+    report.knowledgeIndex &&
+    report.knowledgeIndex.findings.length > 0
+  ) {
+    const hasStale = report.knowledgeIndex.findings.some((f) => f.kind === "stale-index");
+    const buildIndexInto = hasStale
+      ? (await import("../../core/knowledge/index/build-into")).buildIndexInto
+      : null;
+    for (const f of report.knowledgeIndex.findings) {
+      if (f.kind === "missing-index") {
+        print(`  · ${f.agent}: missing index — run \`smith agent install ${f.agent}\` to build it`);
+        continue;
+      }
+      try {
+        const bundle = knowledgeIndexBundleByName.get(f.agent);
+        if (!bundle) {
+          print(`  ✗ ${f.agent}: bundle not found in registry; skipping repair`);
+          continue;
+        }
+        const knowledgeDir = join(knowledgeIndexAgentSmithHome, "knowledge", f.agent);
+        const hybridSourceIds = new Set(
+          (bundle.config.knowledge?.sources ?? [])
+            .filter((s) => s.retrieval?.mode === "hybrid")
+            .map((s) => s.id),
+        );
+        const warnings = await buildIndexInto!(knowledgeDir, null, hybridSourceIds);
+        print(`  ✓ rebuilt knowledge index for ${f.agent}`);
+        for (const w of warnings) print(`    - ${w}`);
+      } catch (err) {
+        print(`  ✗ repair failed for ${f.agent}: ${toMessage(err)}`);
+      }
+    }
+    // Re-run detection so the rendered report reflects post-fix state. Only the
+    // stale findings change (missing-index is suggest-only); re-running is a
+    // cheap read-of-disk.
+    report.knowledgeIndex = await checkKnowledgeIndex(knowledgeIndexInput);
+    replaceCapturedSummary(captured, "knowledge-index", {
+      status: knowledgeIndexEventStatus(report.knowledgeIndex),
+      summary: knowledgeIndexSummary(report.knowledgeIndex),
+    });
+  }
+
   // --- --fix-mcp-commands auto-repair ---------------------------------------
   // Runs AFTER detection. For each fragile-spawn finding with a non-null
   // `resolvedAbsolute`, rewrite the platform's config so the `command`
@@ -976,7 +1084,9 @@ export async function runDoctorCli(opts: DoctorCliOptions): Promise<number> {
   ) {
     for (const f of report.mcpSpawnCommands.findings) {
       if (f.resolvedAbsolute === null) {
-        print(`  ! can't auto-fix '${f.command}' (${f.platform}/${f.serverName}): install ${f.command} first`);
+        print(
+          `  ! can't auto-fix '${f.command}' (${f.platform}/${f.serverName}): install ${f.command} first`,
+        );
         continue;
       }
       try {
@@ -1101,11 +1211,7 @@ async function rewriteClaudeCommand(
     for (const project of Object.values(projects as Record<string, unknown>)) {
       if (!project || typeof project !== "object" || Array.isArray(project)) continue;
       if (
-        rewriteCommandIn(
-          (project as Record<string, unknown>).mcpServers,
-          serverName,
-          newCommand,
-        )
+        rewriteCommandIn((project as Record<string, unknown>).mcpServers, serverName, newCommand)
       ) {
         await atomicWriteText(path, `${JSON.stringify(data, null, 2)}\n`);
         return;
@@ -1114,11 +1220,7 @@ async function rewriteClaudeCommand(
   }
 }
 
-function rewriteCommandIn(
-  block: unknown,
-  serverName: string,
-  newCommand: string,
-): boolean {
+function rewriteCommandIn(block: unknown, serverName: string, newCommand: string): boolean {
   if (!block || typeof block !== "object" || Array.isArray(block)) return false;
   const rec = block as Record<string, unknown>;
   const entry = rec[serverName];

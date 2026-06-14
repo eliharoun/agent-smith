@@ -7,6 +7,10 @@ import type {
   Finding as KnowledgeCompileFinding,
   KnowledgeCompileReport,
 } from "./check-knowledge-compile";
+import type {
+  Finding as KnowledgeIndexFinding,
+  KnowledgeIndexReport,
+} from "./check-knowledge-index";
 import type { McpSpawnFinding, McpSpawnSection } from "./check-mcp-spawn";
 import type { Finding as RefreshFinding, RefreshHooksReport } from "./check-refresh-hooks";
 import type { DuplicateCatalogsReport } from "./duplicate-catalogs";
@@ -175,6 +179,10 @@ export function formatReport(report: DoctorReport): string {
     blocks.push(formatKnowledgeCompileSection(report.knowledgeCompile));
     blocks.push("");
   }
+  if (report.knowledgeIndex) {
+    blocks.push(formatKnowledgeIndexSection(report.knowledgeIndex));
+    blocks.push("");
+  }
   if (report.mcpSpawnCommands) {
     blocks.push(formatMcpSpawnSection(report.mcpSpawnCommands));
     blocks.push("");
@@ -339,6 +347,8 @@ function renderSectionDetail(
       return report.knowledgeCompile
         ? formatKnowledgeCompileSection(report.knowledgeCompile)
         : null;
+    case "knowledge-index":
+      return report.knowledgeIndex ? formatKnowledgeIndexSection(report.knowledgeIndex) : null;
     case "mcp-spawn-commands":
       return report.mcpSpawnCommands ? formatMcpSpawnSection(report.mcpSpawnCommands) : null;
     case "mcp-deps":
@@ -893,6 +903,35 @@ function formatKnowledgeCompileFinding(f: KnowledgeCompileFinding): string {
       return `[missing-manifest] ${f.agent} — compile.progressive=true but compile-manifest.json is absent (or unparseable)`;
     case "drift":
       return `[drift]            ${f.agent} — recorded ${f.recordedHash.slice(0, 8)} != fresh ${f.currentHash.slice(0, 8)}`;
+  }
+}
+
+/**
+ * Render the knowledge-index section. Read-only: lists each finding. Only
+ * `stale-index` findings are auto-repaired by `--fix-knowledge-index`;
+ * `missing-index` findings are suggest-only (the agent was never indexed —
+ * a real `smith agent install` is the right action). The section is
+ * informational and never affects doctor's exit code.
+ */
+export function formatKnowledgeIndexSection(r: KnowledgeIndexReport): string {
+  const lines: string[] = ["Knowledge index:"];
+  if (r.findings.length === 0) {
+    lines.push("  Status: ok");
+    return lines.join("\n");
+  }
+  lines.push(`  Status: ${r.findings.length} finding${r.findings.length === 1 ? "" : "s"}`);
+  for (const f of r.findings) lines.push(`  ${formatKnowledgeIndexFinding(f)}`);
+  const hasStale = r.findings.some((f) => f.kind === "stale-index");
+  if (hasStale) lines.push("  Fix:    smith doctor --fix-knowledge-index");
+  return lines.join("\n");
+}
+
+function formatKnowledgeIndexFinding(f: KnowledgeIndexFinding): string {
+  switch (f.kind) {
+    case "stale-index":
+      return `[stale-index]   ${f.agent} — on-disk index is incompatible (schema mismatch/corrupt); rebuildable`;
+    case "missing-index":
+      return `[missing-index] ${f.agent} — sources materialized but no index; run \`smith agent install ${f.agent}\``;
   }
 }
 

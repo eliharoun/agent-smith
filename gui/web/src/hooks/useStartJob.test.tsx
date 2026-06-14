@@ -72,6 +72,7 @@ describe("useStartJob", () => {
         command: "doctor",
         fixKnowledgeRefresh: false,
         fixKnowledgeCompile: false,
+        fixKnowledgeIndex: false,
         fixMcpCommands: false,
       });
     });

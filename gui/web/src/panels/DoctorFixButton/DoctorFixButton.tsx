@@ -20,15 +20,21 @@ export function DoctorFixButton() {
   if (!q.data || "error" in q.data) return null;
   const kr = q.data.knowledgeRefresh as { findings?: Array<{ kind: string }> } | undefined;
   const mcp = q.data.mcpSpawnCommands as { findings?: Array<unknown> } | undefined;
+  const ki = q.data.knowledgeIndex as { findings?: Array<{ kind: string }> } | undefined;
   const hasKnowledgeRefreshFix = kr?.findings?.some((f) => FIXABLE.has(f.kind)) ?? false;
   const hasMcpSpawnFix = (mcp?.findings?.length ?? 0) > 0;
-  if (!hasKnowledgeRefreshFix && !hasMcpSpawnFix) return null;
+  // Only `stale-index` is auto-repairable; `missing-index` is suggest-only
+  // (the user runs `smith agent install <agent>`), so it must NOT enable the
+  // button on its own.
+  const hasKnowledgeIndexFix = ki?.findings?.some((f) => f.kind === "stale-index") ?? false;
+  if (!hasKnowledgeRefreshFix && !hasMcpSpawnFix && !hasKnowledgeIndexFix) return null;
 
   const onFix = () => {
     start.mutate({
       command: "doctor",
       fixKnowledgeRefresh: hasKnowledgeRefreshFix,
       fixKnowledgeCompile: false,
+      fixKnowledgeIndex: hasKnowledgeIndexFix,
       fixMcpCommands: hasMcpSpawnFix,
     });
   };
@@ -38,6 +44,7 @@ export function DoctorFixButton() {
   // "knowledge-refresh drift".
   const labelParts: string[] = [];
   if (hasKnowledgeRefreshFix) labelParts.push("knowledge-refresh drift");
+  if (hasKnowledgeIndexFix) labelParts.push("stale knowledge index");
   if (hasMcpSpawnFix) labelParts.push("MCP spawn commands");
   const label = `auto-repair ${labelParts.join(" + ")}`;
 

@@ -245,7 +245,9 @@ knowledgeCmd
 
 knowledgeCmd
   .command("info <agent>")
-  .description("Show <agent>'s knowledge index diagnostics (hybrid status, embedder, vector coverage)")
+  .description(
+    "Show <agent>'s knowledge index diagnostics (hybrid status, embedder, vector coverage)",
+  )
   .option("--json", "Emit machine-readable JSON instead of human output")
   .action(
     wrap("knowledge info", async (agent: string, opts: { json?: boolean }) => {
@@ -799,6 +801,10 @@ program
     "Auto-repair knowledge-compile drift findings (re-run `smith knowledge compile <agent>` for each missing-manifest or drift finding)",
   )
   .option(
+    "--fix-knowledge-index",
+    "Rebuild stale/incompatible knowledge indexes (schema-mismatch or corrupt DBs). Materialized-but-unindexed agents are reported only — run `smith agent install <agent>` to build those",
+  )
+  .option(
     "--fix-mcp-commands",
     'Auto-repair fragile MCP server `command` fields by rewriting bare names (e.g. "smith") to absolute paths so GUI launches from Spotlight/dock spawn correctly',
   )
@@ -814,6 +820,7 @@ program
         quiet?: boolean;
         fixKnowledgeRefresh?: boolean;
         fixKnowledgeCompile?: boolean;
+        fixKnowledgeIndex?: boolean;
         fixMcpCommands?: boolean;
       }) => {
         const { runDoctorCli } = await import("./cli/commands/doctor");
@@ -827,6 +834,7 @@ program
           quiet: opts.quiet ?? false,
           fixKnowledgeRefresh: opts.fixKnowledgeRefresh ?? false,
           fixKnowledgeCompile: opts.fixKnowledgeCompile ?? false,
+          fixKnowledgeIndex: opts.fixKnowledgeIndex ?? false,
           fixMcpCommands: opts.fixMcpCommands ?? false,
         });
       },

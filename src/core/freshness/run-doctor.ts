@@ -54,6 +54,11 @@ import {
   checkKnowledgeConsistency,
   type KnowledgeConsistencyReport,
 } from "./check-knowledge-consistency";
+import {
+  type CheckKnowledgeIndexInput,
+  checkKnowledgeIndex,
+  type KnowledgeIndexReport,
+} from "./check-knowledge-index";
 import { type CheckLazyFetchOpts, checkLazyFetch, type LazyFetchFinding } from "./check-lazy-fetch";
 import { type CheckMcpDepsOpts, checkMcpDeps, type McpDepFinding } from "./check-mcp-deps";
 import {
@@ -121,6 +126,7 @@ export type DoctorSectionId =
   | "protected-bundles"
   | "knowledge-refresh"
   | "knowledge-compile"
+  | "knowledge-index"
   | "mcp-spawn-commands"
   | "mcp-deps"
   | "lazy-fetch"
@@ -366,6 +372,16 @@ export interface RunDoctorInput {
    * (`--fix-knowledge-compile`) is wired in the CLI layer.
    */
   knowledgeCompile?: CheckKnowledgeCompileInput;
+  /**
+   * Optional knowledge-index detection. When provided, runs the read-only
+   * check in {@link "./check-knowledge-index".checkKnowledgeIndex}: for each
+   * candidate (a registered agent with ≥1 knowledge source) it flags a
+   * `stale-index` (DB present but unusable at the current schema) or a
+   * `missing-index` (materialized sources, no DB). Repair of stale indexes
+   * (`--fix-knowledge-index`) is wired in the CLI layer; missing-index is
+   * suggest-only.
+   */
+  knowledgeIndex?: CheckKnowledgeIndexInput;
   /**
    * Optional mcp-spawn-commands audit. When provided, walks each platform's
    * MCP config and flags non-absolute `command` fields (the v2.1 GUI toggle
@@ -662,6 +678,18 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     );
   }
 
+  let knowledgeIndex: KnowledgeIndexReport | undefined;
+  if (input.knowledgeIndex) {
+    emitStart(input, "knowledge-index", "Knowledge index");
+    knowledgeIndex = await checkKnowledgeIndex(input.knowledgeIndex);
+    emitDone(
+      input,
+      "knowledge-index",
+      knowledgeIndexEventStatus(knowledgeIndex),
+      knowledgeIndexSummary(knowledgeIndex),
+    );
+  }
+
   let mcpSpawnCommands: McpSpawnSection | undefined;
   if (input.mcpSpawnCommands) {
     emitStart(input, "mcp-spawn-commands", "MCP spawn commands");
@@ -753,6 +781,7 @@ export async function runDoctor(input: RunDoctorInput): Promise<DoctorReport> {
     ...(protectedBundles ? { protectedBundles } : {}),
     ...(knowledgeRefresh ? { knowledgeRefresh } : {}),
     ...(knowledgeCompile ? { knowledgeCompile } : {}),
+    ...(knowledgeIndex ? { knowledgeIndex } : {}),
     ...(mcpSpawnCommands ? { mcpSpawnCommands } : {}),
     ...(mcpDeps ? { mcpDeps } : {}),
     ...(lazyFetch ? { lazyFetch } : {}),
@@ -1601,6 +1630,23 @@ export function knowledgeCompileSummary(r: KnowledgeCompileReport): string {
   if (missing > 0) parts.push(`${missing} missing-manifest`);
   if (drift > 0) parts.push(`${drift} drift`);
   return `Knowledge compile: ${parts.join(", ")}`;
+}
+
+export function knowledgeIndexEventStatus(
+  r: KnowledgeIndexReport,
+): DoctorSectionDoneEvent["status"] {
+  // Both finding kinds are informational user-fixable signals; never "error".
+  return r.status === "warn" ? "warn" : "ok";
+}
+
+export function knowledgeIndexSummary(r: KnowledgeIndexReport): string {
+  if (r.findings.length === 0) return "Knowledge index: ok";
+  const stale = r.findings.filter((f) => f.kind === "stale-index").length;
+  const missing = r.findings.filter((f) => f.kind === "missing-index").length;
+  const parts: string[] = [];
+  if (stale > 0) parts.push(`${stale} stale`);
+  if (missing > 0) parts.push(`${missing} missing`);
+  return `Knowledge index: ${parts.join(", ")}`;
 }
 
 function duplicateCatalogsEventStatus(

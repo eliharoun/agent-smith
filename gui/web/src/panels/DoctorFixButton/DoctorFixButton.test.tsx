@@ -53,8 +53,34 @@ describe("DoctorFixButton", () => {
       command: "doctor",
       fixKnowledgeRefresh: true,
       fixKnowledgeCompile: false,
+      fixKnowledgeIndex: false,
       fixMcpCommands: false,
     });
+  });
+
+  it("shows + dispatches fixKnowledgeIndex for a stale-index finding", () => {
+    data = {
+      exitCode: 0,
+      knowledgeIndex: { status: "warn", findings: [{ kind: "stale-index", agent: "a" }] },
+    };
+    render(<DoctorFixButton />);
+    fireEvent.click(screen.getByRole("button", { name: /stale knowledge index/ }));
+    expect(mutate).toHaveBeenCalledWith({
+      command: "doctor",
+      fixKnowledgeRefresh: false,
+      fixKnowledgeCompile: false,
+      fixKnowledgeIndex: true,
+      fixMcpCommands: false,
+    });
+  });
+
+  it("hides for a missing-index-only finding (suggest-only, not auto-fixable)", () => {
+    data = {
+      exitCode: 0,
+      knowledgeIndex: { status: "warn", findings: [{ kind: "missing-index", agent: "a" }] },
+    };
+    const { container } = render(<DoctorFixButton />);
+    expect(container.firstChild).toBeNull();
   });
 
   it("shows when only mcp-spawn-commands findings exist", () => {
@@ -83,6 +109,7 @@ describe("DoctorFixButton", () => {
       command: "doctor",
       fixKnowledgeRefresh: false,
       fixKnowledgeCompile: false,
+      fixKnowledgeIndex: false,
       fixMcpCommands: true,
     });
   });
@@ -102,6 +129,7 @@ describe("DoctorFixButton", () => {
       command: "doctor",
       fixKnowledgeRefresh: true,
       fixKnowledgeCompile: false,
+      fixKnowledgeIndex: false,
       fixMcpCommands: true,
     });
   });

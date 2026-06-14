@@ -263,6 +263,14 @@ export interface DoctorReport {
    */
   knowledgeCompile?: import("./check-knowledge-compile").KnowledgeCompileReport;
   /**
+   * Optional knowledge-index detection report. Undefined when the caller
+   * doesn't request the check. Informational only — never affects
+   * {@link DoctorReport.exitCode}. Repair (stale indexes only) is handled by
+   * the CLI's `--fix-knowledge-index` flag; missing-index findings are
+   * suggest-only.
+   */
+  knowledgeIndex?: import("./check-knowledge-index").KnowledgeIndexReport;
+  /**
    * Optional mcp-spawn-commands audit report. Walks each platform's MCP
    * config and flags any `command` field that isn't an absolute path.
    * The legacy v2.1 GUI toggle wrote bare names like "smith" that fail

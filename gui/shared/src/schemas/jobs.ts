@@ -22,6 +22,7 @@ const Doctor = z.object({
   json: z.boolean().optional(),
   fixKnowledgeRefresh: z.boolean().default(false),
   fixKnowledgeCompile: z.boolean().default(false),
+  fixKnowledgeIndex: z.boolean().default(false),
   fixMcpCommands: z.boolean().default(false),
 });
 const AgentList = z.object({ command: z.literal("agent.list") });

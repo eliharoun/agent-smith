@@ -185,6 +185,7 @@ export const DoctorReport = z.object({
   duplicateCatalogs: z.unknown().optional(),
   knowledgeRefresh: z.unknown().optional(),
   mcpSpawnCommands: z.unknown().optional(),
+  knowledgeIndex: z.unknown().optional(),
   mcpDeps: McpDepsReport.optional(),
   lazyFetch: LazyFetchReport.optional(),
   urlRouting: UrlRoutingReport.optional(),

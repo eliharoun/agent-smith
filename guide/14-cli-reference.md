@@ -2520,7 +2520,7 @@ $ smith gui --port 9000 --no-open
 
 ### `smith doctor`
 
-**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile] [--fix-mcp-commands]`
+**Synopsis:** `smith doctor [-v|--verbose] [-q|--quiet] [--json] [--offline] [--no-cache] [--skip-model-resolution] [--fix-knowledge-refresh] [--fix-knowledge-compile] [--fix-knowledge-index] [--fix-mcp-commands]`
 
 **Description:** Run the health check, auto-filtered to the platform
 CLIs detected on `PATH` (`opencode`, `claude`, `codex`). Sections that
@@ -2660,6 +2660,12 @@ never raise `1`.
   `knowledgeCompile` section (re-run `smith knowledge compile <agent>`
   for each `missing-manifest` or `drift` finding). See
   [Knowledge-compile drift and auto-repair](#knowledge-compile-drift-and-auto-repair) below.
+- `--fix-knowledge-index` — rebuild `stale-index` findings reported by the
+  `knowledgeIndex` section (the on-disk search index is incompatible with the
+  current schema or corrupt). Re-indexes the agent's already-materialized
+  sources via `buildIndexInto`. `missing-index` findings are NOT auto-built —
+  they're reported with a suggested `smith agent install <agent>`. See
+  [Knowledge-index health and auto-repair](#knowledge-index-health-and-auto-repair) below.
 - `--fix-mcp-commands` — auto-repair fragile MCP server `command`
   fields by rewriting bare names (e.g. `smith`) to absolute paths so
   GUI launches from Spotlight/dock spawn correctly. Use after a doctor
@@ -2758,6 +2764,35 @@ $ smith doctor
 
 # Diagnose and auto-repair every missing-manifest / drift finding
 $ smith doctor --fix-knowledge-compile
+```
+
+#### Knowledge-index health and auto-repair
+
+Doctor's `knowledgeIndex` section audits every registered agent with ≥1
+knowledge source for the health of its on-disk search index
+(`<agentSmithHome>/knowledge/<agent>/.cache/index/knowledge.db`). It
+reuses the same readonly-open incompatibility check that `serve` and
+`info` use, so it never disagrees with them.
+
+| Finding | Meaning | Auto-fixable by `--fix-knowledge-index`? |
+|---|---|---|
+| `stale-index` | The index DB exists but a readonly open at the current schema returns `null` — the on-disk index is incompatible (schema mismatch) or corrupt. | yes — rebuilds the index from the agent's already-materialized `sources/` via `buildIndexInto` (which self-heals the stale DB). |
+| `missing-index` | Sources are materialized (`_manifest.json` lists ≥1 source with ≥1 file) but no index DB exists. | **no — suggest-only.** Reported with `run \`smith agent install <agent>\``. A never-indexed agent wants a real install, and building one can trigger an embedding-model load, which a health check should not do implicitly. |
+
+Agents with a healthy current-schema DB, no manifest, or only lazy /
+zero-file sources are skipped. The section is informational only;
+findings never affect doctor's exit code. Repair of `stale-index`
+findings rebuilds in place; for an agent whose sources are
+`retrieval: hybrid`, the rebuild reloads the embedding model. Per-agent
+errors print and the loop continues — one bad repair does not abort
+sibling repairs.
+
+```bash
+# Diagnose only
+$ smith doctor
+
+# Rebuild every stale/incompatible index (missing-index stays suggest-only)
+$ smith doctor --fix-knowledge-index
 ```
 
 #### MCP-spawn-commands drift and auto-repair

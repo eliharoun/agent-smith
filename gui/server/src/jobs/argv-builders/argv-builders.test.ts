@@ -656,6 +656,11 @@ describe("argv builders", () => {
     expect(r.argv).toEqual(["doctor", "--fix-mcp-commands"]);
   });
 
+  it("builds doctor --fix-knowledge-index", () => {
+    const r = buildArgv({ command: "doctor", fixKnowledgeIndex: true });
+    expect(r.argv).toEqual(["doctor", "--fix-knowledge-index"]);
+  });
+
   it("builds doctor with all three fix flags", () => {
     const r = buildArgv({
       command: "doctor",
