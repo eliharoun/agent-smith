@@ -123,7 +123,12 @@ describe("agents/agent-smith bundle", () => {
     } finally {
       await rm(workDir, { recursive: true, force: true });
     }
-  });
+    // Generous timeout: this exercises the real agent-smith config, whose
+    // `agent-smith-guide` source is `retrieval: hybrid`, so runKnowledgeStage
+    // builds a hybrid index (embedding-model load + per-chunk embeddings).
+    // That legitimately exceeds bun:test's 5s default; degrades to lexical
+    // (faster) when the on-device model is unavailable (e.g. CI).
+  }, 120_000);
 
   test("EXPERTISE.md no longer hand-curates a CLI command list", async () => {
     const expertise = await readFile(join(BUNDLE_DIR, "EXPERTISE.md"), "utf8");
