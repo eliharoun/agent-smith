@@ -3,7 +3,7 @@
 // state in installed-skills.json with a content hash so doctor can detect
 // drift. Symlinks would defeat drift detection (see spec §7.4).
 
-import { cp, lstat, mkdir, rm } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readdir, readlink, rm, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { assertWithin } from "./assert-within";
@@ -336,15 +336,17 @@ async function copyToPlatforms(
       if (await pathExists(dest)) {
         await rm(dest, { recursive: true, force: true });
       }
-      // verbatimSymlinks + dereference:false: symlinks in the source are
-      // copied AS symlinks (not followed). Prevents a hostile catalog from
-      // shipping `secret -> /etc/passwd` and getting that file deep-copied
-      // into the user's platform skill dirs. Bun ≥1.x supports both flags.
-      await cp(sourceDir, dest, {
-        recursive: true,
-        dereference: false,
-        verbatimSymlinks: true,
-      });
+      // Copy the source tree into the (freshly-removed) dest using a
+      // deterministic, primitive-only recursive walk instead of fs.cp().
+      // Rationale: Bun's fs.cp() recursive path has a Linux regression where a
+      // copy into a destination that was just rm()'d throws ENOENT on the
+      // SOURCE (statx) — see tests/io/bootstrap.test.ts idempotency cases. Our
+      // walk uses only readdir/mkdir/copyFile/readlink/symlink (rock-stable
+      // across Bun/Node, Linux/macOS) and preserves the security property:
+      // symlinks are copied verbatim (never followed), so a hostile catalog
+      // shipping `secret -> /etc/passwd` yields a symlink, never the target's
+      // bytes.
+      await copyTreeVerbatim(sourceDir, dest);
       written.push(dest);
       installedPaths[PLATFORM_KEY[platform]] = dest;
     }
@@ -366,6 +368,41 @@ async function pathExists(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Recursively copy `src` to `dest` using only primitive fs operations.
+ *
+ * Replaces `fs.cp(src, dest, { recursive, dereference:false, verbatimSymlinks })`,
+ * which has a Bun-on-Linux regression: copying into a destination path that was
+ * just `rm()`'d throws `ENOENT … statx <src>` on the SOURCE (reproduced by the
+ * bootstrap idempotency tests under CI's `bun-version: latest`). This walk
+ * touches none of that code path.
+ *
+ * Security: symlinks are copied VERBATIM (the link's target string is written
+ * with `symlink()`, never resolved or followed). A hostile catalog shipping
+ * `secret -> /etc/passwd` therefore yields a symlink in the dest, never the
+ * target file's bytes — the same guarantee `dereference:false` provided. We do
+ * NOT recurse through a symlinked directory, so a `dir -> /` link cannot fan
+ * the copy out across the filesystem.
+ */
+async function copyTreeVerbatim(src: string, dest: string): Promise<void> {
+  const st = await lstat(src);
+  if (st.isSymbolicLink()) {
+    const target = await readlink(src);
+    await symlink(target, dest);
+    return;
+  }
+  if (st.isDirectory()) {
+    await mkdir(dest, { recursive: true });
+    const entries = await readdir(src, { withFileTypes: true });
+    for (const e of entries) {
+      await copyTreeVerbatim(join(src, e.name), join(dest, e.name));
+    }
+    return;
+  }
+  // Regular file (or anything else readable as bytes).
+  await copyFile(src, dest);
 }
 
 /**

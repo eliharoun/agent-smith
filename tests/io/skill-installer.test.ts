@@ -557,3 +557,69 @@ test("explicit target installs even when that platform's skills dir does not exi
     await rm(home, { recursive: true, force: true });
   }
 });
+
+describe("installSkill: copyTreeVerbatim symlink safety + structure", () => {
+  test("copies a source symlink VERBATIM (never follows it) — hostile target not exfiltrated", async () => {
+    // Secret file OUTSIDE the skill source; a hostile catalog points a symlink at it.
+    const secret = join(sourceParent, "secret.txt");
+    await writeFile(secret, "TOP SECRET BYTES\n");
+
+    const sourceDir = join(sourceParent, "evil-skill");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), "---\nname: evil-skill\ndescription: t\n---\n# x\n");
+    // `leak` -> ../secret.txt  (relative symlink escaping the skill dir)
+    await symlink(join(sourceParent, "secret.txt"), join(sourceDir, "leak"));
+
+    const result = await installSkill("evil-skill", {
+      platformDirs,
+      homeDir,
+      sourceOverride: { sourceDir, sourceCatalogLabel: "bundled" },
+    });
+    expect(result.ok).toBe(true);
+
+    const dest = join(platformDirs.opencode, "evil-skill", "leak");
+    const st = await lstat(dest);
+    // MUST be a symlink, NOT a regular file containing the secret's bytes.
+    expect(st.isSymbolicLink()).toBe(true);
+    expect(st.isFile()).toBe(false);
+  });
+
+  test("copies nested directories and files faithfully", async () => {
+    const sourceDir = join(sourceParent, "nested-skill");
+    await mkdir(join(sourceDir, "references", "deep"), { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), "---\nname: nested-skill\ndescription: t\n---\n# x\n");
+    await writeFile(join(sourceDir, "references", "a.md"), "alpha\n");
+    await writeFile(join(sourceDir, "references", "deep", "b.md"), "bravo\n");
+
+    const result = await installSkill("nested-skill", {
+      platformDirs,
+      homeDir,
+      sourceOverride: { sourceDir, sourceCatalogLabel: "bundled" },
+    });
+    expect(result.ok).toBe(true);
+
+    const base = join(platformDirs.claudeCode, "nested-skill");
+    expect(await readFile(join(base, "references", "a.md"), "utf8")).toBe("alpha\n");
+    expect(await readFile(join(base, "references", "deep", "b.md"), "utf8")).toBe("bravo\n");
+  });
+
+  test("update over an existing dest (rm-then-copy path) succeeds", async () => {
+    // Directly exercises the rm(dest)->copy sequence that regressed under
+    // Bun's fs.cp on Linux: install, then update, asserting no error.
+    const sourceDir = await makeSkill("recopy-skill");
+    const first = await installSkill("recopy-skill", {
+      platformDirs,
+      homeDir,
+      sourceOverride: { sourceDir, sourceCatalogLabel: "bundled" },
+    });
+    expect(first.ok).toBe(true);
+    const second = await updateSkill("recopy-skill", {
+      platformDirs,
+      homeDir,
+      sourceOverride: { sourceDir, sourceCatalogLabel: "bundled" },
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect((await lstat(join(platformDirs.opencode, "recopy-skill"))).isDirectory()).toBe(true);
+  });
+});
