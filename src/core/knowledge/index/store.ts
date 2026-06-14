@@ -181,6 +181,19 @@ export class KnowledgeStore {
   }
 
   private migrate(): void {
+    // `meta` is schema-stable across all versions; ensure it exists first so the
+    // prior schemaVersion is readable BEFORE any version-specific DDL runs.
+    this.db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+    // Destructive schema-version migration MUST precede ddlBase(): ddlBase creates
+    // current-schema structures (e.g. `idx_chunks_embedder ON chunks(embedder_id)`)
+    // that reference columns a stale table lacks, which would throw before any
+    // later drop could run. Drop stale data tables here so ddlBase rebuilds clean.
+    const storedSchema = this.read("schemaVersion");
+    if (storedSchema !== undefined && Number(storedSchema) !== this.header.schemaVersion) {
+      this.db.exec(
+        "DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS tags;",
+      );
+    }
     this.ddlBase();
     this.reconcileHeader();
   }
@@ -201,7 +214,6 @@ export class KnowledgeStore {
   /** Recursion-safe: header values are written BEFORE any rebuild. `meta` is
    *  never dropped, so a re-entry would see the NEW values and stop. */
   private reconcileHeader(): void {
-    const storedSchema = this.read("schemaVersion");
     const storedChunker = this.read("chunkerVersion");
     const storedPolicy = this.read("modelPolicyVersion");
     const storedRepomap = this.read("repomapVersion");
@@ -234,13 +246,6 @@ export class KnowledgeStore {
       this.write("embedders", JSON.stringify([]));
     }
 
-    if (storedSchema && Number(storedSchema) !== this.header.schemaVersion) {
-      this.db.exec(
-        "DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS tags;",
-      );
-      this.ddlBase();
-      return; // meta already holds new values; no re-reconcile.
-    }
     const chunkerChanged = storedChunker && Number(storedChunker) !== this.header.chunkerVersion;
     const policyChanged = storedPolicy && Number(storedPolicy) !== this.header.modelPolicyVersion;
     if (chunkerChanged || policyChanged) {

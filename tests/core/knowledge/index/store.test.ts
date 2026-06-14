@@ -557,4 +557,40 @@ describe("KnowledgeStore", () => {
     expect(s.stats().chunks).toBe(1);
     s.close();
   });
+
+  test("writable open of a stale schema-1 DB (no embedder_id column) migrates to v2 without throwing", async () => {
+    const { Database } = await import("bun:sqlite");
+    const dbp = join(dir, "stale-writable.db");
+    // Hand-build an OLD schema-1 chunks table WITHOUT embedder_id/embedder_dim,
+    // exactly like a DB created before schema 2 added the per-chunk embedder column.
+    const raw = new Database(dbp, { create: true });
+    raw.exec("PRAGMA journal_mode = WAL");
+    raw.exec(
+      "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);" +
+        "CREATE TABLE chunks (id TEXT PRIMARY KEY, source_id TEXT, rel_path TEXT, start_line INTEGER, end_line INTEGER, kind TEXT, text TEXT, content_hash TEXT, embedding BLOB);" +
+        "CREATE INDEX idx_chunks_relpath ON chunks(rel_path);" +
+        "CREATE VIRTUAL TABLE fts USING fts5(text, content=chunks, content_rowid=rowid);" +
+        "CREATE TABLE tags (rel_path TEXT, content_hash TEXT, name TEXT, role TEXT, line INTEGER, signature TEXT);",
+    );
+    raw.query("INSERT INTO meta(key,value) VALUES(?,?)").run("schemaVersion", "1");
+    raw.query("INSERT INTO meta(key,value) VALUES(?,?)").run("chunkerVersion", "1");
+    raw.close();
+    // Writable open at the current schema (2) must migrate (drop+rebuild) the
+    // stale table instead of throwing on `CREATE INDEX ... ON chunks(embedder_id)`.
+    const s = await KnowledgeStore.open(dbp, {
+      schemaVersion: 2,
+      embedders: [],
+      chunkerVersion: 1,
+      repomapVersion: 1,
+      modelPolicyVersion: 1,
+    });
+    expect(s).not.toBeNull();
+    // Post-migration the table is clean and usable.
+    await s!.upsertChunks([
+      { id: "1", sourceId: "s", relPath: "a.md", startLine: 1, endLine: 1, kind: "prose", text: "hello world", contentHash: "h1" },
+    ]);
+    expect(s!.searchLexical(["hello"], 5)[0]?.relPath).toBe("a.md");
+    expect(s!.stats().chunks).toBe(1);
+    s!.close();
+  });
 });
