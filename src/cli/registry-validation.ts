@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { runGit } from "../io/git";
 import { normalizeGitUrl } from "../io/git-url";
 import { discoverAgentBundleDirs } from "../io/sources";
 
@@ -241,17 +242,13 @@ function parseRemotes(output: string): Array<{ name: string; url: string }> {
   return out;
 }
 
-/** Default git runner: shells out via Bun.spawn. */
+/** Default git runner: routes through the shared hardened runGit chokepoint
+ *  (transport allowlist + non-interactive env + canonical ENOENT). Keeps this
+ *  module's string-returning, throw-on-nonzero contract on top. */
 export const defaultRunGit: GitRunner = async (args, cwd) => {
-  const proc =
-    cwd === undefined
-      ? Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" })
-      : Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
-    throw new Error(`git ${args.join(" ")} exited ${exitCode}: ${stderr.trim()}`);
+  const r = await runGit(args, cwd ?? process.cwd());
+  if (r.code !== 0) {
+    throw new Error(`git ${args.join(" ")} exited ${r.code}: ${r.stderr.trim()}`);
   }
-  return stdout;
+  return r.stdout;
 };

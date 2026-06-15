@@ -13,28 +13,13 @@ import {
   type ConfluenceFetchResult,
   fetchConfluencePages,
 } from "../../io/confluence";
+import { GIT_TRANSPORT_ALLOWLIST } from "../../io/git";
 import { httpErrorFor } from "../../io/http-error";
 import { type JiraSearchOpts, searchJiraIssues } from "../../io/jira";
 import { stateHome } from "../../io/state-home";
 import { redactSecrets } from "../redact";
 import { SmithError } from "../smith-error";
 import { sparsePathsFor } from "./sparse-paths";
-
-// Defense-in-depth: knowledge `git` source URLs are user-controlled, so harden
-// every git invocation against unexpected transports — git refuses any protocol
-// not explicitly allowed here. `protocol.file.allow=user` keeps local/file://
-// test fixtures and user-initiated clones working without enabling file:// in
-// transitive sub-fetches (submodules, etc.). Mirrors src/io/git-clone.ts.
-const GIT_TRANSPORT_ALLOWLIST: readonly string[] = [
-  "-c",
-  "protocol.allow=never",
-  "-c",
-  "protocol.https.allow=always",
-  "-c",
-  "protocol.ssh.allow=always",
-  "-c",
-  "protocol.file.allow=user",
-];
 
 // ---------- git spawner (DI for tests) ----------
 
@@ -64,7 +49,19 @@ export type GitSpawner = (args: string[], cwd: string) => Promise<GitRunResult>;
  * `env` to `Bun.spawn`).
  */
 export const defaultGitSpawner: GitSpawner = async (args, cwd) => {
-  return runGitWith((cmd, opts) => Bun.spawn(cmd, opts), args, cwd);
+  return runGitWith(
+    (cmd, opts) =>
+      Bun.spawn(cmd, {
+        ...opts,
+        // Never block on a credential prompt in a non-TTY context (daemon, cron,
+        // MCP-spawned). GIT_TERMINAL_PROMPT=0 stops git's own prompt; GIT_ASKPASS=""
+        // stops an askpass/credential-manager GUI. SSH-agent + git credential.helper
+        // flows still work (they don't go through askpass/terminal-prompt).
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" },
+      }),
+    args,
+    cwd,
+  );
 };
 
 /**

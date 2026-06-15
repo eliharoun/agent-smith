@@ -1,5 +1,63 @@
 import { describe, expect, test } from "bun:test";
 import { getOriginRemote, lsRemote, pullIfClean, revListCount, revParse } from "../../src/io/git";
+import { runGit, GIT_TRANSPORT_ALLOWLIST } from "../../src/io/git";
+import { SmithError } from "../../src/core/smith-error";
+
+describe("runGit: hardened chokepoint", () => {
+  function recordingStub(record: { cmd?: string[]; env?: Record<string, string> | undefined }) {
+    return (cmd: string[], opts: { env?: Record<string, string> }) => {
+      record.cmd = cmd;
+      record.env = opts.env;
+      return { exited: Promise.resolve(0), stdout: new Response("ok").body!, stderr: new Response("").body! };
+    };
+  }
+
+  test("prepends git + transport allowlist before the subcommand", async () => {
+    const rec: { cmd?: string[] } = {};
+    await runGit(["clone", "https://x/y", "/tmp/z"], "/tmp", { spawnFn: recordingStub(rec) as never });
+    expect(rec.cmd?.[0]).toBe("git");
+    expect(rec.cmd).toContain("protocol.allow=never");
+    expect(rec.cmd!.indexOf("clone")).toBeGreaterThan(rec.cmd!.indexOf("protocol.allow=never"));
+  });
+
+  test("sets GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS= in spawn env", async () => {
+    const rec: { env?: Record<string, string> } = {};
+    await runGit(["--version"], "/tmp", { spawnFn: recordingStub(rec) as never });
+    expect(rec.env?.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(rec.env?.GIT_ASKPASS).toBe("");
+  });
+
+  test("maps ENOENT to a canonical 'git not installed' SmithError", async () => {
+    const enoent = () => { const e: NodeJS.ErrnoException = new Error("nope"); e.code = "ENOENT"; throw e; };
+    const err = await runGit(["--version"], "/tmp", { spawnFn: enoent as never }).catch((e) => e);
+    expect(err).toBeInstanceOf(SmithError);
+    expect(err.payload.code).toBe("not-found");
+    expect(err.payload.what).toBe("executable");
+    expect(err.payload.identifier).toBe("git");
+  });
+
+  test("returns {stdout,stderr,code} on normal exit", async () => {
+    const rec: { cmd?: string[] } = {};
+    const r = await runGit(["status"], "/tmp", { spawnFn: recordingStub(rec) as never });
+    expect(r).toEqual({ stdout: "ok", stderr: "", code: 0 });
+  });
+
+  test("GIT_TRANSPORT_ALLOWLIST is the canonical 4-protocol set", () => {
+    expect(GIT_TRANSPORT_ALLOWLIST).toContain("protocol.allow=never");
+    expect(GIT_TRANSPORT_ALLOWLIST).toContain("protocol.https.allow=always");
+    expect(GIT_TRANSPORT_ALLOWLIST).toContain("protocol.ssh.allow=always");
+    expect(GIT_TRANSPORT_ALLOWLIST).toContain("protocol.file.allow=user");
+  });
+
+  test("timeoutMs kills a hung child and resolves as a nonzero failure (not a throw)", async () => {
+    const r = await runGit(["--version"], "/tmp", {
+      timeoutMs: 200,
+      spawnFn: ((_cmd: string[], opts: { signal?: AbortSignal }) =>
+        Bun.spawn(["sh", "-c", "sleep 30"], { ...opts, stdout: "pipe", stderr: "pipe" })) as never,
+    });
+    expect(r.code).not.toBe(0);
+  });
+});
 
 describe("io/git", () => {
   test("pulls when working tree is clean", async () => {
@@ -275,5 +333,30 @@ describe("io/git getOriginRemote", () => {
     };
     const url = await getOriginRemote("/cwd", { runner: fakeRunner });
     expect(url).toBeUndefined();
+  });
+});
+
+// Real-git integration: prove the allowlist is ENFORCED by git, not just present as strings.
+// Skip gracefully where git is not installed (e.g. minimal CI).
+const hasGit = await (async () => {
+  try {
+    const p = Bun.spawn(["git", "--version"], { stdout: "pipe", stderr: "pipe" });
+    await p.exited;
+    return p.exitCode === 0;
+  } catch {
+    return false;
+  }
+})();
+
+describe("runGit: transport allowlist is enforced by git (integration)", () => {
+  test.skipIf(!hasGit)("refuses an ext:: transport via protocol.allow=never", async () => {
+    // ext:: runs an arbitrary command as a git transport — the canonical thing
+    // protocol.allow=never must block. We expect a non-zero exit and a
+    // protocol/transport-related error, NOT the command actually running.
+    const r = await runGit(["ls-remote", "ext::sh -c whoami"], process.cwd());
+    expect(r.code).not.toBe(0);
+    // Wording varies across git versions; assert the load-bearing fact (refused)
+    // and, best-effort, that the reason is transport/protocol.
+    expect(r.stderr.toLowerCase()).toMatch(/protocol|transport|not allowed|disabled|blocked/);
   });
 });

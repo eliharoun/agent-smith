@@ -825,6 +825,30 @@ describe("acquireGit: sparse clone argv", () => {
   });
 });
 
+describe("defaultGitSpawner: non-interactive env hardening", () => {
+  test("production defaultGitSpawner sets GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS= (no hang in non-TTY)", async () => {
+    const { defaultGitSpawner } = await import("../../../src/core/knowledge/acquire");
+    const orig = Bun.spawn;
+    let env: Record<string, string> | undefined;
+    // @ts-expect-error test spy
+    Bun.spawn = (_cmd: string[], opts: { env?: Record<string, string> }) => {
+      env = opts.env;
+      return {
+        exited: Promise.resolve(0),
+        stdout: new Response("").body!,
+        stderr: new Response("").body!,
+      };
+    };
+    try {
+      await defaultGitSpawner(["--version"], process.cwd());
+    } finally {
+      Bun.spawn = orig;
+    }
+    expect(env?.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(env?.GIT_ASKPASS).toBe("");
+  });
+});
+
 describe("acquireGit: changed-path list", () => {
   test("first acquire returns changedPaths=null (full re-walk signal)", async () => {
     const calls: StubCall[] = [];
