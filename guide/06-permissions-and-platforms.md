@@ -359,12 +359,15 @@ The CLI scalar parser (`src/cli/parse-platform-conventions.ts`) accepts four val
 
 Platform conventions resolve to a list of URIs. After the knowledge-grant pass, `injectPlatformConventions()` splices them into the rendered output:
 
-| Target | Splice location | Notes |
+| Target | Splice location | Registered conventions |
 |---|---|---|
-| OpenCode | (no conventions registered v1) | no-op |
-| Claude Code | (no conventions registered v1) | no-op |
-| Codex | (no conventions registered v1) | no-op |
-| Kiro | appended to `resources[]` (sorted; deduped) | The kiro registry includes `workspace-steering` (`file://.kiro/steering/**/*.md`) by default. |
+| Claude Code | (registered for prompt/UX/discovery; not auto-spliced today) | `workspace-memory` (`file://CLAUDE.md`, default on), `global-memory` (`file://~/.claude/CLAUDE.md`, default off) |
+| OpenCode | (registered for prompt/UX/discovery; not auto-spliced today) | `workspace-agents-md` (`file://AGENTS.md`, default on), `global-agents-md` (`file://~/.config/opencode/AGENTS.md`, default off) |
+| Codex | (registered for prompt/UX/discovery; not auto-spliced today) | `workspace-agents-md` (`file://AGENTS.md`, default on). User-global slot deferred (upstream ambiguous). |
+| Kiro | appended to `resources[]` (sorted; deduped) | `workspace-steering` (`file://.kiro/steering/**/*.md`, default on), `global-steering` (`file://~/.kiro/steering/**/*.md`, default off) |
+| agents-md | — | none (intentional — the target's output *is* `AGENTS.md`) |
+
+Only Kiro's JSON-resources path is auto-spliced into rendered output today; for the markdown-frontmatter targets (Claude Code / OpenCode / Codex) the registry drives the install-time prompt, the user-global config, the `--platform-conventions` flag, and the GUI — but the URIs are not injected into the rendered file (advisory only).
 
 The list is sorted and deduplicated before write so the manifest hash is idempotent across re-installs.
 
@@ -384,7 +387,7 @@ The list is sorted and deduplicated before write so the manifest hash is idempot
 
 The `default` field sets the auto-resolution strategy (`accept-all`, `reject-all`, `use-defaults`, or `prompt`). The `explicit` list, when present, bypasses `default` and pins the exact convention IDs to use. The GUI's `/system/conventions` page (`gui/server/src/routes/conventions.ts`) reads/writes this file directly.
 
-Kiro registers two conventions: `workspace-steering` (`file://.kiro/steering/**/*.md`) and `global-steering` (`file://~/.kiro/steering/**/*.md`). The `use-defaults` strategy resolves to the platform's default convention set (e.g. `workspace-steering` for Kiro).
+Each platform registers its native context-loading paths: Kiro — `workspace-steering` / `global-steering` (`.kiro/steering/**/*.md`); Claude Code — `workspace-memory` / `global-memory` (`CLAUDE.md`, `~/.claude/CLAUDE.md`); OpenCode — `workspace-agents-md` / `global-agents-md` (`AGENTS.md`, `~/.config/opencode/AGENTS.md`); Codex — `workspace-agents-md` (`AGENTS.md`). The `use-defaults` strategy resolves to each platform's `promptDefault: true` conventions (the workspace entry for every platform).
 
 ## MCP server dependencies
 

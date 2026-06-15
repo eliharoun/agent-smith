@@ -2,15 +2,25 @@
 // that built-in agents auto-load but custom (smith-rendered) agents must
 // opt into.
 //
-// v1 registers kiro only:
-//   - workspace-steering: file://.kiro/steering/**/*.md (promptDefault: true)
-//   - global-steering:    file://~/.kiro/steering/**/*.md (promptDefault: false)
+// Registered native context-loading conventions per platform (all upstream-verified):
+//   kiro:        workspace-steering (file://.kiro/steering/**/*.md, default on),
+//                global-steering    (file://~/.kiro/steering/**/*.md, default off)
+//   claude-code: workspace-memory   (file://CLAUDE.md, default on),
+//                global-memory      (file://~/.claude/CLAUDE.md, default off)
+//   opencode:    workspace-agents-md (file://AGENTS.md, default on),
+//                global-agents-md    (file://~/.config/opencode/AGENTS.md, default off)
+//   codex:       workspace-agents-md (file://AGENTS.md, default on)
+//                — user-global slot deferred (upstream ambiguous/unstable)
+//   agents-md:   [] intentional — the target's output IS AGENTS.md (circular).
 //
-// Other platforms register conventions in follow-up data-only commits
-// (CLAUDE.md, AGENTS.md, etc.) — design §12 future work.
+// This registry is advisory: the IDs/URIs power the install-time prompt, the
+// user-global conventions config, the --platform-conventions flag, and the GUI.
+// Only the kiro JSON path is spliced into rendered output today
+// (injectPlatformConventions); markdown-frontmatter targets register the URIs
+// for prompt/UX/discovery but are not auto-injected (see A9 in the follow-up).
 
-import type { CanonicalConfig, Target } from "./types";
 import type { ConventionsFile, DefaultStrategy } from "../io/conventions";
+import type { CanonicalConfig, Target } from "./types";
 
 export interface PlatformConvention {
   /** Stable id used in agent.config.json and ~/.config/agent-smith/conventions.json. */
@@ -54,9 +64,62 @@ export const PLATFORM_CONVENTIONS: Record<Target, readonly PlatformConvention[]>
       promptDefault: false,
     },
   ],
-  opencode: [],
-  "claude-code": [],
-  codex: [],
+  opencode: [
+    {
+      id: "workspace-agents-md",
+      label: "Workspace AGENTS.md",
+      description:
+        "Auto-load AGENTS.md from the project root (OpenCode loads it at session start per the AGENTS.md cross-tool convention).",
+      scope: "workspace",
+      uris: ["file://AGENTS.md"],
+      promptDefault: true,
+    },
+    {
+      id: "global-agents-md",
+      label: "Global AGENTS.md",
+      description:
+        "Auto-load ~/.config/opencode/AGENTS.md (your personal OpenCode rules across all projects).",
+      scope: "user-global",
+      uris: ["file://~/.config/opencode/AGENTS.md"],
+      promptDefault: false,
+    },
+  ],
+  "claude-code": [
+    {
+      id: "workspace-memory",
+      label: "Workspace CLAUDE.md",
+      description:
+        "Auto-load CLAUDE.md from the project root (Claude Code loads it into every session by default).",
+      scope: "workspace",
+      uris: ["file://CLAUDE.md"],
+      promptDefault: true,
+    },
+    {
+      id: "global-memory",
+      label: "Global CLAUDE.md",
+      description:
+        "Auto-load ~/.claude/CLAUDE.md (your personal Claude Code memory file across all projects).",
+      scope: "user-global",
+      uris: ["file://~/.claude/CLAUDE.md"],
+      promptDefault: false,
+    },
+  ],
+  codex: [
+    {
+      id: "workspace-agents-md",
+      label: "Workspace AGENTS.md",
+      description:
+        "Auto-load AGENTS.md from the project root (Codex loads it at session start per the AGENTS.md cross-tool convention).",
+      scope: "workspace",
+      uris: ["file://AGENTS.md"],
+      promptDefault: true,
+    },
+    // Codex user-global slot intentionally deferred: upstream is ambiguous
+    // (~/.codex/instructions.md per openai/codex#960 vs ~/.codex/AGENTS.md, with
+    // unstable global-AGENTS.md support per openai/codex#8759). Better to
+    // under-register than ship a phantom path. Tracked in
+    // docs/follow_ups/non-kiro-platform-conventions.md.
+  ],
   "agents-md": [],
 };
 
@@ -70,10 +133,7 @@ export interface ResolveConventionsInput {
   userPrefs: ConventionsFile | null;
   cliFlag: DefaultStrategy | undefined;
   isTty: boolean;
-  promptUser?: (
-    target: Target,
-    options: readonly PlatformConvention[],
-  ) => Promise<string[]>;
+  promptUser?: (target: Target, options: readonly PlatformConvention[]) => Promise<string[]>;
 }
 
 export interface ResolveConventionsResult {
@@ -114,9 +174,7 @@ export async function resolveConventions(
   if (userPref !== undefined) {
     if (userPref.explicit !== undefined) {
       const ids = new Set(userPref.explicit);
-      const uris = conventions
-        .filter((c) => ids.has(c.id))
-        .flatMap((c) => [...c.uris]);
+      const uris = conventions.filter((c) => ids.has(c.id)).flatMap((c) => [...c.uris]);
       return { uris: uris.sort(), source: "user-global" };
     }
     if (userPref.default !== undefined && userPref.default !== "prompt") {

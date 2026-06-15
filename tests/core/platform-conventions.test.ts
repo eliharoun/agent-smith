@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  PLATFORM_CONVENTIONS,
   getConventionsForPlatform,
+  PLATFORM_CONVENTIONS,
   resolveConventions,
 } from "../../src/core/platform-conventions";
 import type { CanonicalConfig } from "../../src/core/types";
@@ -37,15 +37,78 @@ describe("PLATFORM_CONVENTIONS registry", () => {
     expect(c?.uris).toContain("file://~/.kiro/steering/**/*.md");
   });
 
-  test("opencode/claude-code/codex have no conventions in v1", () => {
-    expect(PLATFORM_CONVENTIONS.opencode).toEqual([]);
-    expect(PLATFORM_CONVENTIONS["claude-code"]).toEqual([]);
-    expect(PLATFORM_CONVENTIONS.codex).toEqual([]);
+  test("registers claude-code conventions (CLAUDE.md workspace + global)", () => {
+    const cc = PLATFORM_CONVENTIONS["claude-code"];
+    expect(cc.length).toBeGreaterThan(0);
+    const ws = cc.find((c) => c.scope === "workspace");
+    expect(ws).toBeDefined();
+    expect(ws?.promptDefault).toBe(true);
+    expect(cc.some((c) => c.uris.some((u) => u.endsWith("CLAUDE.md")))).toBe(true);
+    expect(
+      cc.some((c) => c.scope === "user-global" && c.uris.includes("file://~/.claude/CLAUDE.md")),
+    ).toBe(true);
+  });
+
+  test("registers opencode conventions (AGENTS.md workspace + global)", () => {
+    const oc = PLATFORM_CONVENTIONS.opencode;
+    expect(
+      oc.some((c) => c.scope === "workspace" && c.uris.some((u) => u.endsWith("AGENTS.md"))),
+    ).toBe(true);
+    expect(
+      oc.some(
+        (c) => c.scope === "user-global" && c.uris.includes("file://~/.config/opencode/AGENTS.md"),
+      ),
+    ).toBe(true);
+  });
+
+  test("registers codex workspace AGENTS.md convention (global slot intentionally deferred)", () => {
+    const cx = PLATFORM_CONVENTIONS.codex;
+    expect(
+      cx.some((c) => c.scope === "workspace" && c.uris.some((u) => u.endsWith("AGENTS.md"))),
+    ).toBe(true);
+    // Codex user-global path is ambiguous upstream (~/.codex/instructions.md vs
+    // AGENTS.md, unstable support) — deliberately not registered.
+    expect(cx.some((c) => c.scope === "user-global")).toBe(false);
+  });
+
+  test("agents-md target has no conventions (intentional — the target IS the file)", () => {
+    expect(PLATFORM_CONVENTIONS["agents-md"]).toEqual([]);
+  });
+
+  test("every registered convention has a stable id, label, description, scope, and ≥1 URI", () => {
+    for (const target of Object.keys(PLATFORM_CONVENTIONS) as Array<
+      keyof typeof PLATFORM_CONVENTIONS
+    >) {
+      for (const c of PLATFORM_CONVENTIONS[target]) {
+        expect(c.id).toMatch(/^[a-z][a-z0-9-]+$/);
+        expect(c.label.length).toBeGreaterThan(0);
+        expect(c.description.length).toBeGreaterThan(0);
+        expect(c.uris.length).toBeGreaterThan(0);
+        expect(["workspace", "user-global"]).toContain(c.scope);
+      }
+    }
+  });
+
+  test("workspace conventions use relative file:// URIs; user-global use ~-rooted", () => {
+    for (const target of Object.keys(PLATFORM_CONVENTIONS) as Array<
+      keyof typeof PLATFORM_CONVENTIONS
+    >) {
+      for (const c of PLATFORM_CONVENTIONS[target]) {
+        for (const u of c.uris) {
+          if (c.scope === "workspace") {
+            expect(u.startsWith("file://~")).toBe(false);
+            expect(u.startsWith("file://")).toBe(true);
+          } else {
+            expect(u.startsWith("file://~")).toBe(true);
+          }
+        }
+      }
+    }
   });
 
   test("getConventionsForPlatform returns the platform's list", () => {
     expect(getConventionsForPlatform("kiro").length).toBe(2);
-    expect(getConventionsForPlatform("opencode")).toEqual([]);
+    expect(getConventionsForPlatform("agents-md")).toEqual([]);
   });
 });
 
@@ -180,9 +243,12 @@ describe("resolveConventions precedence", () => {
 
   test("empty registry for target → empty result regardless of inputs", async () => {
     const result = await resolveConventions({
-      target: "opencode", // empty registry in v1
-      bundleConfig: fakeBundleConfig({ targets: ["opencode"] }),
-      userPrefs: { schemaVersion: 1, platformConventions: { opencode: { default: "accept-all" } } },
+      target: "agents-md", // empty registry (intentional — target IS the file)
+      bundleConfig: fakeBundleConfig({ targets: ["agents-md"] }),
+      userPrefs: {
+        schemaVersion: 1,
+        platformConventions: { "agents-md": { default: "accept-all" } },
+      },
       cliFlag: "accept-all",
       isTty: true,
     });
