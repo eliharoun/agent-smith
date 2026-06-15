@@ -352,6 +352,15 @@ export interface RenderedAgentBase {
    *   kiro (Commit 2):      "<name>.json"
    */
   relativePath: string;
+  /**
+   * Optional absolute filesystem path. When set, the installer writes here
+   * instead of joining `paths[target]` with `relativePath`, and scopes its
+   * containment check to this path's directory. Populated by the orchestrator
+   * for bundle-source-aware targets (today: agents-md only, via
+   * resolveAgentsMdRoot). Translators MUST NOT set this — it is an
+   * orchestration concern.
+   */
+  absolutePath?: string;
   /** Optional translator warnings (e.g. "ask action has no claude-code equivalent"). */
   warnings?: string[];
   /**

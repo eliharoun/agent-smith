@@ -105,7 +105,15 @@ Sources are emitted in declared order. The truncation warning is `compile: TOC t
 }
 ```
 
-**Placement.** The translator emits the relative path from `targetOptions.agentsMd.path` (default `AGENTS.md`); the installer joins it with the AGENTS.md install root, currently `$HOME` (so a bare `AGENTS.md` lands at `~/AGENTS.md`). For a project-root install, set `targetOptions.agentsMd.path` to an absolute path. See the comment in `src/cli/install-paths.ts` for the bundle-aware default tracked as a follow-up.
+**Placement (bundle-source-aware).** The translator emits the relative path from `targetOptions.agentsMd.path` (default `AGENTS.md`); the orchestrator joins it with a root resolved **per source kind** (`resolveAgentsMdRoot`):
+
+| `source.kind` | `agents-md` root | Result for a bare `AGENTS.md` |
+|---|---|---|
+| `user-global` | the configured user-global root (defaults to `$HOME`) | `~/AGENTS.md` |
+| `project` | `source.rootPath` (the registered catalog dir) | `<rootPath>/AGENTS.md` |
+| `registered` | `source.rootPath` | `<rootPath>/AGENTS.md` |
+
+So a project/registered bundle's `AGENTS.md` ships with the bundle instead of landing in `$HOME`. `targetOptions.agentsMd.path` is interpreted **relative to that resolved root** (e.g. `docs/AGENTS.md`); an absolute path is used as-is. A relative path that escapes the root (`../…`) is rejected. smith does **not** infer a "repo root" from `rootPath` — it uses the path exactly as registered. (Migration: a project/registered bundle whose `AGENTS.md` previously landed in `~` will report a path mismatch on the next install — re-run with `--force` to write it under the bundle root, then delete the stale `~/AGENTS.md` manually. `user-global` bundles are unaffected.)
 
 **CLAUDE.md interaction.** When both `claude-code` and `agents-md` are declared, the claude-code translator emits a one-line pointer body (`See AGENTS.md.`) instead of the full assembled body — same frontmatter, same model and permission resolution, just no duplicated prose. Override with `targetOptions.claudeCode.deferToAgentsMd: false` to keep the full claude-code body.
 

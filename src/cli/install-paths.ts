@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { InstallPaths } from "../core/types";
+import type { InstallPaths, Source } from "../core/types";
 import type { KnowledgePaths } from "../io/knowledge-paths";
 import { stateHome } from "../io/state-home";
 
@@ -10,21 +10,29 @@ export function defaultInstallPaths(): InstallPaths {
     "claude-code": join(homedir(), ".claude/agents"),
     codex: join(homedir(), ".agents/skills"),
     kiro: join(homedir(), ".kiro/agents"),
-    // AGENTS.md is consumed by external tools (Cursor, Windsurf, Copilot,
-    // etc.) and lives at the project or home root, not a platform-managed
-    // agents directory. The translator emits a relative path (default
-    // "AGENTS.md") which the installer joins with this root.
-    //
-    // TODO(T5b/follow-up): InstallPaths is currently global (one set per
-    // install run, not per bundle), so this resolves to `~` for every
-    // bundle regardless of source kind. This works for `user-global`
-    // bundles (lands at ~/AGENTS.md), but project/registered bundles
-    // probably want their AGENTS.md at the bundle's project root. For
-    // those, users can set `targetOptions.agentsMd.path` to an absolute
-    // or repo-relative path. A future PR can extend InstallPaths to be
-    // bundle-aware so the default does the right thing automatically.
+    // AGENTS.md is consumed by external tools (Cursor, Windsurf, Copilot, etc.)
+    // and lives at the project or home root, not a platform-managed agents dir.
+    // This flat default is `homedir()` for backward compatibility; the
+    // orchestrator overrides it per bundle via `resolveAgentsMdRoot(source)`
+    // (user-global → home, project/registered → the bundle's catalog root).
     "agents-md": homedir(),
   };
+}
+
+/**
+ * Filesystem root the `agents-md` target writes under, resolved per source
+ * kind. `user-global` bundles keep `userGlobalRoot` (the configured
+ * `paths["agents-md"]`, which defaults to `homedir()` — overridable for tests
+ * and custom homes); a `project`/`registered` bundle writes under its own
+ * catalog root (`source.rootPath`) so its AGENTS.md ships with the bundle
+ * instead of polluting `$HOME`. The render's relative path (default
+ * "AGENTS.md", or `targetOptions.agentsMd.path`) is joined against this root by
+ * the orchestrator; an absolute configured path is used as-is. We deliberately
+ * do NOT infer a "repo root" from `rootPath` — it is whatever was registered,
+ * with no enforced layout.
+ */
+export function resolveAgentsMdRoot(source: Source, userGlobalRoot: string): string {
+  return source.kind === "user-global" ? userGlobalRoot : source.rootPath;
 }
 
 /**

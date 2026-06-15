@@ -1,11 +1,10 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { dump } from "js-yaml";
-import { stateHome } from "./state-home";
-import { atomicWriteText } from "./atomic-write";
-import type { InstallPaths, RenderedAgent, Target } from "../core/types";
 import { SmithError } from "../core/smith-error";
+import type { InstallPaths, RenderedAgent, Target } from "../core/types";
 import { assertWithin } from "./assert-within";
+import { atomicWriteText } from "./atomic-write";
 import { withFileLock } from "./git-lock";
 import {
   addInstalledAgent,
@@ -14,6 +13,7 @@ import {
   loadInstalledAgents,
   saveInstalledAgents,
 } from "./installed-agents";
+import { stateHome } from "./state-home";
 
 // Re-export for backward compat with prior import paths. New code should
 // import `InstallPaths` directly from `core/types`.
@@ -98,6 +98,7 @@ export function serialize(rendered: RenderedAgent): string {
 }
 
 function targetPath(rendered: RenderedAgent, paths: InstallPaths): string {
+  if (rendered.absolutePath) return rendered.absolutePath;
   return join(paths[rendered.target], rendered.relativePath);
 }
 
@@ -166,6 +167,14 @@ async function scanKiroNameCollision(
  *   "<name>/SKILL.md"    → <name>            (codex)
  */
 function inferBundleName(rendered: RenderedAgent): string {
+  // agents-md renders all share the filename "AGENTS.md", so deriving the name
+  // from relativePath would collapse every agents-md install to "AGENTS" and
+  // make two bundles (e.g. a user-global one at ~/AGENTS.md and a project one
+  // at <proj>/AGENTS.md) collide on one manifest entry. Key by the bundle dir
+  // name instead so each bundle's AGENTS.md is tracked independently.
+  if (rendered.target === "agents-md" && rendered.bundlePath) {
+    return basename(rendered.bundlePath);
+  }
   const rp = rendered.relativePath;
   if (rp.endsWith("/SKILL.md")) return rp.slice(0, -"/SKILL.md".length);
   if (rp.endsWith(".json")) return rp.slice(0, -".json".length);
@@ -204,12 +213,10 @@ export async function installRendered(
   const seen = new Map<string, RenderedAgent>();
 
   await withFileLock(manifestLockPath(opts.homeDir), async () => {
-    let manifest = await loadInstalledAgents(
-      opts.homeDir ? { homeDir: opts.homeDir } : undefined,
-    );
+    let manifest = await loadInstalledAgents(opts.homeDir ? { homeDir: opts.homeDir } : undefined);
 
     for (const r of rendered) {
-      const dedupKey = `${r.target}:${r.relativePath}`;
+      const dedupKey = `${r.target}:${r.absolutePath ?? r.relativePath}`;
       const winner = seen.get(dedupKey);
       if (winner) {
         const winnerSrc = winner.bundlePath ? ` (kept: ${winner.bundlePath})` : "";
@@ -221,7 +228,7 @@ export async function installRendered(
       seen.set(dedupKey, r);
 
       const path = targetPath(r, paths);
-      const installRoot = paths[r.target];
+      const installRoot = r.absolutePath ? dirname(r.absolutePath) : paths[r.target];
       await mkdir(installRoot, { recursive: true });
       await assertWithin(path, installRoot);
 
@@ -251,11 +258,7 @@ export async function installRendered(
       // kiro-lens sentinel detection.
       if (r.target === "kiro") {
         const ourFilename = `${bundleName}.json`;
-        const collisions = await scanKiroNameCollision(
-          paths.kiro,
-          bundleName,
-          ourFilename,
-        );
+        const collisions = await scanKiroNameCollision(paths.kiro, bundleName, ourFilename);
         if (collisions.length > 0) {
           const message =
             `Another agent file at ${collisions[0]} already declares name '${bundleName}'. ` +
@@ -414,10 +417,7 @@ async function saveManifest(
   manifest: InstalledAgentsFile,
   homeDir: string | undefined,
 ): Promise<void> {
-  await saveInstalledAgents(
-    manifest,
-    homeDir ? { homeDir } : undefined,
-  );
+  await saveInstalledAgents(manifest, homeDir ? { homeDir } : undefined);
 }
 
 /**

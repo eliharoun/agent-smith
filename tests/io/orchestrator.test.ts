@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -321,7 +322,11 @@ describe("io/orchestrator", () => {
         getOpenCodeModels: async () => undefined,
         warnings: { push() {} },
         allowMissingCli: true,
-        detectClaudeCodeAuth: async () => ({ platform: "claude-code", cliInstalled: false, status: "cli-not-installed" }),
+        detectClaudeCodeAuth: async () => ({
+          platform: "claude-code",
+          cliInstalled: false,
+          status: "cli-not-installed",
+        }),
       },
       homeDir: root,
     });
@@ -343,11 +348,95 @@ describe("io/orchestrator", () => {
       modelResolutionEnv: {
         getOpenCodeModels: async () => undefined,
         warnings: { push() {} },
-        detectClaudeCodeAuth: async () => ({ platform: "claude-code", cliInstalled: false, status: "cli-not-installed" }),
+        detectClaudeCodeAuth: async () => ({
+          platform: "claude-code",
+          cliInstalled: false,
+          status: "cli-not-installed",
+        }),
       },
       homeDir: root,
     });
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.messages.join("\n")).toContain("--allow-missing-cli");
+  });
+});
+
+describe("io/orchestrator: bundle-aware agents-md placement", () => {
+  test("project bundle's AGENTS.md lands under its catalog root, not homedir", async () => {
+    const proj = await mkdtemp(join(tmpdir(), "smith-proj-"));
+    const catalogRoot = join(proj, ".agent-smith", "agents");
+    await mkdir(catalogRoot, { recursive: true });
+    const home = await mkdtemp(join(tmpdir(), "smith-home-"));
+    const paths = {
+      opencode: join(home, "opencode/agents"),
+      "claude-code": join(home, "claude/agents"),
+      codex: join(home, "agents/skills"),
+      kiro: join(home, "kiro/agents"),
+      "agents-md": home,
+    };
+    const bundle = fakeBundle("demo", {
+      kind: "project",
+      targets: ["agents-md"],
+      rootPath: catalogRoot,
+    });
+    const res = await buildAndInstall([bundle], paths, {
+      modelResolutionEnv: fakeModelEnv,
+      homeDir: home,
+    });
+    expect(res.errors).toHaveLength(0);
+    expect(existsSync(join(catalogRoot, "AGENTS.md"))).toBe(true);
+    expect(existsSync(join(home, "AGENTS.md"))).toBe(false);
+    await rm(proj, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+  });
+
+  test("user-global bundle's AGENTS.md still lands at homedir() (unchanged)", async () => {
+    const home = await mkdtemp(join(tmpdir(), "smith-home-"));
+    const paths = {
+      opencode: join(home, "opencode/agents"),
+      "claude-code": join(home, "claude/agents"),
+      codex: join(home, "agents/skills"),
+      kiro: join(home, "kiro/agents"),
+      "agents-md": home,
+    };
+    const bundle = fakeBundle("glob", {
+      kind: "user-global",
+      targets: ["agents-md"],
+      rootPath: join(home, ".config/agent-smith/agents"),
+    });
+    const res = await buildAndInstall([bundle], paths, {
+      modelResolutionEnv: fakeModelEnv,
+      homeDir: home,
+    });
+    expect(res.errors).toHaveLength(0);
+    expect(existsSync(join(home, "AGENTS.md"))).toBe(true);
+    await rm(home, { recursive: true, force: true });
+  });
+});
+
+describe("io/orchestrator: agents-md traversal guard", () => {
+  test("a targetOptions.agentsMd.path escaping the bundle root via ../ is rejected", async () => {
+    const proj = await mkdtemp(join(tmpdir(), "smith-evil-"));
+    const catalogRoot = join(proj, ".agent-smith", "agents");
+    await mkdir(catalogRoot, { recursive: true });
+    const home = await mkdtemp(join(tmpdir(), "smith-home-"));
+    const paths = {
+      opencode: join(home, "opencode/agents"),
+      "claude-code": join(home, "claude/agents"),
+      codex: join(home, "agents/skills"),
+      kiro: join(home, "kiro/agents"),
+      "agents-md": home,
+    };
+    const bundle = fakeBundle("evil", {
+      kind: "project",
+      targets: ["agents-md"],
+      rootPath: catalogRoot,
+      targetOptions: { agentsMd: { path: "../../../../../../tmp/escape.md" } },
+    });
+    await expect(
+      buildAndInstall([bundle], paths, { modelResolutionEnv: fakeModelEnv, homeDir: home }),
+    ).rejects.toMatchObject({ payload: { code: "validation-failed" } });
+    await rm(proj, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   });
 });

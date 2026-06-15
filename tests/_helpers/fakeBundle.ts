@@ -34,6 +34,8 @@ export interface FakeBundleOpts {
   user?: string;
   /** Optional `mcp:` block (required[]/peer[]) for preflight tests. */
   mcp?: { required?: string[]; peer?: string[] };
+  /** Optional `targetOptions` block (e.g. agentsMd.path) for placement tests. */
+  targetOptions?: import("../../src/core/types").CanonicalConfig["targetOptions"];
 }
 
 export function fakeBundle(name: string, opts: FakeBundleOpts = {}): AgentBundle {
@@ -47,6 +49,7 @@ export function fakeBundle(name: string, opts: FakeBundleOpts = {}): AgentBundle
       targets: opts.targets ?? ["opencode"],
       modelTier: "balanced",
       ...(opts.mcp ? { mcp: opts.mcp } : {}),
+      ...(opts.targetOptions ? { targetOptions: opts.targetOptions } : {}),
     },
     source: { kind, rootPath, label: kind },
     bundlePath: opts.bundlePath ?? `${rootPath}/${name}`,

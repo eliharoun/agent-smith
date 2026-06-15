@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { defaultKnowledgePaths } from "../cli/install-paths";
+import { dirname, isAbsolute, join } from "node:path";
+import { defaultKnowledgePaths, resolveAgentsMdRoot } from "../cli/install-paths";
 import { assembleBody } from "../core/assembler";
 import type { CompiledKnowledge } from "../core/knowledge/compile";
 import { runKnowledgeStage } from "../core/knowledge/pipeline";
@@ -19,16 +19,17 @@ import { SmithError } from "../core/smith-error";
 import { renderForTargets } from "../core/translators";
 import type { AgentBundle, InstallPaths, RenderedAgent, SourceKind, Target } from "../core/types";
 import { validate, validateAssembledTotal } from "../core/validator";
+import { assertWithin } from "./assert-within";
 import { defaultCacheRoot } from "./cache-root";
-import { detectAuthenticatedProviders } from "./opencode-auth";
 import { type InstallResult, installRendered } from "./installer";
 import { cacheDirFor, type KnowledgePaths, knowledgeDirFor } from "./knowledge-paths";
-import { renderLazyAgentsMdSection } from "./lazy-agents-md";
 import type { KnowledgeSummary } from "./knowledge-summary";
 import { defaultReadPriorManifest, summarizeKnowledgeStage } from "./knowledge-summary";
+import { renderLazyAgentsMdSection } from "./lazy-agents-md";
 import { checkMcpAvailability, type McpAvailabilityPaths } from "./mcp-availability";
 import type { McpClientOpts } from "./mcp-client";
 import type { McpClientPool } from "./mcp-client-pool";
+import { detectAuthenticatedProviders } from "./opencode-auth";
 import { getOpenCodeModels } from "./opencode-models";
 import { checkSkillAvailability, type SkillAvailabilityPaths } from "./skill-availability";
 
@@ -326,10 +327,7 @@ export async function buildAndInstall(
       bundle.config.name,
     );
     if (!installLock) {
-      const lockPath = installLockPath(
-        resolvedKnowledgePaths.agentSmithHome,
-        bundle.config.name,
-      );
+      const lockPath = installLockPath(resolvedKnowledgePaths.agentSmithHome, bundle.config.name);
       errors.push({
         agent: bundle.config.name,
         messages: [
@@ -511,9 +509,7 @@ export async function buildAndInstall(
           userPrefs,
           cliFlag: options.platformConventions,
           isTty: options.isTty ?? false,
-          ...(options.promptForConventions
-            ? { promptUser: options.promptForConventions }
-            : {}),
+          ...(options.promptForConventions ? { promptUser: options.promptForConventions } : {}),
         });
         resolvedConventionUrisByTarget[target] = r.uris;
       }
@@ -535,6 +531,20 @@ export async function buildAndInstall(
       );
       for (const r of rendered) {
         r.bundlePath = bundle.bundlePath;
+        if (r.target === "agents-md") {
+          // Promote the agents-md render to an absolute path under the bundle's
+          // source-resolved root (user-global → home, project/registered →
+          // catalog root). An absolute configured path (targetOptions.agentsMd
+          // .path) is used as-is; a relative one is joined and traversal-guarded.
+          if (isAbsolute(r.relativePath)) {
+            r.absolutePath = r.relativePath;
+          } else {
+            const agentsMdRoot = resolveAgentsMdRoot(bundle.source, paths["agents-md"]);
+            const abs = join(agentsMdRoot, r.relativePath);
+            await assertWithin(abs, agentsMdRoot);
+            r.absolutePath = abs;
+          }
+        }
         if (r.warnings && r.warnings.length > 0) {
           for (const w of r.warnings) {
             warnings.push(`[${bundle.config.name}/${r.target}] ${w}`);

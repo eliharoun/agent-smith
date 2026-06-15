@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RenderedAgent } from "../../src/core/types";
-import { type InstallPaths, installRendered } from "../../src/io/installer";
 import { loadInstalledAgents } from "../../src/io/installed-agents";
+import { type InstallPaths, installRendered } from "../../src/io/installer";
 
 let root: string;
 let homeDir: string;
@@ -298,9 +292,7 @@ describe("io/installer sidecar emission", () => {
     // Manifest carries TWO entries with the same (name, platform) pair —
     // one main, one sidecar — distinguished by `kind` and `path`.
     const manifest = await loadInstalledAgents({ homeDir });
-    const entries = manifest.installed.filter(
-      (e) => e.name === "demo" && e.platform === "codex",
-    );
+    const entries = manifest.installed.filter((e) => e.name === "demo" && e.platform === "codex");
     expect(entries).toHaveLength(2);
     const main = entries.find((e) => e.kind === "main");
     const sc = entries.find((e) => e.kind === "sidecar");
@@ -320,13 +312,51 @@ describe("io/installer sidecar emission", () => {
     };
     await installRendered([codex], paths, { homeDir });
     const manifest = await loadInstalledAgents({ homeDir });
-    const entries = manifest.installed.filter(
-      (e) => e.name === "demo" && e.platform === "codex",
-    );
+    const entries = manifest.installed.filter((e) => e.name === "demo" && e.platform === "codex");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.kind).toBe("main");
     // Sidecar dir was NOT created.
     const sidecarDir = join(paths.codex, "demo", "agents");
     await expect(readFile(join(sidecarDir, "openai.yaml"), "utf8")).rejects.toThrow();
   });
+});
+
+test("RenderedAgent.absolutePath is written outside paths[target] (project AGENTS.md)", async () => {
+  const proj = await mkdtemp(join(tmpdir(), "smith-proj-"));
+  const rendered: RenderedAgent[] = [
+    {
+      target: "agents-md",
+      format: "markdown-frontmatter",
+      relativePath: "AGENTS.md",
+      absolutePath: join(proj, "AGENTS.md"),
+      frontmatter: {},
+      body: "# demo\n\nbody\n",
+      bundlePath: join(proj, ".agent-smith/agents/demo"),
+    },
+  ];
+  const res = await installRendered(rendered, paths, { homeDir });
+  expect(res.installed.some((i) => i.path === join(proj, "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(proj, "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(paths["agents-md"], "AGENTS.md"))).toBe(false);
+  await rm(proj, { recursive: true, force: true });
+});
+
+test("two agents-md renders to different absolute roots do not dedup-collide", async () => {
+  const a = await mkdtemp(join(tmpdir(), "smith-a-"));
+  const b = await mkdtemp(join(tmpdir(), "smith-b-"));
+  const mk = (rootDir: string, name: string): RenderedAgent => ({
+    target: "agents-md",
+    format: "markdown-frontmatter",
+    relativePath: "AGENTS.md",
+    absolutePath: join(rootDir, "AGENTS.md"),
+    frontmatter: {},
+    body: `# ${name}\n`,
+    bundlePath: join(rootDir, ".agent-smith/agents", name),
+  });
+  const res = await installRendered([mk(a, "x"), mk(b, "y")], paths, { homeDir });
+  expect(res.warnings.some((w) => /duplicate/i.test(w))).toBe(false);
+  expect(existsSync(join(a, "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(b, "AGENTS.md"))).toBe(true);
+  await rm(a, { recursive: true, force: true });
+  await rm(b, { recursive: true, force: true });
 });
