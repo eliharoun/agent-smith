@@ -4,6 +4,23 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] — 2026-06-15
+
+### Changed
+
+- **`AGENTS.md` placement is now bundle-source-aware.** A `project`- or
+  `registered`-source bundle writes its `AGENTS.md` under that bundle's own
+  catalog root instead of `~/AGENTS.md`, so the file ships with the bundle and
+  two bundles no longer overwrite each other's global `AGENTS.md`.
+  `user-global` bundles are unchanged (still `~/AGENTS.md`).
+  `targetOptions.agentsMd.path` now resolves relative to the bundle's resolved
+  root (absolute paths used as-is; a path that escapes the root is rejected).
+
+  Migration: a project/registered bundle whose `AGENTS.md` previously landed in
+  `~` reports a path mismatch on the next install — re-run with the force flag
+  to write it under the bundle root, then remove the stale `~/AGENTS.md`
+  manually. `user-global` bundles need no migration.
+
 ## [1.21.0] — 2026-06-15
 
 ### Added
