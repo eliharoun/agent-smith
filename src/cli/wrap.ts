@@ -156,7 +156,7 @@ function bodyFor(payload: SmithErrorPayload): string {
     case "config-missing":
       return `${payload.path} does not exist`;
     case "permission-denied":
-      return `${payload.operation} permission denied on ${payload.path}`;
+      return `${payload.path}: ${payload.operation}`;
     case "usage-error":
       // Headline already shows the message; body is empty.
       return "";

@@ -158,6 +158,10 @@ describe("initUserImpl", () => {
       // name and an EDITOR cue so the user knows what to fix.
       expect(err.payload.message).toMatch(/no-such-editor-zzzz/);
       expect(err.payload.message).toMatch(/EDITOR/);
+      // Item B1: a runnable Try: suggestion that sets EDITOR and re-runs.
+      expect(err.payload.suggestedCommand).toBe(
+        "EDITOR=$(command -v vim || command -v nano) smith init-user",
+      );
     }
   });
 

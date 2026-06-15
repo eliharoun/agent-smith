@@ -449,6 +449,10 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.ref ? { ref: o.ref } : {}),
       });
     } catch (err) {
+      // Git/network failures are SmithErrors (gitOperationError classifies them
+      // as network-error/not-found → exit 1). Let wrap()→exitCodeFor map the real
+      // code; only non-SmithError surprises fall through to the generic exit 2.
+      if (err instanceof SmithError) throw err;
       printErr(`smith: failed to install from ${o.from}: ${(err as Error).message}`);
       return 2;
     }
@@ -486,6 +490,10 @@ export async function install(opts: InstallCliOptions | string): Promise<number>
         ...(o.ref ? { ref: o.ref } : {}),
       });
     } catch (err) {
+      // Git/network failures are SmithErrors (gitOperationError classifies them
+      // as network-error/not-found → exit 1). Let wrap()→exitCodeFor map the real
+      // code; only non-SmithError surprises fall through to the generic exit 2.
+      if (err instanceof SmithError) throw err;
       printErr(`smith: failed to install from ${o.from}: ${(err as Error).message}`);
       return 2;
     }

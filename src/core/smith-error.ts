@@ -235,7 +235,7 @@ export function formatRemediation(payload: SmithErrorPayload): string {
     case "config-missing":
       return `Run \`${payload.suggestedCommand}\` to initialize.`;
     case "permission-denied":
-      return `Check ownership and permissions on ${payload.path}. Current user needs ${payload.operation} access.`;
+      return `Check ownership and permissions on ${payload.path}. The current user lacks access to perform: ${payload.operation}.`;
     case "usage-error":
       return payload.suggestedCommand ? `Try: ${payload.suggestedCommand}` : "";
     case "validation-failed":

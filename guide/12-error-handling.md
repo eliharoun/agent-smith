@@ -142,7 +142,7 @@ Either an OS-level access denial (EACCES, EPERM via `classifyFsError` in `src/io
 - **Body:** `<operation> permission denied on <path>` where `<operation>` is a free-form phrase. Real values today include `read`, `write`, `GET page`, `list pages in space ENG`, `search issues`, `list`. For HTTP-sourced cases, `<path>` is the request URL.
 - **Remediation:** `Check ownership and permissions on <path>. Current user needs <operation> access.`
 
-The `operation` field was widened from a literal `"read" | "write"` union to `string` in Batch 14 so HTTP callers can pass operation phrases through verbatim. Renderer ergonomics for multi-word operations (`"list pages in space ENG permission denied on …"`) are a known UX wart tracked as a deferred follow-up.
+The `operation` field was widened from a literal `"read" | "write"` union to `string` in Batch 14 so HTTP callers can pass operation phrases through verbatim. The renderer handles multi-word phrases cleanly: the body reads `<path>: <operation>` and the remediation reads `… lacks access to perform: <operation>.`, so a phrase like `"list pages in space ENG"` renders as a noun phrase rather than gluing into a verb sentence.
 
 ### `http-error` → exit `1`
 
@@ -165,7 +165,7 @@ The user's invocation was wrong: missing required arg, unknown subcommand, malfo
 
 This variant also covers anything bubbling up from `commander` itself: usage failures from `parseAsync` are converted via `formatCommanderError()` (`src/cli/wrap.ts`) into a `usage-error` SmithError so they flow through the same renderer.
 
-**Stylistic deviation in `init-user`:** when `$EDITOR` is unset (or points at a binary not on `PATH`), `smith init-user` throws a `usage-error` whose `suggestedCommand` is `export EDITOR=vim   # or your preferred editor` rather than the typical `smith ...` shell-out form (`src/cli/commands/init-user.ts`). The renderer still prints it as `Try: export EDITOR=vim ...`, which reads slightly oddly — "Try:" implies a command to invoke, but the suggestion is a shell builtin. This is documented here as a known stylistic deviation; the alternative (a separate `missing-editor` variant) was deferred.
+**`init-user` editor failure remediation:** when `$EDITOR` is unset (or points at a binary not on `PATH`), `smith init-user` throws a `usage-error` whose `suggestedCommand` is `EDITOR=$(command -v vim || command -v nano) smith init-user` (`src/cli/commands/init-user.ts`). The renderer prints it as `Try: EDITOR=$(command -v vim || command -v nano) smith init-user` — a single runnable shell line that sets an editor and re-runs the command, matching the `Try:` contract.
 
 ### `validation-failed` → exit `2`
 
@@ -484,20 +484,19 @@ The known long-tail of raw `throw new Error()` and `console.error(pc.red(…)) +
 
 If a new code path surfaces "unexpected error" in the field, the fix is the same recipe used here: add a typed variant to `SmithError`, throw it at the source, render it in `formatHeadline`/`formatRemediation`/`bodyFor`, and add a `wrap.test.ts` case.
 
-### Migration note: git-operation exit-code change (Batch 14)
+### Git-operation exit codes (Batch 14 regression — closed)
 
-Pre-Batch-14, knowledge-source git failures (clone / fetch / reset / lock-timeout from `src/core/knowledge/acquire.ts`) threw raw `Error` and surfaced as exit `1` (`EXIT_RUNTIME`). Post-Batch-14 they throw `validation-failed` SmithError and surface as exit `2` (`EXIT_USAGE`). Atlassian/Confluence subprocess-style failures (90s wall-clock budget, 30s per-request timeout, budget-exceeded) shifted the same way.
+**Closed:** `smith agent install --from <git-url>` again returns exit `1` for git/network failures (network, DNS, auth, missing repo/ref), matching pre-Batch-14 behavior.
 
-This was an unintended side effect of the typed-error migration — `validation-failed` is the closest existing variant, but its exit-code mapping is wrong for what is really a subprocess/network failure. Restoring the runtime-vs-usage distinction needs a `subprocess-failed` or `network-exhausted` variant; tracked as a deferred follow-up.
+Root cause was narrower than first thought: git stderr is already classified by `gitOperationError` (`src/core/git-error-mapper.ts`) into `network-error` / `not-found` (→ exit `1`) / `validation-failed` fallback (→ `2`). The regression was that `install.ts`'s two `--from` catch blocks **hardcoded `return 2`**, discarding that classification. They now re-throw the SmithError (mirroring the local-path catches in the same file) so `wrap()` → `exitCodeFor` maps it: `network-error`/`not-found` → `1`; an unclassifiable git failure (`validation-failed` fallback) or a genuine usage error (`already-exists`, non-url `--from`) stays `2`.
 
-Practical impact: CI scripts keying on `$?` from `smith agent install` / `smith knowledge fetch` for git-source failures will now see `2` instead of `1`. Scripts that branch on "any non-zero" are unaffected.
+Not affected (already exit `1`): the knowledge-source git path (`acquire.ts` failures are aggregated into `result.errors` → `install` returns `1`), `smith knowledge fetch` (delegates to install), and `smith skill install --from` (propagates the SmithError, no hardcoded return). No new SmithError variant was needed.
 
 ### Cosmetic rendering quirks
 
-- **Double `error:` prefix** in commander-routed output: `✗ smith: error: unknown command 'foo'`. Commander injects its own `error:` prefix that `formatCommanderError` doesn't strip.
 - **Headline-prefix duplication** for some `usage-error` payloads where the message starts with `smith <subcommand>` — produces output like `✗ smith knowledge: smith knowledge requires a subcommand: ...`.
 
-Both are catalogued in the followups doc; the fixes are one-liners but were deferred to keep the SmithError batch small.
+This is catalogued in the followups doc; the fix is a one-liner but was deferred to keep the SmithError batch small. (The commander `error:`-prefix duplication that used to be listed here is closed — `formatCommanderError` strips the leading `error:` prefix; verified by `tests/cli/wrap.test.ts` and `bun run src/index.ts foo` rendering `✗ smith: unknown command 'foo'`.)
 
 ## See also
 

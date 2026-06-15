@@ -107,6 +107,7 @@ export async function initUserImpl(deps: InitUserDeps): Promise<number> {
       throw new SmithError({
         code: "usage-error",
         message: `could not launch editor '${bin}' (set the EDITOR env var to a valid binary)`,
+        suggestedCommand: "EDITOR=$(command -v vim || command -v nano) smith init-user",
       });
     }
     throw err;

@@ -447,3 +447,15 @@ describe("user-aborted SmithError", () => {
     expect(formatRemediation({ code: "user-aborted", what: "uninstall" })).toBe("");
   });
 });
+
+describe("formatRemediation — permission-denied noun-phrase (Item A)", () => {
+  test("reads as a noun phrase, not a verb-glued sentence", () => {
+    const r = formatRemediation({
+      code: "permission-denied",
+      path: "https://wiki.example/space/ENG",
+      operation: "list pages in space ENG",
+    });
+    expect(r).toContain("perform: list pages in space ENG");
+    expect(r).not.toContain("needs list pages in space ENG access");
+  });
+});

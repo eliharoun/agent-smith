@@ -332,4 +332,27 @@ describe("smith agent install --from <url> [v1-task C3.9]", () => {
       await remote.cleanup();
     }
   }, HEAVY_GIT_TIMEOUT_MS);
+
+  test("git clone failure (unreachable remote) propagates a SmithError mapping to exit 1, not 2", async () => {
+    // Unreachable file:// remote → `git clone` fails → gitOperationError classifies
+    // network-error/not-found → exitCodeFor → 1. Pre-fix, install.ts's --from catch
+    // swallowed the SmithError and returned 2. The fix re-throws it, so install()
+    // now rejects with the git SmithError; wrap()→exitCodeFor maps it to 1.
+    const { SmithError } = await import("../../src/core/smith-error");
+    const { exitCodeFor } = await import("../../src/cli/exit-codes");
+    const badUrl = `file://${join(tmpdir(), `agent-smith-no-such-${Math.random().toString(36).slice(2)}.git`)}`;
+    let thrown: unknown;
+    try {
+      await install({ from: badUrl, isTTY: () => false });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(SmithError);
+    expect(exitCodeFor((thrown as InstanceType<typeof SmithError>).payload.code)).toBe(1);
+  }, HEAVY_GIT_TIMEOUT_MS);
+
+  test("non-git, non-existent --from exits 2 (usage error)", async () => {
+    const code = await install({ from: "definitely not a git url or path", isTTY: () => false });
+    expect(code).toBe(2);
+  }, HEAVY_GIT_TIMEOUT_MS);
 });

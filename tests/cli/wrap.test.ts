@@ -400,3 +400,21 @@ describe("formatSmithError — new variants", () => {
     expect(rendered).toContain("Verify the request is well-formed");
   });
 });
+
+describe("formatSmithError — permission-denied multi-word operation (Item A)", () => {
+  test("body renders as '<path>: <operation>' for a multi-word operation phrase", () => {
+    const err = new SmithError({
+      code: "permission-denied",
+      path: "https://wiki.example/space/ENG",
+      operation: "list pages in space ENG",
+    });
+    const out = formatSmithError("knowledge fetch", err, false);
+    expect(out).toContain("https://wiki.example/space/ENG: list pages in space ENG");
+  });
+
+  test("body works for a short verb operation", () => {
+    const err = new SmithError({ code: "permission-denied", path: "/etc/x", operation: "read" });
+    const out = formatSmithError("smith", err, false);
+    expect(out).toContain("/etc/x: read");
+  });
+});

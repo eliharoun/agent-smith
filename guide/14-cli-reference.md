@@ -1344,12 +1344,15 @@ agents opted in; when the last consenting opencode agent is removed,
 **Exit codes:**
 
 - `0` — install succeeded (skill warnings allowed).
-- `1` — agent not found; build error; **a required MCP server declared
+- `1` — agent not found; build error; **a git/network failure when installing
+  `--from <url>`** (unreachable host, auth, missing repo/ref — classified by
+  `gitOperationError` as `network-error`/`not-found`); **a required MCP server declared
   in the bundle's `mcp.required` list is not configured on any of the
   bundle's targeted platforms** (preflight refusal — pass
   `--allow-missing-mcp` to demote to a warning). See
   [04 — Bundle MCP dependencies](./04-knowledge.md#bundle-mcp-dependencies).
-- `2` — `<name>` omitted (helpful error printed).
+- `2` — `<name>` omitted (helpful error printed); `--from` is not a recognized git
+  url/archive/directory; an unclassifiable git failure (`validation-failed` fallback).
 - `3` — agent exists but failed to load (partial failure).
 
 **Examples:**
