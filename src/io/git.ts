@@ -14,34 +14,58 @@ import { SmithError } from "../core/smith-error";
  *  fixtures) working without enabling file:// in transitive sub-fetches.
  *  Single source of truth: git-clone.ts and acquire.ts import this. */
 export const GIT_TRANSPORT_ALLOWLIST: readonly string[] = [
-  "-c", "protocol.allow=never",
-  "-c", "protocol.https.allow=always",
-  "-c", "protocol.ssh.allow=always",
-  "-c", "protocol.file.allow=user",
+  "-c",
+  "protocol.allow=never",
+  "-c",
+  "protocol.https.allow=always",
+  "-c",
+  "protocol.ssh.allow=always",
+  "-c",
+  "protocol.file.allow=user",
 ];
 
 /** Bun.spawn-shaped spawn function. Test-only DI seam; production uses Bun.spawn. */
 export type GitSpawnFn = (
   cmd: string[],
-  opts: { cwd: string; stdout: "pipe"; stderr: "pipe"; env: Record<string, string>; signal?: AbortSignal },
-) => { exited: Promise<number>; stdout: ReadableStream<Uint8Array>; stderr: ReadableStream<Uint8Array> };
+  opts: {
+    cwd: string;
+    stdout: "pipe";
+    stderr: "pipe";
+    env: Record<string, string>;
+    signal?: AbortSignal;
+  },
+) => {
+  exited: Promise<number>;
+  stdout: ReadableStream<Uint8Array>;
+  stderr: ReadableStream<Uint8Array>;
+  kill?: (signal?: number | NodeJS.Signals) => void;
+};
 
 /** THE single place git is spawned. Prepends `git` + the transport allowlist,
  *  sets GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS="" (never block on a credential
  *  prompt in a non-TTY; SSH-agent + git credential.helper still work), maps
  *  ENOENT → canonical "git not installed" SmithError, and optionally bounds the
- *  run with a timeout. On Bun, `AbortSignal.timeout` kills the child and
- *  `proc.exited` RESOLVES with a nonzero (signal) code — so a timeout flows
- *  through the normal success branch as a nonzero result, never a throw.
- *  Returns raw {stdout,stderr,code}; callers map non-zero exits to their own
- *  contextual errors. `spawnFn` is a test-only seam. */
+ *  run with a timeout.
+ *
+ *  Timeout enforcement RACES `proc.exited` (+ stream reads) against a timer; on
+ *  timeout it `kill()`s the child and resolves a nonzero sentinel WITHOUT
+ *  awaiting the child or reading its streams. Deliberately not `AbortSignal`
+ *  on spawn, and not "kill then await exit" — both left `proc.exited` / the
+ *  post-kill stream read hanging on Bun-latest/Linux. The race guarantees
+ *  `runGit` resolves within ~`timeoutMs` regardless of how the runtime handles
+ *  killing a piped child. A timeout flows through as a nonzero result, never a
+ *  throw. Returns raw {stdout,stderr,code}; callers map non-zero exits to their
+ *  own contextual errors. `spawnFn` is a test-only seam. */
 export async function runGit(
   args: string[],
   cwd: string,
   opts?: { timeoutMs?: number; spawnFn?: GitSpawnFn },
 ): Promise<RunResult> {
   const spawnFn: GitSpawnFn = opts?.spawnFn ?? ((cmd, o) => Bun.spawn(cmd, o));
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" } as Record<string, string>;
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "" } as Record<
+    string,
+    string
+  >;
   let proc: ReturnType<GitSpawnFn>;
   try {
     proc = spawnFn(["git", ...GIT_TRANSPORT_ALLOWLIST, ...args], {
@@ -49,7 +73,6 @@ export async function runGit(
       stdout: "pipe",
       stderr: "pipe",
       env,
-      ...(opts?.timeoutMs !== undefined ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
     });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -62,22 +85,44 @@ export async function runGit(
     }
     throw err;
   }
+  // Normal completion: await exit, then drain both pipes. Never throws — a
+  // failure to await/read is mapped to a nonzero sentinel (124).
+  const completed: Promise<RunResult> = (async () => {
+    try {
+      const code = await proc.exited;
+      return {
+        stdout: await new Response(proc.stdout).text(),
+        stderr: await new Response(proc.stderr).text(),
+        code,
+      };
+    } catch (err) {
+      return { stdout: "", stderr: `git invocation failed: ${(err as Error).message}`, code: 124 };
+    }
+  })();
+
+  if (opts?.timeoutMs === undefined) return completed;
+
+  // Bounded run: race completion against a timer. On timeout, kill the child
+  // (best-effort) and resolve immediately — we do NOT await proc.exited or read
+  // its streams, since both have been observed to hang post-kill on some Bun
+  // builds (Bun-latest/Linux). The race guarantees runGit resolves within
+  // ~timeoutMs no matter how the runtime handles killing a piped child.
+  // 124 = conventional timeout exit code (git never returns it itself).
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut: Promise<RunResult> = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      try {
+        proc.kill?.();
+      } catch {
+        /* child already exited */
+      }
+      resolve({ stdout: "", stderr: `git timed out after ${opts.timeoutMs}ms`, code: 124 });
+    }, opts.timeoutMs);
+  });
   try {
-    const code = await proc.exited;
-    return {
-      stdout: await new Response(proc.stdout).text(),
-      stderr: await new Response(proc.stderr).text(),
-      code,
-    };
-  } catch (err) {
-    // Belt-and-suspenders: on Bun a timeout resolves `proc.exited` (handled
-    // above as a nonzero result), so this path is only reached if awaiting exit
-    // or reading a stream genuinely fails (e.g. an abort that rejects on a
-    // future Bun, or a stream error). Surface it as a nonzero failure rather
-    // than throwing, so callers treat it uniformly. 124 = conventional timeout
-    // exit code (git never returns it itself), used as a generic spawn-failure
-    // sentinel here.
-    return { stdout: "", stderr: `git invocation failed: ${(err as Error).message}`, code: 124 };
+    return await Promise.race([completed, timedOut]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
@@ -232,10 +277,7 @@ export async function revListCount(
  * enumeration. Tests inject `deps.runner` to stub the call entirely; the
  * timeout only applies to the default runner.
  */
-export async function getOriginRemote(
-  cwd: string,
-  deps?: GitDeps,
-): Promise<string | undefined> {
+export async function getOriginRemote(cwd: string, deps?: GitDeps): Promise<string | undefined> {
   const r = deps?.runner ?? timedDefaultRunner(cwd, 2000);
   try {
     const result = await r(["remote", "get-url", "origin"]);
@@ -257,9 +299,7 @@ export async function getOriginRemote(
     return url;
   } catch (err) {
     if (isDebug()) {
-      console.error(
-        `[smith debug] getOriginRemote failed: ${(err as Error).message}`,
-      );
+      console.error(`[smith debug] getOriginRemote failed: ${(err as Error).message}`);
     }
     return undefined;
   }
