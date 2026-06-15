@@ -68,3 +68,19 @@ bun run gui:check     # Biome check on gui/
 ## Release workflow
 
 Tags + CHANGELOG + MIGRATION (if breaking). All maintainer automation is local — there is no CI in the deployment environment.
+
+### Branches & CI/CD
+
+- **`staging`** — a pre-flight smoke branch. Pushing to it runs `.github/workflows/staging.yml`, the **full release gauntlet** (typecheck → `bun test` → vitest GUI suite → tarball smoke test) **without** publishing. Use it to confirm CI is green on GitHub before touching `main`.
+- **`main`** — pushing runs the lighter `.github/workflows/test.yml` (`bun test` + vitest).
+- **tags `v*`** — pushing a version tag runs `.github/workflows/publish.yml` (the same gauntlet + version-match check + `npm publish`).
+
+**Recommended flow:**
+
+```bash
+git push origin staging          # 1. pre-flight gauntlet runs; confirm green on GitHub
+git push origin main             # 2. push main yourself once staging is green
+git tag vX.Y.Z && git push origin vX.Y.Z   # 3. publish.yml publishes to npm
+```
+
+`staging` is a smoke gate only — nothing is published from it. A green `staging` run means a release cut from that code will pass the publish gauntlet. (Optional: protect `main` in GitHub repo settings to require the `staging` check, if you want the gate enforced rather than conventional.)

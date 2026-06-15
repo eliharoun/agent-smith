@@ -1,0 +1,69 @@
+name: staging
+
+# Release pre-flight for the `staging` branch.
+#
+# This runs the SAME gate `publish.yml` runs before it publishes — typecheck,
+# the bun test suite, the vitest GUI suite, and the tarball smoke test — but
+# WITHOUT the version-match check or the actual `npm publish`. A green run here
+# means a release cut from this code will pass the publish gauntlet.
+#
+# Workflow:
+#   1. git push origin staging      ← this workflow fires
+#   2. confirm it's green on GitHub
+#   3. git push origin main         (main runs the lighter test.yml)
+#   4. git tag vX.Y.Z && git push origin vX.Y.Z   (publish.yml publishes)
+#
+# Nothing is published from staging; it is a smoke gate only.
+
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [staging]
+
+# A new push to staging cancels an in-flight run on the same ref — staging is a
+# fast-iteration branch, so only the latest commit's result matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: release pre-flight (gauntlet, no publish)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Hermetic: no embedding-model download (lexical index builds). Mirrors
+    # publish.yml / test.yml so staging reproduces the release environment.
+    env:
+      SMITH_NO_EMBEDDINGS: "1"
+    permissions:
+      contents: read # no id-token: this workflow never publishes
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node 20 (for the GUI vitest suite)
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # --- The publish gauntlet's gate, verbatim (minus version-match + publish) ---
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run bun test suite (CLI + core + io)
+        run: bun test
+
+      - name: Run vitest GUI suite
+        working-directory: gui/web
+        run: node node_modules/vitest/vitest.mjs run
+
+      - name: Tarball smoke test (pack + clean-room install + boot)
+        run: bun run verify:tarball
