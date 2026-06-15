@@ -4,6 +4,42 @@ All notable changes to `agent-smith` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] — 2026-06-15
+
+### Added
+
+- **Native context files for Claude Code, OpenCode, and Codex.** smith now
+  recognizes each platform's auto-loaded instruction files, so authoring a
+  bundle for these targets offers to wire them up the same way Kiro's steering
+  files already do — Claude Code's `CLAUDE.md` (project) and
+  `~/.claude/CLAUDE.md` (personal); OpenCode's `AGENTS.md` (project) and
+  `~/.config/opencode/AGENTS.md` (personal); Codex's `AGENTS.md` (project).
+  These drive the install-time prompt, the user-global conventions config, the
+  `--platform-conventions` flag, and the GUI. (Codex's personal-global slot is
+  intentionally omitted while its location is inconsistent upstream; the
+  `agents-md` target registers nothing, since its own output is `AGENTS.md`.)
+
+### Changed
+
+- **Clearer error messages and correct exit codes.** `smith agent install
+  --from <git-url>` now exits `1` (not `2`) when the clone fails due to a
+  network, authentication, or missing-repository/ref error, so scripts can
+  distinguish a failed operation from a usage mistake (genuine usage errors
+  still exit `2`). `permission-denied` errors render multi-word operations
+  cleanly, and `smith init-user` suggests a runnable command when `$EDITOR`
+  isn't set or found.
+
+### Security
+
+- **Hardened git subprocess execution.** Every git invocation now routes
+  through a single helper with a transport allowlist (only `https`, `ssh`, and
+  local file paths — a malicious or mistyped URL can no longer coerce an
+  unexpected transport such as `ext::`), non-interactive credential handling
+  (`GIT_TERMINAL_PROMPT=0` / empty `GIT_ASKPASS` so git never blocks on a
+  credential prompt in daemon/cron/MCP contexts, while ssh-agent and credential
+  helpers still work), and a clear "git is not installed" error instead of an
+  opaque spawn failure. No change to clone/fetch behavior.
+
 ## [1.20.0] — 2026-06-14
 
 ### Added
