@@ -557,7 +557,18 @@ describe("runDaemon — top-level error handlers (DAEMON-1, DAEMON-8)", () => {
       .find((l) => !beforeUnhandled.has(l)) as (reason: unknown) => void;
 
     ourHandler(new Error("kaboom: test rejection"));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Poll until the async shutdown completes rather than sleeping a fixed
+    // interval — the handler closes the watcher + calls exit asynchronously,
+    // and a flat wait was load-sensitive (it failed on busy CI runners when
+    // shutdown took >20ms). Resolves immediately once done; only the genuine
+    // "never shut down" case hits the deadline and fails the assertions below.
+    const deadline = Date.now() + 2000;
+    while (
+      Date.now() < deadline &&
+      !(watcherClosed && exitCalled && sink.err.some((l) => /kaboom: test rejection/.test(l)))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
 
     const errLines = sink.err.filter((l) => /kaboom: test rejection/.test(l));
     expect(errLines.length).toBeGreaterThan(0);
